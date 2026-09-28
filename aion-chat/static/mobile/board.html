@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>留言板</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/mobile/theme.js"></script>
+<script>window.MobileTheme && MobileTheme.boot();</script>
+</head>
+<body>
+<main class="m-page">
+
+  <header>
+    <h1 class="m-title">留言板</h1>
+    <p class="m-sub">两人互相留下的字条，都会收在这里</p>
+  </header>
+
+  <h2 class="m-section">写一句</h2>
+  <div class="m-card">
+    <textarea id="boardInput" rows="3" disabled
+      style="width:100%;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text-3);font:inherit;padding:10px;resize:none;"
+      placeholder="留言功能随后端接入开放"></textarea>
+    <button class="m-btn m-btn-primary m-btn-block" type="button" disabled style="margin-top:10px;opacity:.55;">留下这句</button>
+  </div>
+
+  <h2 class="m-section">留言</h2>
+  <div class="m-card">
+    <div class="m-empty">还没有留言。这个页面先把骨架立好，接口接好后写下的每句话都会按时间排在这里。</div>
+  </div>
+
+</main>
+
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/chat">聊天</a>
+    <a href="/moments">朋友圈</a>
+    <a href="/m/home" class="center-item"><span class="ico">⌂</span>回家</a>
+    <a href="/m/us">我们</a>
+    <a href="/m/more" class="active">更多</a>
+  </div>
+</nav>
+
+</body>
+</html>

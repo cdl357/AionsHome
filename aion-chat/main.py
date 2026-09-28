@@ -359,6 +359,18 @@ async def home():
 async def mobile_home_page():
     return FileResponse(BASE_DIR / "static" / "mobile" / "home.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
+@app.get("/m/us")
+async def mobile_us_page():
+    return FileResponse(BASE_DIR / "static" / "mobile" / "us.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+@app.get("/m/more")
+async def mobile_more_page():
+    return FileResponse(BASE_DIR / "static" / "mobile" / "more.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+@app.get("/m/board")
+async def mobile_board_page():
+    return FileResponse(BASE_DIR / "static" / "mobile" / "board.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
 @app.get("/chat")
 async def chat_page():
     return FileResponse(BASE_DIR / "static" / "chat.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})

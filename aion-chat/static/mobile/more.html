@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>更多</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/mobile/theme.js"></script>
+<script>window.MobileTheme && MobileTheme.boot();</script>
+<style>
+  .more-group { margin-top: 0; }
+  .more-note { font-size: 11px; color: var(--text-3); }
+</style>
+</head>
+<body>
+<main class="m-page">
+
+  <header>
+    <h1 class="m-title">更多</h1>
+    <p class="m-sub">按类翻全部的总入口</p>
+  </header>
+
+  <!-- 主题（布局定稿·方案 C：现成主题一键换色 + 单主色调色盘） -->
+  <h2 class="m-section">主题</h2>
+  <div class="m-card">
+    <div class="chip-row" id="presetChips"></div>
+    <div class="color-field">
+      <input type="color" id="customColor" value="#7a9bd4" aria-label="自定义主色">
+      <span>调色盘：只挑一个主色，背景、卡片、文字自动配</span>
+    </div>
+  </div>
+
+  <!-- 内容（布局定稿：相册 / 留言板 / 记忆库） -->
+  <h2 class="m-section">内容</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/album"><span class="grow"><span class="t">相册</span></span></a>
+    <a class="m-item" href="/m/board"><span class="grow"><span class="t">留言板</span></span></a>
+    <a class="m-item" href="/memory"><span class="grow"><span class="t">记忆库</span><span class="s">长期记忆 · 记忆搜索 · 记忆总结 · 重要事实</span></span></a>
+    <a class="m-item" href="/diary"><span class="grow"><span class="t">日记（按类翻全部）</span><span class="s">按天看请去「我们」的日历时光机</span></span></a>
+  </div>
+
+  <!-- 模型与连接 -->
+  <h2 class="m-section">模型与连接</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/settings"><span class="grow"><span class="t">模型与服务商</span></span></a>
+    <a class="m-item" href="/settings"><span class="grow"><span class="t">GPT / Codex 连接状态</span><span class="more-note s">当前以订阅线路状态接口为准</span></span></a>
+  </div>
+
+  <!-- 管理 -->
+  <h2 class="m-section">管理</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/worldbook"><span class="grow"><span class="t">世界书</span></span></a>
+    <a class="m-item" href="/tts-test"><span class="grow"><span class="t">语音试听</span></span></a>
+  </div>
+
+  <!-- 休闲 -->
+  <h2 class="m-section">休闲</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/music-station"><span class="grow"><span class="t">点歌台</span></span></a>
+    <a class="m-item" href="/reading"><span class="grow"><span class="t">陪伴阅读</span></span></a>
+    <a class="m-item" href="/theater"><span class="grow"><span class="t">小剧场</span></span></a>
+    <a class="m-item" href="/playground"><span class="grow"><span class="t">娱乐室</span></span></a>
+    <a class="m-item" href="/fund"><span class="grow"><span class="t">基金</span></span></a>
+  </div>
+
+  <!-- 其他 -->
+  <h2 class="m-section">其他</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/"><span class="grow"><span class="t">旧版首页（回退）</span></span></a>
+  </div>
+
+</main>
+
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/chat">聊天</a>
+    <a href="/moments">朋友圈</a>
+    <a href="/m/home" class="center-item"><span class="ico">⌂</span>回家</a>
+    <a href="/m/us">我们</a>
+    <a href="/m/more" class="active">更多</a>
+  </div>
+</nav>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var T = window.MobileTheme;
+  if (!T) return;
+
+  /* ── 现成主题一键换色 ── */
+  var chips = $('presetChips');
+  var state = T.current() || {};
+  chips.innerHTML = T.PRESET_ORDER.map(function (key) {
+    var p = T.PRESETS[key];
+    var active = state.preset === key && !state.custom;
+    return '<button type="button" class="chip' + (active ? ' active' : '') + '" data-key="' + key + '">' +
+           '<span class="sw" style="background:' + p.vars['--accent'] + '"></span>' + p.name + '</button>';
+  }).join('');
+
+  chips.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('.chip');
+    if (!btn) return;
+    T.applyPreset(btn.dataset.key);
+    markActive('preset:' + btn.dataset.key);
+  });
+
+  /* ── 调色盘：单主色自动配 ── */
+  $('customColor').addEventListener('input', function () {
+    if (T.applyCustom(this.value)) markActive('custom');
+  });
+
+  function markActive(which) {
+    var list = chips.querySelectorAll('.chip');
+    for (var i = 0; i < list.length; i++) {
+      var k = list[i].getAttribute('data-key');
+      list[i].classList.toggle('active', which === 'preset:' + k);
+    }
+    if (which === 'custom') {
+      for (var j = 0; j < list.length; j++) list[j].classList.remove('active');
+    }
+  }
+})();
+</script>
+</body>
+</html>

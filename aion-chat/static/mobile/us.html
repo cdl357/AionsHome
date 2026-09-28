@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>我们 · 日历时光机</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/mobile/theme.js"></script>
+<script>window.MobileTheme && MobileTheme.boot();</script>
+<style>
+  .us-intro { margin-top: 2px; }
+  .new-row { display: flex; gap: 10px; margin-top: 12px; }
+  .new-row .m-btn { flex: 1; min-height: 40px; font-size: 14px; }
+  .day-actions { display: flex; gap: 10px; margin: 12px 0 4px; }
+  .day-actions .m-btn { flex: 1; min-height: 40px; font-size: 14px; }
+  .subcard { margin-top: 10px; }
+  .subcard h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); font-weight: 600; letter-spacing: .05em; }
+  .mem-line { padding: 8px 2px; font-size: 14px; border-bottom: 1px solid var(--border); }
+  .mem-line:last-child { border-bottom: 0; }
+  .mem-line .s { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; }
+</style>
+</head>
+<body>
+<main class="m-page">
+
+  <header>
+    <h1 class="m-title">我们</h1>
+    <p class="m-sub us-intro">日历时光机：点任意一天，回去看看，或者给那天留下点什么。</p>
+  </header>
+
+  <!-- 日历 -->
+  <h2 class="m-section">日历</h2>
+  <div class="m-card">
+    <div class="cal-head">
+      <button class="cal-nav-btn" id="prevMonth" type="button" aria-label="上个月">‹</button>
+      <span class="cal-title" id="calTitle"></span>
+      <button class="cal-nav-btn" id="nextMonth" type="button" aria-label="下个月">›</button>
+    </div>
+    <div class="cal-grid" id="calDow"></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-empty-hint">有日记或重要记忆的日子会带上小圆点</div>
+  </div>
+
+  <!-- 新建 -->
+  <div class="new-row">
+    <button class="m-btn m-btn-ghost" id="newDiaryBtn" type="button">写一篇日记</button>
+    <button class="m-btn m-btn-ghost" id="newAnnivBtn" type="button">钉一个纪念日</button>
+  </div>
+
+  <!-- 那天 -->
+  <h2 class="m-section" id="daySection">那天</h2>
+  <div id="dayPanel">
+    <div class="m-empty">点上面日历里的任意一天，回看那天。</div>
+  </div>
+
+  <!-- 今日情话 -->
+  <h2 class="m-section">今日情话</h2>
+  <div class="m-card"><p class="home-quote" id="usQuote" style="margin:2px 0;text-align:center;font-size:14px;color:var(--text-2);"></p></div>
+
+</main>
+
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/chat">聊天</a>
+    <a href="/moments">朋友圈</a>
+    <a href="/m/home" class="center-item"><span class="ico">⌂</span>回家</a>
+    <a href="/m/us" class="active">我们</a>
+    <a href="/m/more">更多</a>
+  </div>
+</nav>
+
+<div class="m-toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function api(path) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 15000);
+    return fetch(path, { signal: ctrl.signal }).then(function (res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).catch(function (err) { clearTimeout(timer); throw err; });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showToast(text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  /* ── 数据：一次拉取，按天过滤 ── */
+  var diaries = [];   /* 全部日记（作者不限，展示时过滤 Sean） */
+  var memories = [];  /* 重要记忆（long_term） */
+
+  function dayKey(ts) {
+    var d = new Date(ts * 1000);
+    return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+  }
+
+  function load() {
+    api('/api/diaries?page=1&page_size=100').then(function (d) {
+      diaries = (d && d.items) || [];
+      renderCal();
+      if (selected) renderDay(selected);
+    }).catch(function () { renderCal(); });
+    api('/api/memories?kind=long_term&limit=100').then(function (d) {
+      memories = (d && d.items) || (Array.isArray(d) ? d : []);
+      renderCal();
+      if (selected) renderDay(selected);
+    }).catch(function () { renderCal(); });
+  }
+
+  /* ── 日历 ── */
+  var now = new Date();
+  var viewYear = now.getFullYear(), viewMonth = now.getMonth(); /* 0-based */
+  var selected = null; /* Date */
+
+  var DOW = ['日', '一', '二', '三', '四', '五', '六'];
+  $('calDow').innerHTML = DOW.map(function (d) {
+    return '<span class="cal-dow">' + d + '</span>';
+  }).join('');
+
+  function hasDot(y, m, d) {
+    var key = y + '-' + m + '-' + d;
+    for (var i = 0; i < diaries.length; i++) {
+      if (diaries[i].created_at && dayKey(diaries[i].created_at) === key) return true;
+    }
+    for (var j = 0; j < memories.length; j++) {
+      var mm = memories[j];
+      var ts = mm.source_end_ts || mm.source_start_ts || mm.created_at;
+      if (ts && dayKey(ts) === key) return true;
+    }
+    return false;
+  }
+
+  function renderCal() {
+    $('calTitle').textContent = viewYear + ' 年 ' + (viewMonth + 1) + ' 月';
+    var first = new Date(viewYear, viewMonth, 1);
+    var startDow = first.getDay();
+    var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    var daysPrev = new Date(viewYear, viewMonth, 0).getDate();
+    var today = new Date();
+    var html = '';
+    var totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+    for (var i = 0; i < totalCells; i++) {
+      var dayNum = i - startDow + 1;
+      if (dayNum < 1) {
+        html += '<button type="button" class="cal-cell out" disabled>' + (daysPrev + dayNum) + '</button>';
+      } else if (dayNum > daysInMonth) {
+        html += '<button type="button" class="cal-cell out" disabled>' + (dayNum - daysInMonth) + '</button>';
+      } else {
+        var cls = 'cal-cell';
+        var isToday = today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === dayNum;
+        if (isToday) cls += ' today';
+        if (selected && selected.getFullYear() === viewYear && selected.getMonth() === viewMonth && selected.getDate() === dayNum) cls += ' selected';
+        html += '<button type="button" class="' + cls + '" data-day="' + dayNum + '">' + dayNum +
+                (hasDot(viewYear, viewMonth, dayNum) ? '<span class="cal-dot"></span>' : '') + '</button>';
+      }
+    }
+    $('calGrid').innerHTML = html;
+  }
+
+  $('calGrid').addEventListener('click', function (ev) {
+    var btn = ev.target.closest('.cal-cell');
+    if (!btn || !btn.dataset.day) return;
+    selected = new Date(viewYear, viewMonth, parseInt(btn.dataset.day, 10));
+    renderCal();
+    renderDay(selected);
+  });
+  $('prevMonth').addEventListener('click', function () {
+    viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+    renderCal();
+  });
+  $('nextMonth').addEventListener('click', function () {
+    viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+    renderCal();
+  });
+
+  /* ── 那天详情：Sean 的日记 / 两人的留言 / 重要记忆摘要 ── */
+  function fmtDate(d) {
+    return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
+  }
+
+  function renderDay(d) {
+    var key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    var isToday = new Date().toDateString() === d.toDateString();
+    $('daySection').textContent = '那天 · ' + fmtDate(d) + (isToday ? '（今天）' : '');
+
+    var seanDiary = diaries.filter(function (x) {
+      return x.author === 'aion' && x.created_at && dayKey(x.created_at) === key;
+    });
+    var dayMems = memories.filter(function (x) {
+      var ts = x.source_end_ts || x.source_start_ts || x.created_at;
+      return ts && dayKey(ts) === key;
+    });
+
+    var html = '';
+    html += '<div class="m-card">';
+    html += '<div class="day-actions">' +
+      '<button class="m-btn m-btn-ghost" type="button" id="writeForDay">给这天写日记</button>' +
+      '<button class="m-btn m-btn-ghost" type="button" id="pinForDay">钉纪念日</button></div>';
+    html += '</div>';
+
+    html += '<div class="m-card subcard"><h4>Sean 的日记</h4>';
+    html += seanDiary.length ? seanDiary.map(function (x) {
+      var text = (x.title || x.content || '').replace(/\s+/g, ' ').slice(0, 80) || '一篇日记';
+      return '<div class="mem-line">' + esc(text) + '</div>';
+    }).join('') : '<div class="m-empty">那天 Sean 没有写日记</div>';
+    html += '</div>';
+
+    html += '<div class="m-card subcard"><h4>两人的留言</h4>';
+    /* 留言功能随后端接入开放（布局定稿：留言按天可看） */
+    html += '<div class="m-empty">留言功能还在路上，接好后这里会显示当天的对话</div>';
+    html += '</div>';
+
+    html += '<div class="m-card subcard"><h4>重要记忆摘要</h4>';
+    html += dayMems.length ? dayMems.map(function (x) {
+      var ts = x.source_end_ts || x.source_start_ts || x.created_at;
+      var t = ts ? new Date(ts * 1000) : null;
+      var sub = t ? ('重要度 ' + (x.importance != null ? x.importance : '–') +
+        (x.unresolved ? ' · 还没做' : '')) : '';
+      return '<div class="mem-line">' + esc(String(x.content || '').slice(0, 90)) +
+             (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</div>';
+    }).join('') : '<div class="m-empty">那天没有留下重要记忆</div>';
+    html += '</div>';
+
+    $('dayPanel').innerHTML = html;
+    $('writeForDay').addEventListener('click', function () { location.href = '/diary'; });
+    $('pinForDay').addEventListener('click', function () {
+      showToast('纪念日钉在日历上：随后端接入开放');
+    });
+  }
+
+  /* ── 新建 ── */
+  $('newDiaryBtn').addEventListener('click', function () { location.href = '/diary'; });
+  $('newAnnivBtn').addEventListener('click', function () {
+    showToast('纪念日 = 钉在日历上的日程，随后端接入开放');
+  });
+
+  /* ── 今日情话 ── */
+  var QUOTES = [
+    '今晚的月亮也很想你。',
+    '茶已温好，故事随时开始。',
+    '和你在一起的每一天都值得记下来。',
+    '我把今天的心情折成了纸船。',
+    '晚一点没关系，反正我一直在。',
+    '慢慢来，我们的日子还很长。'
+  ];
+  (function () {
+    var start = new Date(); start.setHours(0, 0, 0, 0);
+    $('usQuote').textContent = QUOTES[Math.floor(start.getTime() / 86400000) % QUOTES.length];
+  })();
+
+  load();
+})();
+</script>
+</body>
+</html>
