@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>记忆库</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/mobile/theme.js"></script>
+<script>window.MobileTheme && MobileTheme.boot();</script>
+<style>
+  .search-box { display: flex; gap: 8px; }
+  .search-box input { flex: 1; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--surface); color: var(--text); font: inherit; font-size: 14px; padding: 10px 14px; }
+  .mem-card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-card); padding: 14px 16px; margin-bottom: 10px; }
+  .mem-content { font-size: 15px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+  .mem-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .mem-time { font-size: 12px; color: var(--text-3); }
+  .mem-ops { margin-left: auto; display: flex; gap: 12px; }
+  .mem-ops button { background: none; border: 0; color: var(--text-3); font: inherit;
+    font-size: 12px; cursor: pointer; padding: 0; font-family: inherit; }
+  .mem-ops button:hover { color: var(--text); }
+  .edit-panel { display: none; margin-top: 10px; }
+  .edit-panel.open { display: block; }
+  .edit-panel textarea { width: 100%; min-height: 72px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface-2); color: var(--text); font: inherit;
+    font-size: 14px; padding: 10px; resize: vertical; }
+  .edit-panel .row { display: flex; gap: 10px; margin-top: 8px; }
+  .edit-panel .row .m-btn { flex: 1; min-height: 38px; font-size: 14px; }
+  .compose-mask { position: fixed; inset: 0; z-index: 44; background: rgba(4,8,16,.55);
+    opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .compose-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    background: var(--surface-2); border-radius: 16px 16px 0 0;
+    padding: 14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    transform: translateY(100%); transition: transform .24s; }
+  .compose-mask.open, .compose-sheet.open { opacity: 1; pointer-events: auto; }
+  .compose-sheet.open { transform: translateY(0); }
+  .compose-sheet textarea { width: 100%; min-height: 88px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface); color: var(--text); font: inherit;
+    font-size: 15px; padding: 10px; resize: vertical; }
+  .kind-hint { font-size: 11px; color: var(--text-3); margin-top: 8px; }
+</style>
+</head>
+<body>
+<main class="m-page">
+
+  <header>
+    <h1 class="m-title">记忆库</h1>
+    <p class="m-sub">Sean 聊天里记下的事，你随时能看、能改、能删</p>
+  </header>
+
+  <h2 class="m-section">搜索</h2>
+  <div class="search-box">
+    <input id="searchInput" maxlength="200" placeholder="关键词找一段记忆…">
+  </div>
+
+  <div class="chip-row" id="kindChips" style="margin-top:12px;"></div>
+
+  <h2 class="m-section">全部记忆</h2>
+  <div id="memList"><div class="m-empty" id="memEmpty">还没有记忆，聊着聊着就有了</div></div>
+  <button class="m-btn m-btn-ghost m-btn-block" id="loadMore" type="button" hidden style="margin:4px 0 0;">往前翻更多</button>
+
+</main>
+
+<button class="compose-fab" id="fab" type="button" aria-label="记一件事" style="position:fixed;right:20px;bottom:calc(env(safe-area-inset-bottom, 0px) + 76px);z-index:30;width:48px;height:48px;border-radius:50%;background:var(--accent);color:#1c1708;border:0;font-size:24px;cursor:pointer;box-shadow:var(--shadow);">+</button>
+
+<div class="compose-mask" id="mask"></div>
+<div class="compose-sheet" id="sheet">
+  <textarea id="newContent" maxlength="2000" placeholder="记一件重要的事…"></textarea>
+  <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+    <button class="m-btn m-btn-primary" id="saveNew" type="button" style="min-height:38px;">记下来</button>
+  </div>
+</div>
+
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/chat">聊天</a>
+    <a href="/m/moments">朋友圈</a>
+    <a href="/m/home" class="center-item"><span class="ico">⌂</span>回家</a>
+    <a href="/m/us">我们</a>
+    <a href="/m/more">更多</a>
+  </div>
+</nav>
+
+<div class="m-toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var kind = 'all';
+  var q = '';
+  var before = null;
+  var PAGE = 30;
+
+  var KINDS = [
+    { key: 'all', name: '全部' },
+    { key: 'long_term', name: '长期重要' },
+    { key: 'daily', name: '日常' }
+  ];
+
+  function api(path, options) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 20000);
+    return fetch(path, Object.assign({ signal: ctrl.signal }, options || {})).then(function (res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).catch(function (err) { clearTimeout(timer); throw err; });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showToast(text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '';
+    var d = new Date(ts * 1000);
+    return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  /* ── 分类 chips ── */
+  function renderChips() {
+    $('kindChips').innerHTML = KINDS.map(function (k) {
+      var active = k.key === kind;
+      return '<button type="button" class="chip' + (active ? ' active' : '') + '" data-kind="' +
+        k.key + '">' + k.name + '</button>';
+    }).join('');
+  }
+  $('kindChips').addEventListener('click', function (ev) {
+    var chip = ev.target.closest('.chip');
+    if (!chip) return;
+    kind = chip.getAttribute('data-kind');
+    renderChips();
+    reload();
+  });
+
+  /* ── 搜索（防抖） ── */
+  var searchTimer = null;
+  $('searchInput').addEventListener('input', function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      q = $('searchInput').value.trim();
+      reload();
+    }, 350);
+  });
+
+  /* ── 列表 ── */
+  function memTime(m) {
+    return m.source_end_ts || m.source_start_ts || m.created_at;
+  }
+
+  function renderList(items, append) {
+    var list = $('memList');
+    if (!append) list.innerHTML = '';
+    if (!items.length && !append) {
+      list.innerHTML = '<div class="m-empty" id="memEmpty">' +
+        (q ? '没找到带「' + esc(q) + '」的记忆' : '还没有记忆，聊着聊着就有了') + '</div>';
+      return;
+    }
+    var html = items.map(function (m) {
+      var kindLabel = m.memory_kind === 'daily' ? '日常' : '长期重要';
+      return '<div class="mem-card" data-id="' + esc(m.id) + '">' +
+        '<div class="mem-content">' + esc(m.content) + '</div>' +
+        '<div class="mem-foot">' +
+          '<span class="m-tag ' + (m.memory_kind === 'daily' ? '' : 'm-tag-lilac') + '">' + kindLabel + '</span>' +
+          '<span class="mem-time">' + fmtDate(memTime(m)) + '</span>' +
+          '<span class="mem-ops">' +
+            '<button data-edit="' + esc(m.id) + '">改</button>' +
+            '<button data-del="' + esc(m.id) + '">删</button>' +
+          '</span>' +
+        '</div>' +
+        '<div class="edit-panel"><textarea maxlength="2000"></textarea>' +
+          '<div class="row"><button class="m-btn m-btn-ghost" data-cancel="1">取消</button>' +
+          '<button class="m-btn m-btn-primary" data-save="' + esc(m.id) + '">保存</button></div></div>' +
+      '</div>';
+    }).join('');
+    if (append) list.insertAdjacentHTML('beforeend', html);
+    else list.innerHTML = html;
+  }
+
+  function reload() {
+    var url = '/api/memories?limit=' + PAGE + '&kind=' + encodeURIComponent(kind);
+    if (q) url += '&q=' + encodeURIComponent(q);
+    api(url).then(function (d) {
+      var items = (d && d.items) || (Array.isArray(d) ? d : []);
+      renderList(items, false);
+      before = items.length === PAGE ? memTime(items[items.length - 1]) : null;
+      $('loadMore').hidden = !before;
+    }).catch(function () {
+      $('memList').innerHTML = '<div class="m-empty">加载失败，再试一次</div>';
+    });
+  }
+
+  $('loadMore').addEventListener('click', function () {
+    if (!before) return;
+    var url = '/api/memories?limit=' + PAGE + '&kind=' + encodeURIComponent(kind) +
+      '&before=' + before;
+    if (q) url += '&q=' + encodeURIComponent(q);
+    api(url).then(function (d) {
+      var items = (d && d.items) || (Array.isArray(d) ? d : []);
+      renderList(items, true);
+      before = items.length === PAGE ? memTime(items[items.length - 1]) : null;
+      $('loadMore').hidden = !before;
+    }).catch(function () {});
+  });
+
+  /* ── 编辑 / 删除 ── */
+  $('memList').addEventListener('click', function (ev) {
+    var t = ev.target;
+    var card = t.closest('.mem-card');
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+    var editBtn = t.closest('[data-edit]');
+    if (editBtn) {
+      var panel = card.querySelector('.edit-panel');
+      var openNow = panel.classList.toggle('open');
+      if (openNow) {
+        panel.querySelector('textarea').value =
+          card.querySelector('.mem-content').textContent;
+        panel.querySelector('textarea').focus();
+      }
+      return;
+    }
+    if (t.closest('[data-cancel]')) {
+      card.querySelector('.edit-panel').classList.remove('open');
+      return;
+    }
+    var saveBtn = t.closest('[data-save]');
+    if (saveBtn) {
+      var text = card.querySelector('.edit-panel textarea').value.trim();
+      if (!text) { showToast('内容不能为空'); return; }
+      api('/api/memories/' + encodeURIComponent(id), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text })
+      }).then(function () { showToast('改好了'); reload(); })
+        .catch(function () { showToast('保存失败，再试试'); });
+      return;
+    }
+    var delBtn = t.closest('[data-del]');
+    if (delBtn && confirm('删掉这段记忆？')) {
+      api('/api/memories/' + encodeURIComponent(id), { method: 'DELETE' })
+        .then(function () { showToast('删掉了'); reload(); })
+        .catch(function () { showToast('删除失败'); });
+    }
+  });
+
+  /* ── 手动记一件 ── */
+  $('fab').addEventListener('click', function () {
+    $('sheet').classList.add('open');
+    $('mask').classList.add('open');
+    $('newContent').focus();
+  });
+  $('mask').addEventListener('click', closeSheet);
+  function closeSheet() {
+    $('sheet').classList.remove('open');
+    $('mask').classList.remove('open');
+  }
+  $('saveNew').addEventListener('click', function () {
+    var text = $('newContent').value.trim();
+    if (!text) { showToast('先写点什么'); return; }
+    api('/api/memories', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text, type: 'event' })
+    }).then(function () {
+      $('newContent').value = '';
+      closeSheet();
+      showToast('记下了');
+      reload();
+    }).catch(function () { showToast('没记上，再试试'); });
+  });
+
+  renderChips();
+  reload();
+})();
+</script>
+</body>
+</html>

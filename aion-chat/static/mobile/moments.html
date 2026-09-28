@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>朋友圈</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/mobile/theme.js"></script>
+<script>window.MobileTheme && MobileTheme.boot();</script>
+<style>
+  .feed { display: flex; flex-direction: column; gap: 14px; }
+  .post { display: flex; gap: 10px; }
+  .post-avatar { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; flex: none;
+                 background: var(--accent-soft); border: 1px solid var(--border);
+                 display: flex; align-items: center; justify-content: center;
+                 font-weight: 600; color: var(--accent); font-size: 18px; }
+  .post-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .post-body { flex: 1; min-width: 0; }
+  .post-name { font-size: 14px; font-weight: 600; color: var(--accent); }
+  .post-text { font-size: 15px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+  .post-imgs { display: grid; gap: 4px; margin-top: 8px; max-width: 240px; }
+  .post-imgs.n1 { grid-template-columns: 1fr; }
+  .post-imgs.n2, .post-imgs.n3 { grid-template-columns: repeat(3, 1fr); }
+  .post-imgs img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 8px;
+                   border: 1px solid var(--border); display: block; }
+  .post-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .post-time { font-size: 12px; color: var(--text-3); }
+  .post-del { font-size: 12px; color: var(--text-3); background: none; border: 0;
+              cursor: pointer; font-family: inherit; padding: 0; }
+  .post-actions { margin-left: auto; display: flex; gap: 6px; }
+  .act-btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2);
+             border-radius: 8px; min-width: 34px; min-height: 28px; font: inherit; font-size: 12px;
+             cursor: pointer; }
+  .act-btn.on { color: var(--accent); border-color: var(--accent); }
+  .interact {
+    margin-top: 10px; background: var(--surface-2); border-radius: 10px; padding: 8px 10px;
+    font-size: 13px;
+  }
+  .likes-row { color: var(--text-2); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .likes-row:only-child { border-bottom: 0; }
+  .comment-line { padding: 4px 0; color: var(--text-2); border-bottom: 1px solid var(--border); }
+  .comment-line:last-of-type { border-bottom: 0; }
+  .comment-line .cname { color: var(--accent); font-weight: 500; }
+  .comment-line .cdel { color: var(--text-3); font-size: 11px; background: none; border: 0;
+                        cursor: pointer; font-family: inherit; margin-left: 6px; }
+  .comment-input { display: flex; gap: 8px; margin-top: 6px; }
+  .comment-input input { flex: 1; border: 1px solid var(--border); border-radius: 8px;
+                         background: var(--surface); color: var(--text); font: inherit;
+                         font-size: 13px; padding: 6px 10px; }
+  .comment-input button { border: 0; background: var(--accent); color: #1c1708; border-radius: 8px;
+                          font: inherit; font-size: 13px; padding: 0 14px; cursor: pointer; }
+
+  .compose-fab {
+    position: fixed; right: 20px; bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+    z-index: 30; width: 48px; height: 48px; border-radius: 50%;
+    background: var(--accent); color: #1c1708; border: 0; font-size: 24px; line-height: 1;
+    cursor: pointer; box-shadow: var(--shadow);
+  }
+  .compose-mask { position: fixed; inset: 0; z-index: 44; background: rgba(4,8,16,.55);
+                  opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .compose-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+                   background: var(--surface-2); border-radius: 16px 16px 0 0;
+                   padding: 14px 20px calc(env(safe-area-inset-bottom, 0px) + 16px);
+                   transform: translateY(100%); transition: transform .24s; }
+  .compose-mask.open, .compose-sheet.open { opacity: 1; pointer-events: auto; transform: none; }
+  .compose-sheet.open { transform: translateY(0); }
+  .compose-sheet textarea { width: 100%; min-height: 96px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface); color: var(--text); font: inherit;
+    font-size: 15px; padding: 10px; resize: vertical; }
+  .attach-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .attach-preview { display: flex; gap: 6px; flex-wrap: wrap; }
+  .attach-preview img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px;
+                        border: 1px solid var(--border); }
+  .attach-btn { background: none; border: 1px dashed var(--border); color: var(--text-3);
+                border-radius: 8px; font: inherit; font-size: 13px; padding: 8px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<main class="m-page">
+
+  <header>
+    <h1 class="m-title">朋友圈</h1>
+    <p class="m-sub">祂的小角落，也是你的 —— 路过、点赞、搭一句</p>
+  </header>
+
+  <h2 class="m-section">动态</h2>
+  <div class="feed" id="feed"></div>
+  <div class="m-empty" id="feedEmpty" hidden>还没有动态，发第一条吧</div>
+  <button class="m-btn m-btn-ghost m-btn-block" id="loadMore" type="button" hidden style="margin-top:14px;">再刷一些</button>
+
+</main>
+
+<button class="compose-fab" id="fab" type="button" aria-label="发动态">+</button>
+
+<!-- 发布抽屉 -->
+<div class="compose-mask" id="composeMask"></div>
+<div class="compose-sheet" id="composeSheet">
+  <textarea id="composeText" maxlength="2000" placeholder="这一刻的想法…"></textarea>
+  <div class="attach-row">
+    <button class="attach-btn" id="attachBtn" type="button">配图</button>
+    <div class="attach-preview" id="attachPreview"></div>
+    <button class="m-btn m-btn-primary" id="postBtn" type="button" style="margin-left:auto;min-height:38px;">发布</button>
+  </div>
+  <input type="file" id="attachFile" accept="image/*" hidden>
+</div>
+
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/chat">聊天</a>
+    <a href="/m/moments" class="active">朋友圈</a>
+    <a href="/m/home" class="center-item"><span class="ico">⌂</span>回家</a>
+    <a href="/m/us">我们</a>
+    <a href="/m/more">更多</a>
+  </div>
+</nav>
+
+<div class="m-toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var NAMES = { user: 'Yuri', aion: 'Sean', connor: 'Connor' };
+  var AVATAR_KEYS = { user: 'aion_avatar_yuri', aion: 'aion_avatar_sean' };
+  var nextCursor = null;
+
+  function api(path, options) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 20000);
+    return fetch(path, Object.assign({ signal: ctrl.signal }, options || {})).then(function (res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).catch(function (err) { clearTimeout(timer); throw err; });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showToast(text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  function relTime(ts) {
+    if (!ts) return '';
+    var diff = Date.now() / 1000 - ts;
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+    if (diff < 86400 * 30) return Math.floor(diff / 86400) + ' 天前';
+    var d = new Date(ts * 1000);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  }
+
+  function avatarHtml(author) {
+    var key = AVATAR_KEYS[author];
+    var data = null;
+    try { data = key ? localStorage.getItem(key) : null; } catch (e) {}
+    if (data) return '<span class="post-avatar"><img src="' + data + '" alt=""></span>';
+    return '<span class="post-avatar">' + esc((NAMES[author] || '?').charAt(0)) + '</span>';
+  }
+
+  /* ── 动态列表 ── */
+  function likeNames(m) {
+    return (m.reactions || []).filter(function (r) { return r.type === 'like'; })
+      .map(function (r) { return NAMES[r.author] || r.author; });
+  }
+
+  function renderPost(m) {
+    var atts = (m.attachments || []).filter(function (a) {
+      return typeof a === 'string' && a.indexOf('/uploads/') === 0;
+    });
+    var imgs = '';
+    if (atts.length) {
+      var cls = atts.length === 1 ? 'n1' : 'n3';
+      imgs = '<div class="post-imgs ' + cls + '">' + atts.slice(0, 3).map(function (u) {
+        return '<img src="' + esc(u) + '" loading="lazy" alt="">';
+      }).join('') + '</div>';
+    }
+    var likes = likeNames(m);
+    var likesRow = likes.length
+      ? '<div class="likes-row">♥ ' + esc(likes.join('、')) + '</div>' : '';
+    var comments = (m.comments || []).map(function (c) {
+      var del = c.author === 'user'
+        ? '<button class="cdel" data-cid="' + esc(c.id) + '">删除</button>' : '';
+      return '<div class="comment-line"><span class="cname">' + esc(NAMES[c.author] || c.author) +
+        '：</span>' + esc(c.content) + del + '</div>';
+    }).join('');
+
+    var delBtn = m.author === 'user'
+      ? '<button class="post-del" data-del="' + esc(m.id) + '">删除</button>' : '';
+
+    return '<div class="post" data-mid="' + esc(m.id) + '">' +
+      avatarHtml(m.author) +
+      '<div class="post-body">' +
+        '<div class="post-name">' + esc(NAMES[m.author] || m.author) + '</div>' +
+        (m.content ? '<div class="post-text">' + esc(m.content) + '</div>' : '') +
+        imgs +
+        '<div class="post-foot"><span class="post-time">' + relTime(m.created_at) + '</span>' +
+          delBtn +
+          '<span class="post-actions">' +
+            '<button class="act-btn" data-like="' + esc(m.id) + '">赞</button>' +
+            '<button class="act-btn" data-comment="' + esc(m.id) + '">评论</button>' +
+          '</span>' +
+        '</div>' +
+        (likesRow || comments
+          ? '<div class="interact">' + likesRow + comments +
+            '<div class="comment-input" hidden><input placeholder="搭一句…" maxlength="500">' +
+            '<button data-send="' + esc(m.id) + '">发送</button></div></div>'
+          : '<div class="interact" hidden><div class="comment-input" hidden><input>' +
+            '<button data-send="' + esc(m.id) + '">发送</button></div></div>') +
+      '</div></div>';
+  }
+
+  function load(reset) {
+    var url = '/api/moments?page=1&page_size=20';
+    if (!reset && nextCursor) url += '&before=' + nextCursor;
+    api(url).then(function (d) {
+      var items = (d && d.items) || [];
+      var feed = $('feed');
+      if (reset) { feed.innerHTML = ''; nextCursor = null; }
+      if (!items.length) {
+        $('feedEmpty').hidden = false;
+        $('feedEmpty').textContent = reset ? '还没有动态，发第一条吧' : '没有更早的动态了';
+        $('loadMore').hidden = true;
+        return;
+      }
+      $('feedEmpty').hidden = true;
+      feed.insertAdjacentHTML('beforeend', items.map(renderPost).join(''));
+      if (items.length) nextCursor = items[items.length - 1].created_at;
+      $('loadMore').hidden = !(d && d.has_more);
+    }).catch(function () {
+      $('feedEmpty').hidden = false;
+      $('feedEmpty').textContent = '加载失败，再试一次';
+      $('loadMore').hidden = true;
+    });
+    api('/api/moments/mark-read', { method: 'POST' }).catch(function () {});
+  }
+  $('loadMore').addEventListener('click', function () { load(false); });
+  load(true);
+
+  /* ── 事件：赞 / 评论 / 删除 ── */
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    var likeBtn = t.closest('[data-like]');
+    if (likeBtn) {
+      var mid = likeBtn.getAttribute('data-like');
+      api('/api/moments/' + encodeURIComponent(mid) + '/react', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ author: 'user', type: 'like' })
+      }).then(function () { load(true); }).catch(function () { showToast('没点成，再试试'); });
+      return;
+    }
+    var cBtn = t.closest('[data-comment]');
+    if (cBtn) {
+      var post = cBtn.closest('.post');
+      var input = post.querySelector('.comment-input');
+      if (input) { input.hidden = !input.hidden; if (!input.hidden) input.querySelector('input').focus(); }
+      return;
+    }
+    var sendBtn = t.closest('[data-send]');
+    if (sendBtn) {
+      var wrap = sendBtn.closest('.comment-input');
+      var text = wrap.querySelector('input').value.trim();
+      if (!text) return;
+      api('/api/moments/' + encodeURIComponent(sendBtn.getAttribute('data-send')) + '/comments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text })
+      }).then(function () { load(true); }).catch(function () { showToast('没发出去，再试试'); });
+      return;
+    }
+    var delBtn = t.closest('[data-del]');
+    if (delBtn && confirm('删掉这条动态？')) {
+      api('/api/moments/' + encodeURIComponent(delBtn.getAttribute('data-del')), { method: 'DELETE' })
+        .then(function () { load(true); }).catch(function () { showToast('删除失败'); });
+      return;
+    }
+    var cdel = t.closest('[data-cid]');
+    if (cdel && confirm('删掉这条评论？')) {
+      var pid = cdel.closest('.post').getAttribute('data-mid');
+      api('/api/moments/' + encodeURIComponent(pid) + '/comments/' + encodeURIComponent(cdel.getAttribute('data-cid')),
+        { method: 'DELETE' }).then(function () { load(true); }).catch(function () { showToast('删除失败'); });
+    }
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    var input = ev.target.closest ? ev.target.closest('.comment-input input') : null;
+    if (!input) return;
+    var send = input.parentElement.querySelector('[data-send]');
+    if (send) send.click();
+  });
+
+  /* ── 发布 ── */
+  var attachments = [];
+  function openCompose() {
+    $('composeSheet').classList.add('open');
+    $('composeMask').classList.add('open');
+    $('composeText').focus();
+  }
+  function closeCompose() {
+    $('composeSheet').classList.remove('open');
+    $('composeMask').classList.remove('open');
+  }
+  $('fab').addEventListener('click', openCompose);
+  $('composeMask').addEventListener('click', closeCompose);
+
+  $('attachBtn').addEventListener('click', function () { $('attachFile').click(); });
+  $('attachFile').addEventListener('change', function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    showToast('正在传图…');
+    var fd = new FormData();
+    fd.append('file', file);
+    api('/api/upload', { method: 'POST', body: fd }).then(function (r) {
+      if (r && r.url) {
+        attachments.push(r.url);
+        $('attachPreview').innerHTML = attachments.map(function (u) {
+          return '<img src="' + esc(u) + '" alt="">';
+        }).join('');
+        showToast('图配好了');
+      } else { showToast('传图失败'); }
+    }).catch(function () { showToast('传图失败'); });
+    this.value = '';
+  });
+
+  $('postBtn').addEventListener('click', function () {
+    var text = $('composeText').value.trim();
+    if (!text && !attachments.length) { showToast('写点什么或配张图吧'); return; }
+    api('/api/moments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text, attachments: attachments })
+    }).then(function () {
+      $('composeText').value = ''; attachments = [];
+      $('attachPreview').innerHTML = '';
+      closeCompose();
+      showToast('发出去了，等 Sean 路过');
+      load(true);
+    }).catch(function () { showToast('没发出去，再试试'); });
+  });
+})();
+</script>
+</body>
+</html>
