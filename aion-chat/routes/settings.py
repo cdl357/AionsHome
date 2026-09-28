@@ -20,6 +20,13 @@ router = APIRouter()
 
 RELAY_MODEL_PROVIDERS = {"aipro", "custom_openai"}
 
+# ── GPT/Codex 订阅连接状态（只读） ─────────────────
+@router.get("/api/codex/status")
+async def codex_connection_status(probe: bool = False):
+    """订阅线路只读状态；probe=1 时额外做一次 app-server 握手（不发起对话）。"""
+    from codex_status import get_codex_status
+    return await get_codex_status(probe=probe)
+
 # ── 模型列表 ──────────────────────────────────────
 @router.get("/api/models")
 async def list_models():

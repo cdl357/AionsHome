@@ -1695,11 +1695,20 @@ def _find_codex_script() -> str | None:
 _CODEX_SCRIPT: str | None = _find_codex_script()
 _CODEX_WORKSPACE: str = str(Path(__file__).parent.parent)
 _CODEX_HOME: str = os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
-_CODEX_CHAT_HOME: str = str(
-    Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
-    / "AionsHome"
-    / "codex-chat"
-)
+
+
+def _default_codex_chat_home() -> str:
+    """陪伴聊天专用 Codex home 的默认位置（Windows 沿用 LOCALAPPDATA，其余平台走 XDG）。"""
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return str(Path(local_app_data) / "AionsHome" / "codex-chat")
+    if os.name == "nt":
+        return str(Path.home() / "AppData" / "Local" / "AionsHome" / "codex-chat")
+    xdg_data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return str(Path(xdg_data_home) / "AionsHome" / "codex-chat")
+
+
+_CODEX_CHAT_HOME: str = _default_codex_chat_home()
 _CODEX_COMPANION_INSTRUCTIONS_FILE = (
     Path(__file__).parent / "prompts" / "codex_companion_base.md"
 ).resolve()

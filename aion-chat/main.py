@@ -353,6 +353,12 @@ async def client_assets():
 async def home():
     return FileResponse(BASE_DIR / "static" / "home.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
+# 移动端新首页（mobile-companion）：旧首页 / 保留作回退
+@app.get("/m")
+@app.get("/m/home")
+async def mobile_home_page():
+    return FileResponse(BASE_DIR / "static" / "mobile" / "home.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
 @app.get("/chat")
 async def chat_page():
     return FileResponse(BASE_DIR / "static" / "chat.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
@@ -585,8 +591,11 @@ async def websocket_endpoint(ws: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
+    import os
     import sys
+    # 端口可用环境变量 AIONSPORT 覆盖（默认 8080 不变）；Ubuntu systemd 部署见 scripts/
+    port = int(os.environ.get("AIONSPORT", "8080"))
     if "--reload" in sys.argv:
-        uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
+        uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
     else:
-        uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=False)
+        uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

@@ -6,6 +6,7 @@ Only search_products is exposed. No history, chat, cart or payment tools.
 import asyncio
 from html import unescape
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -21,8 +22,10 @@ A2A_SEARCH_URL = "https://pc-taoclaw.taobao.com/a2a/itemSearch"
 def native_command():
     # Pin the exact local runtime/script used by the successful direct test.
     # Do not silently fall back to launching the Taobao Electron executable.
-    node = "C:/Program Files/nodejs/node.exe"
-    script = "H:/taobao/bin/cli-rpc.js"
+    # 默认值来自原 Windows 部署；其他机器/系统用 TAOBAO_CLI_NODE / TAOBAO_CLI_SCRIPT 覆盖，
+    # 未配置且默认路径不存在时报错，不会阻塞主服务启动（本文件按需以子进程方式拉起）。
+    node = os.environ.get("TAOBAO_CLI_NODE") or "C:/Program Files/nodejs/node.exe"
+    script = os.environ.get("TAOBAO_CLI_SCRIPT") or "H:/taobao/bin/cli-rpc.js"
     if not Path(node).is_file() or not Path(script).is_file():
         raise RuntimeError("已验证的 Node 或淘宝脚本路径不存在，请检查本机安装路径")
     return [node, script, "--stdin"]

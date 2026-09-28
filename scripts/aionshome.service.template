@@ -1,0 +1,33 @@
+# AionsHome systemd 服务模板（Ubuntu 服务器）
+#
+# 安装方法（不要与现有 8080/41337 服务冲突时，选一个空闲端口，例如 18443）：
+#   1. 复制模板：  sudo cp scripts/aionshome.service.template /etc/systemd/system/aionshome.service
+#   2. 按需修改 User=、WorkingPath 与环境变量 AIONSPORT
+#   3. 启用：      sudo systemctl daemon-reload
+#                  sudo systemctl enable --now aionshome
+#   4. 查看日志：  journalctl -u aionshome -f
+#
+# 注意：
+# - GPT/Codex 订阅需要在该服务器用户下完成 Codex 登录（登录后才有 ~/.codex/auth.json）；
+#   登录操作由人工执行，服务本身不登录。
+# - WorkingDirectory 必须是 aion-chat 目录（相对 data/ 路径都基于它）。
+
+[Unit]
+Description=AionsHome companion server (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# TODO: 改成实际运行用户
+User=YOUR_USER
+WorkingDirectory=/opt/AionsHome/aion-chat
+Environment=AIONSPORT=18443
+# 若 Codex 不在默认 ~/.codex，可在这里指定：
+# Environment=CODEX_HOME=/home/YOUR_USER/.codex
+ExecStart=/opt/AionsHome/.venv/bin/python -u main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

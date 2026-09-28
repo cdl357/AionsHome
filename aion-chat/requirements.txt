@@ -3,11 +3,14 @@ uvicorn
 httpx
 edge-tts==7.2.8
 aiosqlite
+# 服务器(Ubuntu)部署建议换 opencv-python-headless，功能不受影响
 opencv-python
 Pillow
 sounddevice
 numpy
 webrtcvad-wheels
+# pyncm 已从 PyPI 下架，从仓库 vendor/pyncm-1.8.1-py3-none-any.whl 安装（跨平台）
+# pip install vendor/pyncm-1.8.1-py3-none-any.whl
 pyncm
 pydantic
 python-multipart
@@ -15,9 +18,11 @@ ebooklib
 beautifulsoup4
 lxml
 websockets
-pywin32
+# 仅 Windows 需要（PC 活动追踪）；其他平台安装时自动跳过，activity.py 会优雅降级
+pywin32; sys_platform == "win32"
 psutil
 akshare
 chinese-calendar
-mcp
+# 项目基于 mcp 1.x API（McpError 等）；2.x 移除了旧类名会导致启动失败，锁定大版本
+mcp>=1,<2
 cryptography

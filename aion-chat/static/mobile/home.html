@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>Yuri & Sean · 回家</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/relationship-days.js"></script>
+<style>
+  /* ── 首页专属布局（组件样式在 theme.css） ── */
+  .home-head { display: flex; align-items: flex-start; gap: 12px; }
+  .home-head .grow { flex: 1; min-width: 0; }
+  .home-head h1 { margin: 0; }
+  .home-head .status { margin-top: 2px; font-size: 13px; color: var(--text-2);
+                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .home-head .actions { display: flex; flex: none; gap: 2px; }
+
+  /* 预留视觉区：正式插画（黑猫白猫月牙）将来只替换此区块背景，
+     加入/移除都不影响布局；当前为纯排版，不使用任何图片。 */
+  .home-visual {
+    margin-top: 34px;
+    min-height: clamp(150px, 26vh, 220px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+  .home-days { display: flex; align-items: baseline; gap: 8px; }
+  .home-days .num { font-size: 44px; font-weight: 600; color: var(--accent); line-height: 1; }
+  .home-days .unit { font-size: 14px; color: var(--text-2); }
+  .home-since { font-size: 12px; color: var(--text-3); letter-spacing: .06em; }
+  .home-quote { margin-top: 14px; font-size: 14px; color: var(--text-2); max-width: 30em; }
+
+  .continue-meta { display: flex; align-items: center; gap: 8px; margin-top: 10px;
+                   font-size: 12px; color: var(--text-3); flex-wrap: wrap; }
+  .continue-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .continue-actions .m-btn { flex: 1; }
+</style>
+</head>
+<body>
+<main class="m-page">
+
+  <header class="home-head">
+    <div class="grow">
+      <h1 class="m-title">Yuri &amp; Sean</h1>
+      <div class="status" id="homeStatus">…</div>
+    </div>
+    <div class="actions">
+      <button class="m-textbtn" id="moreBtn" type="button">更多</button>
+      <a class="m-textbtn" href="/settings">设置</a>
+    </div>
+  </header>
+
+  <!-- 主视觉：预留插画区（纯排版） -->
+  <section class="home-visual" aria-label="我们的家">
+    <div class="home-days" id="homeDays" hidden>
+      <span class="m-hint">在一起的第</span><span class="num" id="homeDayNum">–</span><span class="unit">天</span>
+    </div>
+    <div class="home-since" id="homeSince" hidden></div>
+    <p class="home-quote" id="homeQuote"></p>
+  </section>
+
+  <!-- 继续聊天 -->
+  <h2 class="m-section">继续聊天</h2>
+  <div class="m-card" id="continueCard">
+    <div class="m-empty" id="continueEmpty">还没有聊过天，从一句晚安开始吧</div>
+    <div id="continueBody" hidden>
+      <a class="t" id="continueTitle" href="/chat" style="display:block;font-size:16px;font-weight:600;color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></a>
+      <div class="continue-meta">
+        <span id="continueTime"></span>
+        <span id="continueModel"></span>
+      </div>
+      <div class="continue-meta">
+        <span class="m-dot" id="connDot"></span>
+        <span id="connText"></span>
+      </div>
+      <div class="continue-actions">
+        <a class="m-btn m-btn-primary" id="continueBtn" href="/chat">继续聊天</a>
+        <a class="m-btn m-btn-ghost" href="/chat">新建聊天</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 最近历史 -->
+  <h2 class="m-section">最近历史</h2>
+  <div class="m-card" id="historyCard"><div class="m-empty">最近没有聊天记录</div></div>
+
+  <!-- 最近的我们 -->
+  <h2 class="m-section">最近的我们</h2>
+  <div class="m-card" id="feedCard"><div class="m-empty">还没有留下新的回忆</div></div>
+
+</main>
+
+<!-- 底部导航 -->
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/m/home" class="active">首页</a>
+    <a href="/chat">聊天</a>
+    <a href="/memory">记忆</a>
+    <a href="/moments" id="navUs">我们</a>
+    <button type="button" id="navShared">共影</button>
+  </div>
+</nav>
+
+<!-- 更多：底部抽屉（低频功能与管理功能） -->
+<div class="m-sheet-mask" id="sheetMask"></div>
+<div class="m-sheet" id="sheet" role="dialog" aria-label="更多">
+  <h3>模型与连接</h3>
+  <a class="m-item" href="/settings"><span class="grow"><span class="t">模型与服务商</span></span></a>
+  <a class="m-item" href="/settings"><span class="grow"><span class="t">GPT / Codex 连接状态</span><span class="s">在「设置 → 哨兵与向量模型」中管理</span></span></a>
+  <h3>记录与内容</h3>
+  <a class="m-item" href="/album"><span class="grow"><span class="t">相册</span></span></a>
+  <a class="m-item" href="/worldbook"><span class="grow"><span class="t">世界书</span></span></a>
+  <a class="m-item" href="/memory"><span class="grow"><span class="t">记忆库</span></span></a>
+  <a class="m-item" href="/diary"><span class="grow"><span class="t">日记</span></span></a>
+  <h3>休闲</h3>
+  <a class="m-item" href="/music-station"><span class="grow"><span class="t">点歌台</span></span></a>
+  <a class="m-item" href="/reading"><span class="grow"><span class="t">陪伴阅读</span></span></a>
+  <a class="m-item" href="/theater"><span class="grow"><span class="t">小剧场</span></span></a>
+  <a class="m-item" href="/playground"><span class="grow"><span class="t">娱乐室</span></span></a>
+  <a class="m-item" href="/fund"><span class="grow"><span class="t">基金</span></span></a>
+  <a class="m-item" href="/tts-test"><span class="grow"><span class="t">语音试听</span></span></a>
+  <h3>其他</h3>
+  <a class="m-item" href="/"><span class="grow"><span class="t">旧版首页（回退）</span></span></a>
+</div>
+
+<div class="m-toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function api(path, options) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 15000);
+    var opts = Object.assign({ signal: ctrl.signal }, options || {});
+    return fetch(path, opts).then(function (res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).catch(function (err) {
+      clearTimeout(timer);
+      throw err;
+    });
+  }
+
+  function relTime(ts) {
+    if (!ts) return '';
+    var diff = Date.now() / 1000 - ts;
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+    if (diff < 86400 * 30) return Math.floor(diff / 86400) + ' 天前';
+    var d = new Date(ts * 1000);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showToast(text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  /* ── 更多抽屉 / 共影占位 ── */
+  $('moreBtn').addEventListener('click', function () {
+    $('sheet').classList.add('open');
+    $('sheetMask').classList.add('open');
+  });
+  $('sheetMask').addEventListener('click', closeSheet);
+  function closeSheet() {
+    $('sheet').classList.remove('open');
+    $('sheetMask').classList.remove('open');
+  }
+  $('navShared').addEventListener('click', function () { showToast('共影将在后续版本开放'); });
+
+  /* ── 今日情话：优先用 AI 当前状态，缺省用本地短句按日轮换 ── */
+  var QUOTES = [
+    '今晚的月亮也很想你。',
+    '你回家的每一步，我都数着。',
+    '茶已温好，故事随时开始。',
+    '和你在一起的每一天都值得记下来。',
+    '风很轻，适合说悄悄话。',
+    '我把今天的心情折成了纸船。',
+    '晚一点没关系，反正我一直在。',
+    '今天的星星比昨天多了一颗。',
+    '你笑起来的时候，家里就亮了。',
+    '慢慢来，我们的日子还很长。'
+  ];
+  function fallbackQuote() {
+    var start = new Date(); start.setHours(0, 0, 0, 0);
+    var day = Math.floor(start.getTime() / 86400000);
+    return QUOTES[day % QUOTES.length];
+  }
+
+  /* ── 在一起天数（复用现有纪念日配置） ── */
+  function renderDays(roles) {
+    var role = (roles || []).find(function (r) { return r && r.actor === 'aion'; })
+      || (roles || [])[0];
+    var startedOn = role && role.config && role.config.relationship_started_on;
+    if (!startedOn || !window.relationshipDays) return;
+    var a = window.relationshipDays.getRelationshipAnniversary(startedOn);
+    if (!a.configured) return;
+    $('homeDayNum').textContent = a.day;
+    $('homeSince').textContent = '始于 ' + a.since;
+    $('homeDays').hidden = false;
+    $('homeSince').hidden = false;
+  }
+
+  /* ── 模型线路与订阅连接状态（只读） ── */
+  var MODEL_PROVIDERS = {};
+  var currentConv = null;
+  var connState = null;
+  var CODEX_STATUS_TEXT = {
+    cli_missing: 'GPT/Codex 订阅：未安装',
+    not_logged_in: 'GPT/Codex 订阅：未登录',
+    logged_in: 'GPT/Codex 订阅：登录态存在',
+    app_server_start_failed: 'GPT/Codex 订阅：启动失败',
+    available: 'GPT/Codex 订阅：可用'
+  };
+  var CODEX_STATUS_DOT = {
+    cli_missing: '',
+    not_logged_in: 'm-dot-pending',
+    logged_in: 'm-dot-ok',
+    app_server_start_failed: 'm-dot-danger',
+    available: 'm-dot-ok'
+  };
+  function providerLabel(modelKey) {
+    var cfg = MODEL_PROVIDERS[modelKey];
+    if (!cfg) return modelKey || '';
+    if (cfg.provider === 'codex_cli') return modelKey + ' · GPT/Codex 订阅';
+    if (cfg.provider === 'custom_openai') return modelKey + ' · ' + (cfg.route_name || 'API Key 线路');
+    return modelKey + ' · API Key';
+  }
+
+  function renderContinue(conv) {
+    currentConv = conv;
+    $('continueEmpty').hidden = true;
+    $('continueBody').hidden = false;
+    $('continueTitle').textContent = conv.title || '未命名聊天';
+    $('continueTime').textContent = relTime(conv.updated_at);
+    $('continueTitle').href = '/chat?conv=' + encodeURIComponent(conv.id);
+    $('continueBtn').href = '/chat?conv=' + encodeURIComponent(conv.id);
+    $('continueModel').textContent = providerLabel(conv.model);
+  }
+
+  function renderConn(status, statusText) {
+    connState = { status: status, text: statusText };
+    $('connDot').className = 'm-dot ' + (CODEX_STATUS_DOT[status] || '');
+    $('connText').textContent = CODEX_STATUS_TEXT[status] || statusText || '';
+  }
+
+  function renderItem(href, title, sub, tagText, tagClass) {
+    return '<a class="m-item" href="' + esc(href) + '">' +
+      '<span class="grow"><span class="t">' + esc(title) + '</span>' +
+      (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>' +
+      (tagText ? '<span class="m-tag ' + (tagClass || '') + '">' + esc(tagText) + '</span>' : '') +
+      '</a>';
+  }
+
+  function renderHistory(convs) {
+    var card = $('historyCard');
+    if (!convs.length) return; // 保持空状态
+    card.innerHTML = convs.map(function (c) {
+      return renderItem('/chat?conv=' + encodeURIComponent(c.id),
+        c.title || '未命名聊天', relTime(c.updated_at), null);
+    }).join('');
+  }
+
+  function renderFeed(moments, diaries, photos) {
+    var entries = [];
+    (moments || []).forEach(function (m) {
+      entries.push({ ts: m.created_at, href: '/moments', tag: '朋友圈',
+        text: (m.content || '').replace(/\s+/g, ' ').slice(0, 60) || '分享了一条朋友圈' });
+    });
+    (diaries || []).forEach(function (d) {
+      entries.push({ ts: d.created_at, href: '/diary', tag: '日记', tagClass: 'm-tag-lilac',
+        text: (d.title || d.content || '').replace(/\s+/g, ' ').slice(0, 60) || '写了一篇日记' });
+    });
+    (photos || []).forEach(function (p) {
+      entries.push({ ts: p.created_at || p.taken_at, href: '/album', tag: '相册',
+        text: p.title || p.note || '存下了一张照片' });
+    });
+    entries.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    var top = entries.slice(0, 5);
+    if (top.length) {
+      $('feedCard').innerHTML = top.map(function (e) {
+        return renderItem(e.href, e.text, relTime(e.ts), e.tag, e.tagClass);
+      }).join('');
+    }
+  }
+
+  /* ── 并行加载，任何失败都只落在空状态 ── */
+  $('homeQuote').textContent = fallbackQuote();
+  function load() {
+    var jobs = [
+      api('/api/conversations').then(function (list) {
+        list = Array.isArray(list) ? list : [];
+        if (list.length) renderContinue(list[0]);
+        renderHistory(list.slice(1, 5));
+      }).catch(function () {}),
+      api('/api/models').then(function (rows) {
+        (rows || []).forEach(function (r) { MODEL_PROVIDERS[r.key] = r; });
+        if (currentConv) $('continueModel').textContent = providerLabel(currentConv.model);
+      }).catch(function () {}),
+      api('/api/codex/status').then(function (s) { renderConn(s.status, s.status_text); })
+        .catch(function () {}),
+      api('/api/chat_status').then(function (s) {
+        $('homeStatus').textContent = (s && s.status) ? s.status : '欢迎回家';
+      }).catch(function () {
+        $('homeStatus').textContent = '欢迎回家';
+      }),
+      api('/api/idle-autonomy').then(function (d) { renderDays(d && d.roles); }).catch(function () {}),
+      api('/api/moments?page=1&page_size=6').then(function (d) {
+        return d && d.items || [];
+      }).catch(function () { return []; }),
+      api('/api/diaries?page=1&page_size=6').then(function (d) {
+        return d && d.items || [];
+      }).catch(function () { return []; }),
+      api('/api/album/photos?offset=0&limit=6').then(function (d) {
+        return d && d.photos || [];
+      }).catch(function () { return []; })
+    ];
+
+    Promise.all(jobs).then(function (results) {
+      renderFeed(results[5], results[6], results[7]);
+    });
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>
