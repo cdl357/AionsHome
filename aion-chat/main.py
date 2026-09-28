@@ -371,6 +371,10 @@ async def mobile_more_page():
 async def mobile_board_page():
     return FileResponse(BASE_DIR / "static" / "mobile" / "board.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
+@app.get("/m/album")
+async def mobile_album_page():
+    return FileResponse(BASE_DIR / "static" / "mobile" / "album.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
 @app.get("/chat")
 async def chat_page():
     return FileResponse(BASE_DIR / "static" / "chat.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})

@@ -31,7 +31,7 @@
 
   <!-- 日历 -->
   <h2 class="m-section">日历</h2>
-  <div class="m-card">
+  <div class="m-card" id="calCard">
     <div class="cal-head">
       <button class="cal-nav-btn" id="prevMonth" type="button" aria-label="上个月">‹</button>
       <span class="cal-title" id="calTitle"></span>
@@ -39,7 +39,7 @@
     </div>
     <div class="cal-grid" id="calDow"></div>
     <div class="cal-grid" id="calGrid"></div>
-    <div class="cal-empty-hint">有日记或重要记忆的日子会带上小圆点</div>
+    <div class="cal-empty-hint">左右滑动翻月 · 有日记或重要记忆的日子带小圆点</div>
   </div>
 
   <!-- 新建 -->
@@ -189,9 +189,48 @@
     renderCal();
   });
 
-  /* ── 那天详情：Sean 的日记 / 两人的留言 / 重要记忆摘要 ── */
+  /* 左右滑切换月份（布局定稿：整月格子 + 左右滑） */
+  (function bindSwipe() {
+    var startX = 0, startY = 0, tracking = false;
+    var card = $('calCard');
+    card.addEventListener('touchstart', function (ev) {
+      var t = ev.touches[0];
+      startX = t.clientX; startY = t.clientY; tracking = true;
+    }, { passive: true });
+    card.addEventListener('touchend', function (ev) {
+      if (!tracking) return;
+      tracking = false;
+      var t = ev.changedTouches[0];
+      var dx = t.clientX - startX, dy = t.clientY - startY;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (dx < 0) { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } }
+        else { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } }
+        renderCal();
+      }
+    }, { passive: true });
+  })();
+
+  /* ── 那天详情：三张摘要卡，点开才展开完整内容 ──
+     顺序：① Sean 的日记 ② 两人的留言 ③ 两人的重要记忆摘要（后期可调） */
   function fmtDate(d) {
     return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
+  }
+
+  function firstLine(text, n) {
+    var t = String(text || '').replace(/\s+/g, ' ').trim();
+    return t.length > n ? t.slice(0, n) + '…' : t;
+  }
+
+  function dayCard(label, summary, bodyHtml, toggleText) {
+    var id = 'card' + Math.random().toString(36).slice(2, 8);
+    return '<div class="day-card">' +
+      '<button type="button" class="day-card-head" data-target="' + id + '">' +
+        '<span class="day-card-label">' + esc(label) + '</span>' +
+        '<span class="day-card-summary">' + summary + '</span>' +
+        '<span class="day-card-toggle">' + esc(toggleText || '点开看完整内容') + '</span>' +
+      '</button>' +
+      '<div class="day-card-body" id="' + id + '" hidden>' + bodyHtml + '</div>' +
+    '</div>';
   }
 
   function renderDay(d) {
@@ -214,33 +253,57 @@
       '<button class="m-btn m-btn-ghost" type="button" id="pinForDay">钉纪念日</button></div>';
     html += '</div>';
 
-    html += '<div class="m-card subcard"><h4>Sean 的日记</h4>';
-    html += seanDiary.length ? seanDiary.map(function (x) {
-      var text = (x.title || x.content || '').replace(/\s+/g, ' ').slice(0, 80) || '一篇日记';
-      return '<div class="mem-line">' + esc(text) + '</div>';
-    }).join('') : '<div class="m-empty">那天 Sean 没有写日记</div>';
-    html += '</div>';
+    /* ① Sean 的日记 —— 约定：每天晚安后必写，没写 = Sean 偷懒 */
+    var diaryBody, diarySummary;
+    if (seanDiary.length) {
+      var x = seanDiary[0];
+      diarySummary = esc(firstLine(x.title || x.content || '一篇日记', 60));
+      diaryBody = (x.title ? '<strong>' + esc(x.title) + '</strong>\n' : '') + esc(x.content || '');
+      if (seanDiary.length > 1) diaryBody += '\n\n（这天还有 ' + (seanDiary.length - 1) + ' 篇日记）';
+    } else {
+      diarySummary = 'Sean 偷懒了，这天的日记还没写。';
+      diaryBody = '（去戳戳他把日记补上）';
+    }
+    html += dayCard('① Sean 的日记', diarySummary, diaryBody,
+      seanDiary.length ? '点开看完整内容' : '嗯？');
 
-    html += '<div class="m-card subcard"><h4>两人的留言</h4>';
-    /* 留言功能随后端接入开放（布局定稿：留言按天可看） */
-    html += '<div class="m-empty">留言功能还在路上，接好后这里会显示当天的对话</div>';
-    html += '</div>';
+    /* ② 两人的留言 —— 留言功能随后端接入开放 */
+    html += dayCard('② 两人的留言', '留言功能还在路上，接好后按天看当天的对话',
+      '（随后端接入开放）', '先等等');
 
-    html += '<div class="m-card subcard"><h4>重要记忆摘要</h4>';
-    html += dayMems.length ? dayMems.map(function (x) {
-      var ts = x.source_end_ts || x.source_start_ts || x.created_at;
-      var t = ts ? new Date(ts * 1000) : null;
-      var sub = t ? ('重要度 ' + (x.importance != null ? x.importance : '–') +
-        (x.unresolved ? ' · 还没做' : '')) : '';
-      return '<div class="mem-line">' + esc(String(x.content || '').slice(0, 90)) +
-             (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</div>';
-    }).join('') : '<div class="m-empty">那天没有留下重要记忆</div>';
-    html += '</div>';
+    /* ③ 两人的重要记忆摘要 */
+    var memBody, memSummary;
+    if (dayMems.length) {
+      memSummary = '记着 ' + dayMems.length + ' 件事：' + esc(firstLine(dayMems[0].content, 40));
+      memBody = dayMems.map(function (m) {
+        var ts = m.source_end_ts || m.source_start_ts || m.created_at;
+        var t = ts ? new Date(ts * 1000) : null;
+        var sub = t ? ('重要度 ' + (m.importance != null ? m.importance : '–') +
+          (m.unresolved ? ' · 还没做' : '')) : '';
+        return '<div class="mem-line">' + esc(String(m.content || '').slice(0, 120)) +
+               (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</div>';
+      }).join('');
+    } else {
+      memSummary = '这天没有留下重要记忆';
+      memBody = '（聊过天的日子都会有记忆，慢慢会有的）';
+    }
+    html += dayCard('③ 两人的重要记忆摘要', memSummary, memBody,
+      dayMems.length ? '点开看全部' : '先空着');
 
     $('dayPanel').innerHTML = html;
     $('writeForDay').addEventListener('click', function () { location.href = '/diary'; });
     $('pinForDay').addEventListener('click', function () {
       showToast('纪念日钉在日历上：随后端接入开放');
+    });
+    /* 点卡片头部展开/收起 */
+    $('dayPanel').querySelectorAll('.day-card-head').forEach(function (head) {
+      head.addEventListener('click', function () {
+        var body = document.getElementById(head.getAttribute('data-target'));
+        if (!body) return;
+        body.hidden = !body.hidden;
+        head.querySelector('.day-card-toggle').textContent =
+          body.hidden ? '点开看完整内容' : '收起来';
+      });
     });
   }
 

@@ -396,3 +396,120 @@ html, body {
 .day-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
 .day-title { font-size: 15px; font-weight: 600; }
 .day-sub { font-size: 12px; color: var(--text-3); }
+
+/* ── 那天详情：三张摘要卡（点开才展开完整内容） ── */
+.day-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  margin-top: 10px;
+  overflow: hidden;
+}
+.day-card-head {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.day-card-label { font-size: 12px; color: var(--text-3); letter-spacing: .05em; }
+.day-card-summary {
+  font-size: 14px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.day-card-toggle { font-size: 11px; color: var(--accent); margin-top: 2px; }
+.day-card-body {
+  padding: 0 16px 14px;
+  font-size: 14px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.day-card-body .mem-line { color: var(--text-2); }
+.day-card-body .mem-line .s { color: var(--text-3); }
+
+/* ── 相册（方案 C：照片墙 + 故事） ── */
+.wall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 4px;
+}
+.wall-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 0;
+  padding: 0;
+  background: var(--surface-2);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  display: block;
+}
+.wall-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.wall-load {
+  width: 100%;
+  margin-top: 12px;
+}
+.photo-big {
+  width: 100%;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  display: block;
+  background: var(--surface-2);
+  min-height: 200px;
+}
+.photo-meta { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.private-box {
+  margin-top: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+}
+.private-box .label { font-size: 12px; color: var(--text-3); letter-spacing: .05em; }
+.private-box .words {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.private-box .empty-words { font-size: 14px; color: var(--text-3); }
+.edit-area { margin-top: 10px; display: none; }
+.edit-area.open { display: block; }
+.edit-area textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  padding: 10px;
+  resize: vertical;
+  min-height: 72px;
+}
+.edit-row { display: flex; gap: 10px; margin-top: 10px; }
+.edit-row .m-btn { flex: 1; min-height: 40px; font-size: 14px; }

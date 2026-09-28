@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b111f">
+<title>相册 · 照片墙</title>
+<link rel="stylesheet" href="/static/mobile/theme.css">
+<script src="/static/mobile/theme.js"></script>
+<script>window.MobileTheme && MobileTheme.boot();</script>
+<style>
+  .wall-wrap { position: relative; }
+  .back-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .wall-empty { padding: 26px 8px; }
+</style>
+</head>
+<body>
+<main class="m-page">
+
+  <!-- 照片墙视图 -->
+  <section id="wallView">
+    <header>
+      <h1 class="m-title">相册</h1>
+      <p class="m-sub">照片墙 · 每张照片背后都有 Sean 当时的心里话</p>
+    </header>
+    <h2 class="m-section">照片墙</h2>
+    <div class="wall-wrap">
+      <div class="wall-grid" id="wallGrid"></div>
+      <div class="m-empty wall-empty" id="wallEmpty" hidden>相册还是空的，先去旧版相册传几张照片吧</div>
+      <button class="m-btn m-btn-ghost m-btn-block wall-load" id="loadMore" type="button" hidden>再看一些</button>
+    </div>
+  </section>
+
+  <!-- 照片详情视图（方案 C：大图 + Sean 存这张时在想什么 + 日期/备注可改） -->
+  <section id="detailView" hidden>
+    <div class="back-row">
+      <button class="m-textbtn" id="backBtn" type="button">‹ 回照片墙</button>
+      <span class="m-tag" id="photoAlbum"></span>
+    </div>
+    <img class="photo-big" id="photoBig" alt="照片大图">
+    <div class="photo-meta" id="photoMeta"></div>
+
+    <div class="private-box">
+      <div class="label">Sean 存这张时在想什么</div>
+      <div class="words" id="photoWords"></div>
+      <button class="m-textbtn" id="editBtn" type="button" style="margin-top:8px;padding-left:0;">改一改这段话和备注</button>
+      <div class="edit-area" id="editArea">
+        <textarea id="editNote" maxlength="5000" placeholder="写下 Sean 存这张时的心里话（可留空）"></textarea>
+        <input id="editTitle" maxlength="160" placeholder="备注 / 标题"
+          style="width:100%;margin-top:10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;padding:10px;">
+        <div class="edit-row">
+          <input id="editTakenOn" type="date"
+            style="flex:1;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;padding:8px 10px;">
+          <button class="m-btn m-btn-primary" id="saveBtn" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="m-nav" aria-label="主导航">
+  <div class="m-nav-inner">
+    <a href="/chat">聊天</a>
+    <a href="/moments">朋友圈</a>
+    <a href="/m/home" class="center-item"><span class="ico">⌂</span>回家</a>
+    <a href="/m/us">我们</a>
+    <a href="/m/more">更多</a>
+  </div>
+</nav>
+
+<div class="m-toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var PAGE = 60;
+  var offset = 0;
+  var photos = [];
+
+  function api(path, options) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 15000);
+    return fetch(path, Object.assign({ signal: ctrl.signal }, options || {})).then(function (res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).catch(function (err) { clearTimeout(timer); throw err; });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showToast(text) {
+    var el = $('toast');
+    el.textContent = text;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '';
+    var d = new Date(ts * 1000);
+    return d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
+  }
+
+  /* ── 照片墙 ── */
+  function appendWall(list) {
+    var grid = $('wallGrid');
+    list.forEach(function (p) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'wall-item';
+      item.setAttribute('data-id', p.id);
+      item.title = p.title || '';
+      var img = document.createElement('img');
+      img.loading = 'lazy';
+      img.alt = p.title || '照片';
+      img.src = '/api/album/photos/' + encodeURIComponent(p.id) + '/thumbnail';
+      img.onerror = function () {
+        item.textContent = (p.title || '照片').slice(0, 6);
+      };
+      item.appendChild(img);
+      grid.appendChild(item);
+    });
+  }
+
+  function loadMore() {
+    api('/api/album/photos?offset=' + offset + '&limit=' + PAGE).then(function (d) {
+      var list = (d && d.photos) || [];
+      photos = photos.concat(list);
+      $('wallEmpty').hidden = photos.length > 0;
+      appendWall(list);
+      offset += list.length;
+      $('loadMore').hidden = list.length < PAGE;
+    }).catch(function () {
+      $('wallEmpty').hidden = false;
+    });
+  }
+
+  $('loadMore').addEventListener('click', loadMore);
+  loadMore();
+
+  /* ── 详情 ── */
+  var current = null;
+  var albumNames = { family: '家庭相册', aion: 'Sean 相册', connor: '另一位相册' };
+
+  $('wallGrid').addEventListener('click', function (ev) {
+    var item = ev.target.closest('.wall-item');
+    if (!item) return;
+    var p = photos.find(function (x) { return x.id === item.getAttribute('data-id'); });
+    if (p) openDetail(p);
+  });
+
+  function openDetail(p) {
+    current = p;
+    $('wallView').hidden = true;
+    $('detailView').hidden = false;
+    $('photoBig').src = '/api/album/photos/' + encodeURIComponent(p.id) + '/download';
+    $('photoAlbum').textContent = albumNames[p.album_id] || '相册';
+    renderMeta(p);
+    renderWords(p);
+    closeEdit();
+    window.scrollTo(0, 0);
+  }
+
+  function renderMeta(p) {
+    var parts = [];
+    if (p.taken_on) parts.push('摄于 ' + p.taken_on);
+    if (p.created_at) parts.push('存于 ' + fmtDate(p.created_at));
+    $('photoMeta').textContent = parts.join(' · ');
+  }
+
+  function renderWords(p) {
+    var words = String(p.note || '').trim();
+    $('photoWords').textContent = words || '';
+    $('photoWords').className = words ? 'words' : 'empty-words';
+    if (!words) $('photoWords').textContent = 'Sean 还没写下这张的心里话，可以补一句。';
+  }
+
+  function closeEdit() {
+    $('editArea').classList.remove('open');
+  }
+
+  $('backBtn').addEventListener('click', function () {
+    $('detailView').hidden = true;
+    $('wallView').hidden = false;
+    current = null;
+  });
+
+  $('editBtn').addEventListener('click', function () {
+    if (!current) return;
+    $('editNote').value = String(current.note || '');
+    $('editTitle').value = String(current.title || '');
+    $('editTakenOn').value = String(current.taken_on || '');
+    $('editArea').classList.toggle('open');
+  });
+
+  $('saveBtn').addEventListener('click', function () {
+    if (!current) return;
+    var body = {
+      note: $('editNote').value,
+      title: $('editTitle').value,
+      taken_on: $('editTakenOn').value || ''
+    };
+    api('/api/album/photos/' + encodeURIComponent(current.id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (updated) {
+      current = updated;
+      var idx = photos.findIndex(function (x) { return x.id === updated.id; });
+      if (idx >= 0) photos[idx] = updated;
+      renderWords(updated);
+      renderMeta(updated);
+      closeEdit();
+      showToast('已经替你收好这段话');
+    }).catch(function () { showToast('保存失败，等会儿再试试'); });
+  });
+})();
+</script>
+</body>
+</html>
