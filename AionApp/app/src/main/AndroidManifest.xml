@@ -103,13 +103,21 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AionChat.WidgetRecord" />
 
-        <!-- WebView 聊天页 -->
+        <!-- WebView 聊天页（旧版前端，保留可达） -->
         <activity
             android:name=".WebViewActivity"
-            android:exported="true"
+            android:exported="false"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait" />
+
+        <!-- 新版回家前端（Kotlin + Compose） -->
+        <activity
+            android:name=".compose.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
