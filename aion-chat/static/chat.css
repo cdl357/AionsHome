@@ -2316,3 +2316,59 @@ body[data-theme="light"] .lounge-report-card { background: var(--surface); }
   .private-message-header { margin-bottom: 2px; }
   .private-message-flow { gap: 6px; }
 }
+
+/* ── 戳一戳（布局定稿新增） ── */
+.poke-hr {
+  display: flex; align-items: center; gap: 3px;
+  font-size: 12px; color: var(--text2); white-space: nowrap;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--surface2); border: 1px solid var(--border);
+  flex: none;
+}
+.poke-hr .poke-hr-heart { color: #e08a9b; display: inline-block; }
+.poke-hr.bump .poke-hr-heart { animation: pokeHrBump .9s ease; }
+@keyframes pokeHrBump {
+  0% { transform: scale(1); } 30% { transform: scale(1.6); }
+  55% { transform: scale(1.05); } 75% { transform: scale(1.35); } 100% { transform: scale(1); }
+}
+.poke-overlay {
+  position: fixed; inset: 0; z-index: 300; display: none;
+  align-items: flex-end; justify-content: center;
+  background: rgba(0,0,0,.45);
+}
+.poke-overlay.show { display: flex; }
+.poke-panel {
+  width: 100%; max-width: 500px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 18px 18px 0 0; padding: 18px 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 30px rgba(0,0,0,.35);
+}
+.poke-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 12px; text-align: center; }
+.poke-row-label { font-size: 12px; color: var(--text2); margin: 10px 0 6px; }
+.poke-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.poke-chip {
+  min-width: 56px; padding: 8px 14px; border-radius: 999px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); font-size: 14px; cursor: pointer; font-family: inherit;
+}
+.poke-chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.poke-preview {
+  margin-top: 14px; font-size: 13px; color: var(--text2);
+  background: var(--surface2); border-radius: 10px; padding: 10px 12px;
+  min-height: 20px; line-height: 1.6;
+}
+.poke-btns { display: flex; gap: 10px; margin-top: 14px; }
+.poke-btn-cancel, .poke-btn-send {
+  flex: 1; min-height: 42px; border-radius: 12px; border: 1px solid var(--border);
+  font-size: 14px; cursor: pointer; font-family: inherit;
+  background: var(--surface2); color: var(--text);
+}
+.poke-btn-send { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.poke-btn-send:disabled { opacity: .5; cursor: default; }
+.poke-toast {
+  position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%);
+  z-index: 400; background: rgba(20,20,30,.92); color: #fff;
+  font-size: 13px; padding: 9px 18px; border-radius: 999px;
+  opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap;
+}
+.poke-toast.show { opacity: 1; }

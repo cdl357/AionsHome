@@ -148,6 +148,7 @@
       <button class="home-btn" onclick="openSubPage('/')" title="返回主页">⬅</button>
       <button class="menu-btn" onclick="openSidebar()">☰</button>
       <div class="title" id="chatTitle" onclick="renameCurrent()">Aion Chat</div>
+      <div class="poke-hr" id="pokeHR" hidden title="他此刻的心跳">♥ 68</div>
       <div class="tts-toggle" title="自动语音播放">
         <span class="tts-label">🔊</span>
         <label class="toggle-switch">
@@ -260,7 +261,7 @@
             <div class="plus-menu-item" onclick="closePlusMenu();openCamera()"><span class="pm-icon">📷</span>拍照</div>
             <div class="plus-menu-item" onclick="closePlusMenu();if(typeof videoCall!=='undefined')videoCall.userInitiate()"><span class="pm-icon">📹</span>视频通话</div>
             <div class="plus-menu-item" onclick="closePlusMenu();if(window.VoiceCall)VoiceCall.openPrivate()"><span class="pm-icon">◉</span>语音通话</div>
-            <div class="plus-menu-item" onclick="closePlusMenu();toggleVoiceMode()"><span class="pm-icon">🎤</span>语音消息</div>            <div class="plus-menu-item" onclick="closePlusMenu();openTransferDialog()"><span class="pm-icon">💰</span>转账</div>          </div>
+            <div class="plus-menu-item" onclick="closePlusMenu();toggleVoiceMode()"><span class="pm-icon">🎤</span>语音消息</div>            <div class="plus-menu-item" onclick="closePlusMenu();openPokePanel()"><span class="pm-icon">🐾</span>戳一戳</div>          </div>
         </div>
         <input type="file" id="fileInput" accept="image/*,video/*" multiple style="display:none" onchange="handleFileSelect(this)">
         <textarea id="input" rows="1" placeholder="输入消息..." onkeydown="handleKey(event)" oninput="autoResize(this); _updateSendBtnState()"></textarea>
@@ -445,6 +446,22 @@ window.AionSubPageNavigation = (() => {
     <div class="transfer-dialog-btns">
       <button class="transfer-btn-cancel" onclick="closeTransferDialog()">取消</button>
       <button class="transfer-btn-confirm" onclick="confirmTransfer()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 戳一戳面板：做什么 × 落在哪，旁白只写事实 ── -->
+<div class="poke-overlay" id="pokeOverlay" onclick="if(!event.target.closest('.poke-panel'))closePokePanel()">
+  <div class="poke-panel">
+    <div class="poke-title">戳一戳</div>
+    <div class="poke-row-label">做什么</div>
+    <div class="poke-chips" id="pokeActions"></div>
+    <div class="poke-row-label">落在哪</div>
+    <div class="poke-chips" id="pokeTargets"></div>
+    <div class="poke-preview" id="pokePreview"></div>
+    <div class="poke-btns">
+      <button class="poke-btn-cancel" onclick="closePokePanel()">取消</button>
+      <button class="poke-btn-send" id="pokeSendBtn" onclick="confirmPoke()">戳下去</button>
     </div>
   </div>
 </div>

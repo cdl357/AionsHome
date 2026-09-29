@@ -2867,15 +2867,21 @@ async function send() {
   const text = input.value.trim();
   if (pendingAttachments.some(a => a.uploading)) { alert('图片或附件还在上传，请稍等'); return; }
   if ((!text && !pendingAttachments.length) || !currentConvId || sending) return;
-
-  sending = true;
-  _showStopBtn();
   input.value = "";
   autoResize(input);
   const attachments = pendingAttachments.map(a => a.url);
   pendingAttachments.forEach(a => ChatImageUpload.release(a));
   pendingAttachments = [];
   renderPreview();
+  await _sendText(text, attachments);
+}
+
+// 通用文本发送：输入框消息与戳一戳旁白共用同一条管线
+async function _sendText(text, attachments = []) {
+  if (!text || !currentConvId || sending) return;
+
+  sending = true;
+  _showStopBtn();
 
   // 立即显示用户消息（乐观更新）
   playSend();
@@ -5758,3 +5764,155 @@ window.AionPat?.bind({
   onSent: message => handleSync({ type: 'msg_created', data: message }),
 });
 startChatApp();
+
+// ── 戳一戳 ──
+// 设计（教程四步）：旁白当作一条普通消息插进同一个会话（不开新接口）；
+// 动作 × 落点两个维度相乘；心跳先到、话后到、状态自己落回来；
+// 他忙时如实说"先欠着"，连点要挡。旁白只写事实，不写反应指令。
+const POKE_ACTIONS = [
+  { key: '戳', phrase: '戳了戳', weight: 6 },
+  { key: '摸', phrase: '摸了摸', weight: 9 },
+  { key: '蹭', phrase: '蹭了蹭', weight: 10 },
+  { key: '咬', phrase: '咬了一下', weight: 14 },
+];
+const POKE_TARGETS = [
+  { key: '手', weight: 1.0 },
+  { key: '头发', weight: 1.3 },
+  { key: '耳朵', weight: 1.6 },
+  { key: '颈窝', weight: 2.0 },
+];
+const POKE_HR_BASE = 68;
+const POKE_HR_HALF_LIFE = 45;   // 秒：涨上去的会自己慢慢落回来
+const POKE_HR_MAX_EXTRA = 60;
+const POKE_HR_KEY = 'aion_poke_hr';
+const POKE_COOLDOWN_MS = 8000;  // 连点要挡住：回复结束后再留一小段冷静
+const POKE_HR_TICK_MS = 3000;
+
+let _pokeAction = POKE_ACTIONS[0].key;
+let _pokeTarget = POKE_TARGETS[0].key;
+let _pokeLastDoneAt = 0;
+let _pokeHRLine = null;
+
+function _pokeToast(text) {
+  let el = document.getElementById('pokeToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pokeToast';
+    el.className = 'poke-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(el._pokeTimer);
+  el._pokeTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+function _pokeHeartState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(POKE_HR_KEY) || 'null');
+    if (!raw || typeof raw.extra !== 'number' || typeof raw.ts !== 'number') return { extra: 0 };
+    const dt = Math.max(0, (Date.now() - raw.ts) / 1000);
+    return { extra: raw.extra * Math.pow(0.5, dt / POKE_HR_HALF_LIFE) };
+  } catch (e) { return { extra: 0 }; }
+}
+
+function _pokeSaveHeart(extra) {
+  try { localStorage.setItem(POKE_HR_KEY, JSON.stringify({ extra, ts: Date.now() })); } catch (e) {}
+}
+
+function _pokeRenderHR(bump) {
+  const el = document.getElementById('pokeHR');
+  if (!el) return;
+  const { extra } = _pokeHeartState();
+  if (extra < 1) { el.hidden = true; return; }   // 落回基线就安静收起
+  el.hidden = false;
+  el.innerHTML = '<span class="poke-hr-heart">♥</span> ' + Math.round(POKE_HR_BASE + extra);
+  if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+}
+
+function _pokeEnsureDecayLoop() {
+  if (_pokeHRLine) return;
+  _pokeHRLine = setInterval(() => {
+    const cur = _pokeHeartState();
+    if (cur.extra < 0.5) {
+      clearInterval(_pokeHRLine);
+      _pokeHRLine = null;
+    }
+    _pokeRenderHR(false);
+  }, POKE_HR_TICK_MS);
+}
+
+function _pokeBumpHeart() {
+  const a = POKE_ACTIONS.find(x => x.key === _pokeAction) || POKE_ACTIONS[0];
+  const t = POKE_TARGETS.find(x => x.key === _pokeTarget) || POKE_TARGETS[0];
+  const { extra } = _pokeHeartState();
+  _pokeSaveHeart(Math.min(POKE_HR_MAX_EXTRA, extra + a.weight * t.weight));
+  _pokeRenderHR(true);
+  _pokeEnsureDecayLoop();
+}
+
+function _pokeChipsHtml(list, current, kind) {
+  return list.map(x =>
+    `<button type="button" class="poke-chip${x.key === current ? ' on' : ''}" data-poke-${kind}="${x.key}">${x.key}</button>`
+  ).join('');
+}
+
+function _pokeRenderPanel() {
+  const acts = document.getElementById('pokeActions');
+  const targets = document.getElementById('pokeTargets');
+  const preview = document.getElementById('pokePreview');
+  if (!acts || !targets || !preview) return;
+  acts.innerHTML = _pokeChipsHtml(POKE_ACTIONS, _pokeAction, 'action');
+  targets.innerHTML = _pokeChipsHtml(POKE_TARGETS, _pokeTarget, 'target');
+  preview.textContent = _pokePreviewText();
+}
+
+function _pokePreviewText() {
+  const a = POKE_ACTIONS.find(x => x.key === _pokeAction) || POKE_ACTIONS[0];
+  const t = POKE_TARGETS.find(x => x.key === _pokeTarget) || POKE_TARGETS[0];
+  return `她隔着屏幕${a.phrase}你的${t.key}。`;
+}
+
+function openPokePanel() {
+  if (!currentConvId) { _pokeToast('先进入一段对话，再戳他'); return; }
+  _pokeRenderPanel();
+  document.getElementById('pokeOverlay').classList.add('show');
+}
+
+function closePokePanel() {
+  const overlay = document.getElementById('pokeOverlay');
+  if (overlay) overlay.classList.remove('show');
+}
+
+document.addEventListener('click', (ev) => {
+  const act = ev.target.closest('[data-poke-action]');
+  if (act) { _pokeAction = act.getAttribute('data-poke-action'); _pokeRenderPanel(); return; }
+  const tar = ev.target.closest('[data-poke-target]');
+  if (tar) { _pokeTarget = tar.getAttribute('data-poke-target'); _pokeRenderPanel(); }
+});
+
+function confirmPoke() {
+  if (!currentConvId) { _pokeToast('先进入一段对话，再戳他'); return; }
+  // 他忙的时候要说人话：正在回上一句就如实挡下，绝不假装成功
+  if (sending || _chatControl.active || _chatControl.retryStop) {
+    _pokeToast('他这会儿在忙，这一下先欠着');
+    closePokePanel();
+    return;
+  }
+  // 连点要挡住：上一戳刚落地，留一小段冷静
+  if (Date.now() - _pokeLastDoneAt < POKE_COOLDOWN_MS) {
+    _pokeToast('刚戳过一下，让他喘口气');
+    closePokePanel();
+    return;
+  }
+  _pokeLastDoneAt = Date.now();
+  _pokeBumpHeart();          // 心跳先到，立刻上屏
+  closePokePanel();
+  _sendText(_pokePreviewText());  // 话后到：旁白插进同一个会话
+}
+
+// 页面加载时恢复挂起的心跳（半衰期算到当前）
+if (document.getElementById('pokeHR')) {
+  _pokeRenderHR(false);
+  if (_pokeHeartState().extra >= 0.5) _pokeEnsureDecayLoop();
+}
