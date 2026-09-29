@@ -132,19 +132,25 @@ fun HomeScreen() {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
             GlassCard(modifier = Modifier.weight(1f), onClick = null) {
                 Text("今日心情", fontSize = 13.sp, color = HomecomingColors.InkSoft)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                    listOf("(´▽`)", "(￣▽￣)", "(>_<)", "(ㄒoㄒ)").forEach { face ->
-                        Text(
-                            text = face,
-                            fontSize = 16.sp,
-                            modifier = Modifier.clickable {
-                                Toast.makeText(context, "点一个，哥哥回你一句（AI 回应随后端接线开放）", Toast.LENGTH_SHORT).show()
+                listOf("(´▽`)", "(￣▽￣)", "(>_<)", "(ㄒoㄒ)")
+                    .chunked(2)
+                    .forEach { pair ->
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            pair.forEach { face ->
+                                Text(
+                                    text = face,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.clickable {
+                                        Toast.makeText(context, "点一个，哥哥回你一句（AI 回应随后端接线开放）", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
-                }
-                Text("点一个，哥哥回你一句", fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 8.dp))
+                Text("点一个，哥哥回你一句", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
             GlassCard(modifier = Modifier.weight(1f), onClick = null) {
                 Box(
@@ -156,7 +162,7 @@ fun HomeScreen() {
                             Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.WarmPinkSoft))
                         )
                 )
-                Text("相册", fontSize = 13.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 8.dp))
+                Text("相册", fontSize = 13.sp, color = HomecomingColors.InkSoft)
             }
         }
 
@@ -220,22 +226,24 @@ fun HomeScreen() {
     }
 }
 
-/** 磨砂玻璃卡片：半透明白 + 细白描边 + 大圆角。 */
+/** 磨砂玻璃卡片：半透明白 + 细白描边 + 大圆角。内容纵向排列（修复叠加问题）。 */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color.White.copy(alpha = 0.62f))
-            .border(1.dp, Color.White.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
-            .padding(16.dp)
-            .let { m -> if (onClick != null) m.clickable { onClick() } else m }
-    ) { content() }
+    val base = modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(24.dp))
+        .background(Color.White.copy(alpha = 0.62f))
+        .border(1.dp, Color.White.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
+        .padding(16.dp)
+    if (onClick != null) {
+        Column(modifier = base.clickable { onClick() }, verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    } else {
+        Column(modifier = base, verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    }
 }
 
 /** 头像占位（用户可换，本期先首字母圆）。 */
