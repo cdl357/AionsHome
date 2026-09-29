@@ -1,5 +1,6 @@
 package com.aion.chat.compose.ui.home
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,11 +36,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,31 +66,45 @@ fun HomeScreen() {
         }
     }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(HomecomingColors.IceBlueLight)
+    ) {
+        // 背景图：需求方提供的草原雪山，虚化打底
+        Image(
+            painter = painterResource(com.aion.chat.R.drawable.bg_home_meadow),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(14.dp)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White.copy(alpha = 0.14f))
+        )
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(HomecomingColors.IceBlueLight, Color.White, HomecomingColors.IceBlue.copy(alpha = 0.30f))
-                )
-            )
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // 1. 顶部卡：Yuri 头像 | 在一起 XX 天（全页焦点）| Sean 头像 + 今日情话
-        GlassCard(contentPadding = 22.dp) {
+        GlassCard(contentPadding = 20.dp) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 GlassAvatar(initial = "Y")
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
                 ) {
                     Text(
                         text = "ALREADY TOGETHER",
@@ -141,7 +161,7 @@ fun HomeScreen() {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = "播放",
-                    tint = HomecomingColors.Ink,
+                    tint = HomecomingColors.Accent,
                     modifier = Modifier.size(30.dp)
                 )
             }
@@ -192,7 +212,7 @@ fun HomeScreen() {
 
         // 4. 家里的存粮
         GlassCard {
-            Text("家里的存粮", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+            Text("家里的存粮", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = HomecomingColors.Ink)
             Spacer(Modifier.height(10.dp))
             HomecomingData.provisions().forEach { p ->
                 Column(modifier = Modifier.padding(vertical = 6.dp)) {
@@ -205,10 +225,10 @@ fun HomeScreen() {
                         progress = { p.percent / 100f },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
+                            .height(4.dp)
                             .clip(RoundedCornerShape(3.dp)),
                         color = HomecomingColors.Accent,
-                        trackColor = HomecomingColors.IceBlue.copy(alpha = 0.4f)
+                        trackColor = Color.White.copy(alpha = 0.55f)
                     )
                 }
             }
@@ -249,6 +269,7 @@ fun HomeScreen() {
         }
     }
 }
+}
 
 /** 磨砂玻璃卡片：半透明白 + 细白描边 + 大圆角。内容纵向排列（ColumnScope，可用 weight）。 */
 @Composable
@@ -259,6 +280,7 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val base = modifier
+        .shadow(6.dp, RoundedCornerShape(24.dp))
         .fillMaxWidth()
         .clip(RoundedCornerShape(24.dp))
         .background(Color.White.copy(alpha = 0.62f))
