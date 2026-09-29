@@ -18,9 +18,9 @@ object HomecomingColors {
     val AccentSoft = Color(0x335B9AA8)
     val Ink = Color(0xFF2C4A5A)
     val InkSoft = Color(0xFF5E7386)
-    val Glass = Color.White.copy(alpha = 0.55f)
+    val Glass = Color.White.copy(alpha = 0.10f)
     val GlassStrong = Color.White.copy(alpha = 0.85f)
-    val GlassBorder = Color.White.copy(alpha = 0.90f)
+    val GlassBorder = Color.White.copy(alpha = 0.60f)
     val Ok = Color(0xFF6FBF9A)
 }
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ColumnScope
@@ -78,12 +79,12 @@ fun HomeScreen() {
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(14.dp)
+                .blur(8.dp)
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.White.copy(alpha = 0.14f))
+                .background(Color.White.copy(alpha = 0.06f))
         )
     Column(
         modifier = Modifier
@@ -271,7 +272,7 @@ fun HomeScreen() {
 }
 }
 
-/** 磨砂玻璃卡片：半透明白 + 细白描边 + 大圆角。内容纵向排列（ColumnScope，可用 weight）。 */
+/** 水晶玻璃卡片：近全透明填充 + 边缘白描边 + 顶部高光反光。内容纵向排列（ColumnScope，可用 weight）。 */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -279,18 +280,52 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val shape = RoundedCornerShape(24.dp)
     val base = modifier
-        .shadow(6.dp, RoundedCornerShape(24.dp))
+        .shadow(4.dp, shape)
         .fillMaxWidth()
-        .clip(RoundedCornerShape(24.dp))
-        .background(Color.White.copy(alpha = 0.62f))
-        .border(1.dp, Color.White.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
-        .padding(contentPadding)
+        .clip(shape)
+        .background(Color.White.copy(alpha = 0.10f))
+        .border(1.dp, Color.White.copy(alpha = 0.60f), shape)
     if (onClick != null) {
-        Column(modifier = base.clickable { onClick() }, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+        Box(modifier = base.clickable { onClick() }) {
+            GlassHighlight()
+            Column(
+                modifier = Modifier.padding(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = content
+            )
+        }
     } else {
-        Column(modifier = base, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+        Box(modifier = base) {
+            GlassHighlight()
+            Column(
+                modifier = Modifier.padding(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = content
+            )
+        }
     }
+}
+
+/** 顶部/左上高光反光：模拟玻璃边缘反光（水晶质感靠边缘高光撑）。 */
+@Composable
+private fun BoxScope.GlassHighlight() {
+    Box(
+        Modifier
+            .matchParentSize()
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.03f),
+                        Color.Transparent
+                    ),
+                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(700f, 520f)
+                )
+            )
+    )
 }
 
 /** 头像占位（用户可换；先以冰蓝实底 + 首字母占位）。 */

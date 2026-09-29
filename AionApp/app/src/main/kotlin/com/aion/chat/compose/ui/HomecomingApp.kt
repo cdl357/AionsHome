@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -25,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,20 +95,20 @@ fun HomecomingApp() {
 
 @Composable
 private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
+    // 几乎透明的长圆胶囊：能看穿背景，只靠边缘高光撑玻璃感
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.9f), HomecomingColors.IceBlueLight.copy(alpha = 0.95f))
-                )
-            )
+            .padding(horizontal = 14.dp)
+            .padding(bottom = 10.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp)
-                .padding(horizontal = 8.dp),
+                .clip(RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.10f))
+                .border(1.dp, Color.White.copy(alpha = 0.60f), RoundedCornerShape(50))
+                .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -117,23 +119,35 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 6.dp)
                     ) {
                         Icon(
                             imageVector = tab.icon,
                             contentDescription = tab.label,
-                            tint = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.InkSoft,
+                            tint = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.Ink,
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
                             text = tab.label,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.InkSoft
+                            color = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.Ink
                         )
                     }
                 }
             }
         }
+        // 顶部边缘高光反光
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.14f), Color.Transparent),
+                        startY = 0f,
+                        endY = 90f
+                    )
+                )
+        )
     }
 }
 
