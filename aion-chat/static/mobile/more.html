@@ -10,7 +10,7 @@
 <script>window.MobileTheme && MobileTheme.boot();</script>
 <style>
   .more-group { margin-top: 0; }
-  .more-note { font-size: 11px; color: var(--text-3); }
+  .more-sub { font-size: 11px; color: var(--text-3); margin: 14px 4px 0; }
 </style>
 </head>
 <body>
@@ -18,7 +18,7 @@
 
   <header>
     <h1 class="m-title">更多</h1>
-    <p class="m-sub">按类翻全部的总入口</p>
+    <p class="m-sub">按类翻全部的总入口 —— 没搬进新界面的老功能都在这里</p>
   </header>
 
   <!-- 主题（布局定稿·方案 C：现成主题一键换色 + 单主色调色盘） -->
@@ -31,12 +31,12 @@
     </div>
   </div>
 
-  <!-- 内容（布局定稿：相册 / 留言板 / 记忆库） -->
+  <!-- 内容 -->
   <h2 class="m-section">内容</h2>
   <div class="m-card more-group">
     <a class="m-item" href="/m/album"><span class="grow"><span class="t">相册</span><span class="s">照片墙 · 每张照片背后都有 Sean 当时的心里话</span></span></a>
-    <a class="m-item" href="/m/board"><span class="grow"><span class="t">留言板</span></span></a>
-    <a class="m-item" href="/m/memories"><span class="grow"><span class="t">记忆库</span><span class="s">长期记忆 · 记忆搜索 · 记忆总结 · 重要事实</span></span></a>
+    <a class="m-item" href="/m/board"><span class="grow"><span class="t">留言板</span><span class="s">双向便利贴 · 点开可对话（骨架，接口随后端接入）</span></span></a>
+    <a class="m-item" href="/m/memories"><span class="grow"><span class="t">记忆库</span><span class="s">看 · 搜 · 加 · 改 · 删</span></span></a>
     <a class="m-item" href="/diary"><span class="grow"><span class="t">日记（按类翻全部）</span><span class="s">按天看请去「我们」的日历时光机</span></span></a>
   </div>
 
@@ -44,14 +44,22 @@
   <h2 class="m-section">模型与连接</h2>
   <div class="m-card more-group">
     <a class="m-item" href="/settings"><span class="grow"><span class="t">模型与服务商</span></span></a>
-    <a class="m-item" href="/settings"><span class="grow"><span class="t">GPT / Codex 连接状态</span><span class="more-note s">当前以订阅线路状态接口为准</span></span></a>
+    <a class="m-item" href="/settings"><span class="grow"><span class="t">GPT / Codex 连接状态</span><span class="s">订阅线路以连接状态接口为准</span></span></a>
+    <a class="m-item" href="/worldbook"><span class="grow"><span class="t">世界书</span><span class="s">人设与系统指令</span></span></a>
+    <a class="m-item" href="/tts-test"><span class="grow"><span class="t">语音试听</span></span></a>
   </div>
 
-  <!-- 管理 -->
-  <h2 class="m-section">管理</h2>
+  <!-- 陪伴与记录 -->
+  <h2 class="m-section">陪伴与记录</h2>
   <div class="m-card more-group">
-    <a class="m-item" href="/worldbook"><span class="grow"><span class="t">世界书</span></span></a>
-    <a class="m-item" href="/tts-test"><span class="grow"><span class="t">语音试听</span></span></a>
+    <a class="m-item" href="/chatroom"><span class="grow"><span class="t">聊天室</span><span class="s">和 Sean、Connor 的群聊</span></span></a>
+    <a class="m-item" href="/toys"><span class="grow"><span class="t">密语时刻</span></span></a>
+    <a class="m-item" href="/date-theater"><span class="grow"><span class="t">去约会</span></span></a>
+    <a class="m-item" href="/hug"><span class="grow"><span class="t">抱抱</span></span></a>
+    <a class="m-item" href="/gift"><span class="grow"><span class="t">爱的印记</span></span></a>
+    <a class="m-item" href="/wishes"><span class="grow"><span class="t">许愿池</span></span></a>
+    <a class="m-item" href="/english-corner"><span class="grow"><span class="t">学习角</span></span></a>
+    <a class="m-item" href="/schedule"><span class="grow"><span class="t">日程与提醒</span></span></a>
   </div>
 
   <!-- 休闲 -->
@@ -61,15 +69,48 @@
     <a class="m-item" href="/reading"><span class="grow"><span class="t">陪伴阅读</span></span></a>
     <a class="m-item" href="/theater"><span class="grow"><span class="t">小剧场</span></span></a>
     <a class="m-item" href="/playground"><span class="grow"><span class="t">娱乐室</span></span></a>
+    <a class="m-item" href="/ghost-forest"><span class="grow"><span class="t">奥罗斯幽林</span></span></a>
+    <a class="m-item" href="/doudizhu"><span class="grow"><span class="t">斗地主</span></span></a>
+    <a class="m-item" href="/seeky"><span class="grow"><span class="t">Seeky</span></span></a>
     <a class="m-item" href="/fund"><span class="grow"><span class="t">基金</span></span></a>
   </div>
 
-  <!-- 其他 -->
-  <h2 class="m-section">其他</h2>
+  <!-- 生活与健康 -->
+  <h2 class="m-section">生活与健康</h2>
   <div class="m-card more-group">
-    <a class="m-item" href="/album"><span class="grow"><span class="t">旧版相册（上传/管理）</span></span></a>
-    <a class="m-item" href="/"><span class="grow"><span class="t">旧版首页（回退）</span></span></a>
+    <a class="m-item" href="/health"><span class="grow"><span class="t">健康</span><span class="s">手环 / 心率 / 睡眠</span></span></a>
+    <a class="m-item" href="/family-dynamics"><span class="grow"><span class="t">家庭动态</span></span></a>
+    <a class="m-item" href="/lounge-friends"><span class="grow"><span class="t">好友串门</span></span></a>
+    <a class="m-item" href="/pet"><span class="grow"><span class="t">桌宠</span></span></a>
+    <a class="m-item" href="/wallpaper"><span class="grow"><span class="t">动态壁纸</span></span></a>
   </div>
+
+  <!-- 工具与监督 -->
+  <h2 class="m-section">工具与监督</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/taobao"><span class="grow"><span class="t">逛淘宝</span></span></a>
+    <a class="m-item" href="/xhs-lite"><span class="grow"><span class="t">小红书</span></span></a>
+    <a class="m-item" href="/camera"><span class="grow"><span class="t">监控摄像头</span></span></a>
+    <a class="m-item" href="/monitor-logs"><span class="grow"><span class="t">监控日志</span></span></a>
+    <a class="m-item" href="/location"><span class="grow"><span class="t">定位追踪</span></span></a>
+    <a class="m-item" href="/activity-logs"><span class="grow"><span class="t">活动日志</span></span></a>
+    <a class="m-item" href="/app-supervision"><span class="grow"><span class="t">应用监管</span></span></a>
+    <a class="m-item" href="/capabilities"><span class="grow"><span class="t">工具与能力</span></span></a>
+    <a class="m-item" href="/memory-compression"><span class="grow"><span class="t">记忆压缩工作台</span></span></a>
+    <a class="m-item" href="/heart-whispers"><span class="grow"><span class="t">心语</span><span class="s">已停写，仅保留旧记录查看</span></span></a>
+    <a class="m-item" href="/xhs-lite-logs"><span class="grow"><span class="t">小红书运行日志</span></span></a>
+  </div>
+
+  <!-- 其他（旧版回退） -->
+  <h2 class="m-section">其他（旧版回退）</h2>
+  <div class="m-card more-group">
+    <a class="m-item" href="/moments"><span class="grow"><span class="t">旧版朋友圈</span></span></a>
+    <a class="m-item" href="/album"><span class="grow"><span class="t">旧版相册（上传 / 批量管理）</span></span></a>
+    <a class="m-item" href="/memory"><span class="grow"><span class="t">旧版记忆工作台</span></span></a>
+    <a class="m-item" href="/"><span class="grow"><span class="t">旧版首页</span></span></a>
+  </div>
+
+  <p class="more-sub">这些入口都是现有功能的直链，一个都没删；后续哪个功能重做了，就从这里换到新页面。</p>
 
 </main>
 
