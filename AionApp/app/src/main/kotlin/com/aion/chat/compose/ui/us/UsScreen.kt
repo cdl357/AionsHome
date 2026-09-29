@@ -105,7 +105,7 @@ fun UsScreen() {
                                         .clip(CircleShape)
                                         .background(
                                             when {
-                                                isSelected -> HomecomingColors.WarmPink.copy(alpha = 0.35f)
+                                                isSelected -> HomecomingColors.Accent.copy(alpha = 0.35f)
                                                 isToday -> HomecomingColors.IceBlue.copy(alpha = 0.55f)
                                                 else -> Color.Transparent
                                             }

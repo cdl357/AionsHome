@@ -39,19 +39,19 @@ import com.aion.chat.compose.ui.moments.MomentsScreen
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.us.UsScreen
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Person
 
 /** 底部导航：聊天 | 朋友圈 | 回家(中心凸起) | 我们 | 更多 —— 顺序固定。 */
 enum class HomeTab(val route: String, val label: String, val icon: ImageVector) {
-    Chat("chat", "聊天", Icons.Filled.MailOutline),
-    Moments("moments", "朋友圈", Icons.Filled.FavoriteBorder),
-    Home("home", "回家", Icons.Filled.Home),
-    Us("us", "我们", Icons.Filled.Person),
-    More("more", "更多", Icons.Filled.Menu),
+    Chat("chat", "聊天", Icons.Outlined.MailOutline),
+    Moments("moments", "朋友圈", Icons.Outlined.FavoriteBorder),
+    Home("home", "回家", Icons.Outlined.Home),
+    Us("us", "我们", Icons.Outlined.Person),
+    More("more", "更多", Icons.Outlined.Menu),
 }
 
 @Composable
@@ -122,13 +122,13 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
                         Icon(
                             imageVector = tab.icon,
                             contentDescription = tab.label,
-                            tint = if (current == tab.route) HomecomingColors.WarmPink else HomecomingColors.InkSoft,
+                            tint = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.InkSoft,
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
                             text = tab.label,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (current == tab.route) HomecomingColors.WarmPink else HomecomingColors.InkSoft
+                            color = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.InkSoft
                         )
                     }
                 }
@@ -147,7 +147,7 @@ private fun CenterHomeButton(selected: Boolean, onClick: () -> Unit) {
             modifier = Modifier
                 .size(54.dp)
                 .background(
-                    Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.WarmPink.copy(alpha = 0.85f))),
+                    Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.Accent.copy(alpha = 0.85f))),
                     CircleShape
                 )
                 .border(3.dp, Color.White, CircleShape)
@@ -155,7 +155,7 @@ private fun CenterHomeButton(selected: Boolean, onClick: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.Home,
+                imageVector = Icons.Outlined.Home,
                 contentDescription = "回家",
                 tint = Color.White,
                 modifier = Modifier.size(22.dp)
@@ -164,7 +164,7 @@ private fun CenterHomeButton(selected: Boolean, onClick: () -> Unit) {
         Text(
             text = "回家",
             style = MaterialTheme.typography.labelSmall,
-            color = if (selected) HomecomingColors.WarmPink else HomecomingColors.InkSoft
+            color = if (selected) HomecomingColors.Accent else HomecomingColors.InkSoft
         )
     }
 }

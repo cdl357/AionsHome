@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingData
@@ -61,48 +65,63 @@ fun HomeScreen() {
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(HomecomingColors.IceBlueLight, Color.White, HomecomingColors.IceBlue.copy(alpha = 0.55f))
+                    listOf(HomecomingColors.IceBlueLight, Color.White, HomecomingColors.IceBlue.copy(alpha = 0.30f))
                 )
             )
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. 顶部条：Yuri 头像 | 在一起 XX 天（全页焦点）| Sean 头像
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            GlassAvatar(initial = "Y")
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "ALREADY TOGETHER",
-                    fontSize = 10.sp,
-                    letterSpacing = 3.sp,
-                    color = HomecomingColors.InkSoft
-                )
-                Text(
-                    text = HomecomingData.daysTogether().toString(),
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 56.sp,
-                    color = HomecomingColors.WarmPink
-                )
-                Text(
-                    text = "since " + HomecomingData.since(),
-                    fontSize = 12.sp,
-                    color = HomecomingColors.InkSoft
-                )
+        // 1. 顶部卡：Yuri 头像 | 在一起 XX 天（全页焦点）| Sean 头像 + 今日情话
+        GlassCard(contentPadding = 22.dp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                GlassAvatar(initial = "Y")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "ALREADY TOGETHER",
+                        fontSize = 10.sp,
+                        letterSpacing = 3.sp,
+                        color = HomecomingColors.InkSoft
+                    )
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = HomecomingData.daysTogether().toString(),
+                            fontFamily = FontFamily.Serif,
+                            fontSize = 56.sp,
+                            color = HomecomingColors.Accent
+                        )
+                        Text(
+                            text = "天",
+                            fontSize = 18.sp,
+                            color = HomecomingColors.Accent,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
+                        )
+                    }
+                    Text(
+                        text = "since " + HomecomingData.since(),
+                        fontSize = 12.sp,
+                        color = HomecomingColors.InkSoft
+                    )
+                }
+                GlassAvatar(initial = "S")
             }
-            GlassAvatar(initial = "S")
+            Text(
+                text = HomecomingData.quoteForToday(),
+                fontSize = 14.sp,
+                color = HomecomingColors.Ink,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
-        Text(
-            text = HomecomingData.quoteForToday(),
-            fontSize = 14.sp,
-            color = HomecomingColors.Ink,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
 
         // 2. 一起听歌（本期 UI + 播放控件占位）
         GlassCard {
@@ -112,7 +131,7 @@ fun HomeScreen() {
                         .size(52.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(
-                            Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.WarmPinkSoft))
+                            Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.AccentSoft))
                         )
                 )
                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
@@ -128,9 +147,14 @@ fun HomeScreen() {
             }
         }
 
-        // 3. 今日心情 | 相册（两个半宽卡片）
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
-            GlassCard(modifier = Modifier.weight(1f), onClick = null) {
+        // 3. 今日心情 | 相册（两个半宽卡片，等高对齐）
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(androidx.compose.foundation.layout.IntrinsicSize.Min)
+        ) {
+            GlassCard(modifier = Modifier.weight(1f).fillMaxHeight(), onClick = null) {
                 Text("今日心情", fontSize = 13.sp, color = HomecomingColors.InkSoft)
                 listOf("(´▽`)", "(￣▽￣)", "(>_<)", "(ㄒoㄒ)")
                     .chunked(2)
@@ -152,14 +176,14 @@ fun HomeScreen() {
                     }
                 Text("点一个，哥哥回你一句", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
-            GlassCard(modifier = Modifier.weight(1f), onClick = null) {
+            GlassCard(modifier = Modifier.weight(1f).fillMaxHeight(), onClick = null) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
+                        .weight(1f, fill = true)
                         .clip(RoundedCornerShape(16.dp))
                         .background(
-                            Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.WarmPinkSoft))
+                            Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.AccentSoft))
                         )
                 )
                 Text("相册", fontSize = 13.sp, color = HomecomingColors.InkSoft)
@@ -183,7 +207,7 @@ fun HomeScreen() {
                             .fillMaxWidth()
                             .height(6.dp)
                             .clip(RoundedCornerShape(3.dp)),
-                        color = HomecomingColors.WarmPink,
+                        color = HomecomingColors.Accent,
                         trackColor = HomecomingColors.IceBlue.copy(alpha = 0.4f)
                     )
                 }
@@ -202,7 +226,7 @@ fun HomeScreen() {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
-                                .background(HomecomingColors.WarmPink, CircleShape)
+                                .background(HomecomingColors.Accent, CircleShape)
                                 .align(Alignment.CenterVertically)
                         )
                         Spacer(Modifier.width(10.dp))
@@ -226,37 +250,38 @@ fun HomeScreen() {
     }
 }
 
-/** 磨砂玻璃卡片：半透明白 + 细白描边 + 大圆角。内容纵向排列（修复叠加问题）。 */
+/** 磨砂玻璃卡片：半透明白 + 细白描边 + 大圆角。内容纵向排列（ColumnScope，可用 weight）。 */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
+    contentPadding: Dp = 16.dp,
     onClick: (() -> Unit)? = null,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     val base = modifier
         .fillMaxWidth()
         .clip(RoundedCornerShape(24.dp))
         .background(Color.White.copy(alpha = 0.62f))
         .border(1.dp, Color.White.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
-        .padding(16.dp)
+        .padding(contentPadding)
     if (onClick != null) {
-        Column(modifier = base.clickable { onClick() }, verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+        Column(modifier = base.clickable { onClick() }, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     } else {
-        Column(modifier = base, verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+        Column(modifier = base, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
 
-/** 头像占位（用户可换，本期先首字母圆）。 */
+/** 头像占位（用户可换；先以冰蓝实底 + 首字母占位）。 */
 @Composable
 fun GlassAvatar(initial: String, size: Int = 56) {
     Box(
         modifier = Modifier
             .size(size.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.8f))
-            .border(2.dp, HomecomingColors.WarmPink.copy(alpha = 0.6f), CircleShape),
+            .background(HomecomingColors.IceBlueLight)
+            .border(2.dp, HomecomingColors.Accent.copy(alpha = 0.55f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = initial, fontSize = (size * 0.4f).sp, color = HomecomingColors.WarmPink, fontFamily = FontFamily.Serif)
+        Text(text = initial, fontSize = (size * 0.4f).sp, color = HomecomingColors.Accent, fontFamily = FontFamily.Serif)
     }
 }

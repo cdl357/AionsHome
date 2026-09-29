@@ -14,8 +14,8 @@ object HomecomingColors {
     val IceBlue = Color(0xFFBCECEF)
     val IceBlueLight = Color(0xFFCEF4F5)
     val IceBlueDeep = Color(0xFF9AD6DC)
-    val WarmPink = Color(0xFFF0A8BC)
-    val WarmPinkSoft = Color(0x33F0A8BC)
+    val Accent = Color(0xFF5B9AA8)
+    val AccentSoft = Color(0x335B9AA8)
     val Ink = Color(0xFF3A4550)
     val InkSoft = Color(0xFF7B8794)
     val Glass = Color.White.copy(alpha = 0.62f)
@@ -25,7 +25,7 @@ object HomecomingColors {
 }
 
 private val LightScheme = lightColorScheme(
-    primary = HomecomingColors.WarmPink,
+    primary = HomecomingColors.Accent,
     onPrimary = Color.White,
     secondary = HomecomingColors.IceBlueDeep,
     background = HomecomingColors.IceBlueLight,

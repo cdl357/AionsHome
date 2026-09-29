@@ -102,7 +102,7 @@ fun ChatScreen() {
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(HomecomingColors.WarmPink, CircleShape),
+                    .background(HomecomingColors.Accent, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text("➤", color = Color.White)
