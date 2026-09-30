@@ -102,12 +102,15 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
             .padding(horizontal = 14.dp)
             .padding(bottom = 10.dp)
     ) {
+        val edgeBrush = Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.70f), Color.White.copy(alpha = 0.15f))
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.10f))
-                .border(1.dp, Color.White.copy(alpha = 0.60f), RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.12f))
+                .border(1.dp, edgeBrush, RoundedCornerShape(50))
                 .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
@@ -136,18 +139,6 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
                 }
             }
         }
-        // 顶部边缘高光反光
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.14f), Color.Transparent),
-                        startY = 0f,
-                        endY = 90f
-                    )
-                )
-        )
     }
 }
 

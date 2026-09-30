@@ -79,7 +79,7 @@ fun HomeScreen() {
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(8.dp)
+                .blur(20.dp)
         )
         Box(
             modifier = Modifier
@@ -147,15 +147,7 @@ fun HomeScreen() {
         // 2. 一起听歌（本期 UI + 播放控件占位）
         GlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.AccentSoft))
-                        )
-                )
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("一起听歌", fontSize = 15.sp, color = HomecomingColors.Ink)
                     Text("歌单随后端接入", fontSize = 12.sp, color = HomecomingColors.InkSoft)
                 }
@@ -198,16 +190,8 @@ fun HomeScreen() {
                 Text("点一个，哥哥回你一句", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
             GlassCard(modifier = Modifier.weight(1f).fillMaxHeight(), onClick = null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = true)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.AccentSoft))
-                        )
-                )
-                Text("相册", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+                Text("相册", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = HomecomingColors.Ink)
+                Text("照片墙 · Sean 的心里话", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
         }
 
@@ -281,53 +265,22 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(24.dp)
+    // 边缘高光描边：左上亮、右下暗，模拟玻璃边缘反光
+    val edgeBrush = Brush.linearGradient(
+        listOf(Color.White.copy(alpha = 0.70f), Color.White.copy(alpha = 0.15f))
+    )
     val base = modifier
         .shadow(4.dp, shape)
         .fillMaxWidth()
         .clip(shape)
-        .background(Color.White.copy(alpha = 0.10f))
-        .border(1.dp, Color.White.copy(alpha = 0.60f), shape)
+        .background(Color.White.copy(alpha = 0.12f))
+        .border(1.dp, edgeBrush, shape)
     if (onClick != null) {
-        Box(modifier = base.clickable { onClick() }) {
-            GlassHighlight()
-            Column(
-                modifier = Modifier.padding(contentPadding),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                content = content
-            )
-        }
+        Column(modifier = base.clickable { onClick() }, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     } else {
-        Box(modifier = base) {
-            GlassHighlight()
-            Column(
-                modifier = Modifier.padding(contentPadding),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                content = content
-            )
-        }
+        Column(modifier = base, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
-
-/** 顶部/左上高光反光：模拟玻璃边缘反光（水晶质感靠边缘高光撑）。 */
-@Composable
-private fun BoxScope.GlassHighlight() {
-    Box(
-        Modifier
-            .matchParentSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.18f),
-                        Color.White.copy(alpha = 0.03f),
-                        Color.Transparent
-                    ),
-                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                    end = androidx.compose.ui.geometry.Offset(700f, 520f)
-                )
-            )
-    )
-}
-
 /** 头像占位（用户可换；先以冰蓝实底 + 首字母占位）。 */
 @Composable
 fun GlassAvatar(initial: String, size: Int = 56) {
