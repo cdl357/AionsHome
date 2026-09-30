@@ -3,6 +3,7 @@ package com.aion.chat.compose.data
 import android.content.Context
 import org.json.JSONObject
 import java.time.LocalDate
+import java.io.File
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
@@ -136,4 +137,23 @@ object HomecomingData {
         Provision("语音字数", 0, "待接入"),
         Provision("服务器余额", 0, "本期不做服务器")
     )
+}
+
+/** 主页背景图：用户在设置里可随时更换（存 filesDir/home_bg.jpg），stamp 变化即触发重载。 */
+object SettingsBg {
+    var stamp: Long = 0
+        private set
+
+    fun bump() { stamp = System.currentTimeMillis() }
+
+    fun backgroundFile(context: Context): File = File(context.filesDir, "home_bg.jpg")
+
+    fun loadBitmap(context: Context): android.graphics.Bitmap? {
+        val f = backgroundFile(context)
+        if (!f.exists()) return null
+        return runCatching {
+            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+            android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts)
+        }.getOrNull()
+    }
 }

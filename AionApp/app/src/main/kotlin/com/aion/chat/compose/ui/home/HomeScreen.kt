@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingData
+import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.data.SupabaseQuoteSync
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import dev.chrisbanes.haze.HazeState
@@ -124,12 +126,24 @@ fun HomeScreen() {
                 .fillMaxSize()
                 .hazeSource(hazeState)
         ) {
-            Image(
-                painter = painterResource(com.aion.chat.R.drawable.bg_home_meadow),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            val customBg = remember(SettingsBg.stamp) {
+                SettingsBg.loadBitmap(context)?.asImageBitmap()
+            }
+            if (customBg != null) {
+                Image(
+                    bitmap = customBg,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Image(
+                    painter = painterResource(com.aion.chat.R.drawable.bg_home_meadow),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()

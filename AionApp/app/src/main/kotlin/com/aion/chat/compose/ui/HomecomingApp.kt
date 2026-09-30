@@ -37,6 +37,7 @@ import androidx.navigation.compose.rememberNavController
 import com.aion.chat.compose.ui.chat.ChatScreen
 import com.aion.chat.compose.ui.home.HomeScreen
 import com.aion.chat.compose.ui.more.MoreScreen
+import com.aion.chat.compose.ui.settings.SettingsScreen
 import com.aion.chat.compose.ui.moments.MomentsScreen
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.us.UsScreen
@@ -98,8 +99,9 @@ fun HomecomingApp() {
             composable(HomeTab.Us.route) {
                 Box(Modifier.fillMaxSize().padding(padding)) { UsScreen() }
             }
+            composable("settings") { SettingsScreen() }
             composable(HomeTab.More.route) {
-                Box(Modifier.fillMaxSize().padding(padding)) { MoreScreen() }
+                Box(Modifier.fillMaxSize().padding(padding)) { MoreScreen(onOpenSettings = { navController.navigate("settings") }) }
             }
         }
     }
@@ -121,18 +123,21 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
                 .background(Color.White.copy(alpha = 0.12f))
                 .border(1.dp, GlassEdge, RoundedCornerShape(50))
                 .padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             HomeTab.entries.forEach { tab ->
                 val selected = current == tab.route
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(50))
                         .background(if (selected) Color.White.copy(alpha = 0.38f) else Color.Transparent)
                         .clickable { onSelect(tab) }
-                        .padding(horizontal = 13.dp, vertical = 7.dp)
+                        .padding(vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = tab.icon,

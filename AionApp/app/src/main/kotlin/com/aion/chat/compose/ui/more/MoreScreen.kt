@@ -43,7 +43,7 @@ private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.Image
  * 相册 / 留言板 / 记忆库 / 语音通话 / 陪伴阅读 / 提醒闹钟 / 设置。其余 AionsHome 功能全部不做。
  */
 @Composable
-fun MoreScreen() {
+fun MoreScreen(onOpenSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val entries = listOf(
         MoreEntry(Icons.Filled.Favorite, "相册", "照片墙 + Sean 存这张时的心里话"),
@@ -52,7 +52,6 @@ fun MoreScreen() {
         MoreEntry(Icons.Filled.Call, "语音通话", "主入口在聊天页顶部"),
         MoreEntry(Icons.Filled.Info, "陪伴阅读", "接入 AionsHome 自带实现"),
         MoreEntry(Icons.Filled.Settings, "提醒 / 闹钟", "到点让 AI 主动戳你"),
-        MoreEntry(Icons.Filled.Settings, "设置", "云线路 · 模型 · TTS · 主题 · 背景图")
     )
 
     Column(
@@ -84,6 +83,24 @@ fun MoreScreen() {
                         Text(entry.name, fontSize = 15.sp, color = HomecomingColors.Ink)
                         Text(entry.sub, fontSize = 11.sp, color = HomecomingColors.InkSoft)
                     }
+                }
+            }
+        }
+
+        // 设置：真实入口（换背景图等）
+        FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = onOpenSettings) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(HomecomingColors.IceBlue.copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = "设置", tint = HomecomingColors.Ink)
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("设置", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("换背景图 · 云线路 · 模型 · TTS · 主题", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
             }
         }
