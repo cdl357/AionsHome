@@ -163,3 +163,6 @@ docs/superpowers/specs/2026-07-29-seven-day-data-backup-design.md
 # ── 发布产物（刻意提交的安装包，releases/ 目录例外） ──
 !releases/
 !releases/*.apk
+
+# ── 临时迁移脚本 ──
+AionApp/*.mjs
