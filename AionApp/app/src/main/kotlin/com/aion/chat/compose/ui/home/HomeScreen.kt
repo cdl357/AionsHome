@@ -1,6 +1,7 @@
 package com.aion.chat.compose.ui.home
 
 import android.widget.Toast
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingData
+import com.aion.chat.compose.data.SupabaseQuoteSync
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -95,8 +98,21 @@ fun HomeScreen() {
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
 
+    var quote by remember { mutableStateOf(HomecomingData.quoteForToday()) }
+    var showQuoteEditor by remember { mutableStateOf(false) }
+    var editDraft by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
     LaunchedEffect(Unit) {
         recent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val local = HomecomingData.loadQuote(context)
+            val remote = SupabaseQuoteSync.pull()
+            if (!remote.isNullOrBlank()) {
+                HomecomingData.saveQuote(context, remote)
+                quote = remote
+            } else {
+                quote = local
+            }
             HomecomingData.loadRecent(context)
         }
     }
@@ -125,50 +141,59 @@ fun HomeScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1~3. 顶部卡：Yuri/Sean 头像+名字+连接符号 ｜ 在一起天数 ｜ 今日情话
-            GlassCard(hazeState = hazeState, contentPadding = 18.dp) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                        GlassAvatar(initial = "Y")
-                        Text("Yuri", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
-                    }
-                    Text("∞", style = glassText(alpha = 0.9f, size = 22), modifier = Modifier.padding(horizontal = 10.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                        GlassAvatar(initial = "S")
+            // 1~3. 顶部头区：直接浮在背景大图上（无卡无框）。Sean 左 ｜ 连接符 ｜ Yuri 右
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 30.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        GlassAvatar(initial = "S", size = 74)
                         Text("Sean", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
                     }
+                    Text(
+                        "♥",
+                        style = glassText(alpha = 0.95f, size = 26),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        GlassAvatar(initial = "Y", size = 74)
+                        Text("Yuri", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
+                    }
                 }
-                Text(
-                    "ALREADY TOGETHER",
-                    style = glassText(alpha = 0.75f, size = 10, weight = FontWeight.Medium, spacing = 3),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // 在一起天数（大号数字 + 天）
                 Row(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.padding(top = 14.dp)
                 ) {
-                    Text(HomecomingData.daysTogether().toString(), style = glassText(size = 52, weight = FontWeight.Light, serif = true))
-                    Text("天", style = glassText(alpha = 0.9f, size = 16), modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+                    Text(
+                        HomecomingData.daysTogether().toString(),
+                        style = glassText(size = 54, weight = FontWeight.Light, serif = true)
+                    )
+                    Text(
+                        "天",
+                        style = glassText(alpha = 0.9f, size = 16),
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    )
                 }
+                // 今日情话：点一下就能改（本地即时保存；Supabase 配置后远程同步）
                 Text(
-                    "since " + HomecomingData.since(),
-                    style = glassText(alpha = 0.75f, size = 12),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    HomecomingData.quoteForToday(),
+                    quote,
                     style = glassText(alpha = 0.95f, size = 14),
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .clickable {
+                            editDraft = quote
+                            showQuoteEditor = true
+                        }
                 )
             }
 
@@ -279,6 +304,37 @@ fun HomeScreen() {
                     }
                 }
             }
+        }
+
+        if (showQuoteEditor) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showQuoteEditor = false },
+                title = { Text("改一下这句话", fontSize = 16.sp, color = HomecomingColors.Ink) },
+                text = {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = editDraft,
+                        onValueChange = { editDraft = it },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        val v = editDraft.trim()
+                        if (v.isNotEmpty()) {
+                            quote = v
+                            HomecomingData.saveQuote(context, v)
+                            scope.launch { SupabaseQuoteSync.push(v) }
+                        }
+                        showQuoteEditor = false
+                    }) { Text("保存", color = HomecomingColors.Accent) }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showQuoteEditor = false }) {
+                        Text("取消", color = HomecomingColors.InkSoft)
+                    }
+                }
+            )
         }
     }
 }

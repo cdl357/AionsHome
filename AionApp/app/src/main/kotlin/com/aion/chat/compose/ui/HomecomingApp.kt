@@ -47,7 +47,12 @@ import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Person
 
-/** 底部导航：聊天 | 朋友圈 | 回家(中心凸起) | 我们 | 更多 —— 顺序固定。 */
+private val NavBlack = Color(0xFF202020)
+private val GlassEdge = Brush.linearGradient(
+    listOf(Color.White.copy(alpha = 0.70f), Color.White.copy(alpha = 0.15f))
+)
+
+/** 底部导航：聊天 | 朋友圈 | 回家(中心) | 我们 | 更多 —— 顺序固定。 */
 enum class HomeTab(val route: String, val label: String, val icon: ImageVector) {
     Chat("chat", "聊天", Icons.Outlined.MailOutline),
     Moments("moments", "朋友圈", Icons.Outlined.FavoriteBorder),
@@ -78,96 +83,71 @@ fun HomecomingApp() {
         NavHost(
             navController = navController,
             startDestination = HomeTab.Home.route,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+            modifier = Modifier.fillMaxSize()
         ) {
-            composable(HomeTab.Home.route) { HomeScreen() }
-            composable(HomeTab.Chat.route) { ChatScreen() }
-            composable(HomeTab.Moments.route) { MomentsScreen() }
-            composable(HomeTab.Us.route) { UsScreen() }
-            composable(HomeTab.More.route) { MoreScreen() }
-        }
-    }
-}
-
-@Composable
-private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
-    // 几乎透明的长圆胶囊：能看穿背景，只靠边缘高光撑玻璃感
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp)
-            .padding(bottom = 10.dp)
-    ) {
-        val edgeBrush = Brush.linearGradient(
-            listOf(Color.White.copy(alpha = 0.70f), Color.White.copy(alpha = 0.15f))
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.12f))
-                .border(1.dp, edgeBrush, RoundedCornerShape(50))
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            HomeTab.entries.forEach { tab ->
-                if (tab == HomeTab.Home) {
-                    CenterHomeButton(selected = current == tab.route, onClick = { onSelect(tab) })
-                } else {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .padding(vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = tab.icon,
-                            contentDescription = tab.label,
-                            tint = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.Ink,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            text = tab.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (current == tab.route) HomecomingColors.Accent else HomecomingColors.Ink
-                        )
-                    }
-                }
+            // 回家页背景全屏铺到底（导航胶囊浮在背景上），其余页正常避开导航
+            composable(HomeTab.Home.route) {
+                Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) { HomeScreen() }
+            }
+            composable(HomeTab.Chat.route) {
+                Box(Modifier.fillMaxSize().padding(padding)) { ChatScreen() }
+            }
+            composable(HomeTab.Moments.route) {
+                Box(Modifier.fillMaxSize().padding(padding)) { MomentsScreen() }
+            }
+            composable(HomeTab.Us.route) {
+                Box(Modifier.fillMaxSize().padding(padding)) { UsScreen() }
+            }
+            composable(HomeTab.More.route) {
+                Box(Modifier.fillMaxSize().padding(padding)) { MoreScreen() }
             }
         }
     }
 }
 
 @Composable
-private fun CenterHomeButton(selected: Boolean, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.offset(y = (-10).dp)
+private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
+    // 悬浮透明胶囊：能看穿背景，只有边缘高光描边；图标黑色线性
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 12.dp)
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(54.dp)
-                .background(
-                    Brush.linearGradient(listOf(HomecomingColors.IceBlue, HomecomingColors.Accent.copy(alpha = 0.85f))),
-                    CircleShape
-                )
-                .border(3.dp, Color.White, CircleShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.12f))
+                .border(1.dp, GlassEdge, RoundedCornerShape(50))
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Home,
-                contentDescription = "回家",
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
+            HomeTab.entries.forEach { tab ->
+                val selected = current == tab.route
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) Color.White.copy(alpha = 0.38f) else Color.Transparent)
+                        .clickable { onSelect(tab) }
+                        .padding(horizontal = 13.dp, vertical = 7.dp)
+                ) {
+                    Icon(
+                        imageVector = tab.icon,
+                        contentDescription = tab.label,
+                        tint = NavBlack,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = tab.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NavBlack,
+                        modifier = Modifier.padding(start = 5.dp)
+                    )
+                }
+            }
         }
-        Text(
-            text = "回家",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (selected) HomecomingColors.Accent else HomecomingColors.InkSoft
-        )
     }
 }
