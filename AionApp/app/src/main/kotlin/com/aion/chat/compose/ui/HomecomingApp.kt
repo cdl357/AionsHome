@@ -82,7 +82,7 @@ fun HomecomingApp() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            composable(HomeTab.Home.route) { HomeScreen(onOpenChat = { onSelect(HomeTab.Chat) }) }
+            composable(HomeTab.Home.route) { HomeScreen() }
             composable(HomeTab.Chat.route) { ChatScreen() }
             composable(HomeTab.Moments.route) { MomentsScreen() }
             composable(HomeTab.Us.route) { UsScreen() }

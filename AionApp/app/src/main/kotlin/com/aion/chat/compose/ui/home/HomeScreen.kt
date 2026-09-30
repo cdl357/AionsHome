@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,12 +23,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -87,7 +90,7 @@ private fun glassText(
 
 /** 页面①：回家（中心首页）。Haze 液态玻璃：折射 + 通透 + 边缘高光；布局严格六项，不自加卡。 */
 @Composable
-fun HomeScreen(onOpenChat: () -> Unit = {}) {
+fun HomeScreen() {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
@@ -169,41 +172,83 @@ fun HomeScreen(onOpenChat: () -> Unit = {}) {
                 )
             }
 
-            // 4. 继续聊天：大按钮，显示线路 + 连接状态（口径与聊天页一致：待接入）
-            GlassCard(hazeState = hazeState, contentPadding = 14.dp, onClick = onOpenChat) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("继续聊天", style = glassText(size = 17, weight = FontWeight.SemiBold))
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 5.dp)) {
-                            Text("●", style = glassText(size = 9, color = HomecomingColors.Ok))
-                            Text("Codex-Sol · 待接入", style = glassText(alpha = 0.85f, size = 12), modifier = Modifier.padding(start = 5.dp))
-                        }
+            // 4. 一起听歌：专辑封面缩图 + 歌名 + 播放/暂停（本期 UI + 控件占位）
+            GlassCard(hazeState = hazeState, contentPadding = 14.dp) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(GlassShape)
+                            .background(Color.White.copy(alpha = 0.14f))
+                    )
+                    Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("一起听歌", style = glassText(size = 15, weight = FontWeight.Medium))
+                        Text("歌单随后端接入", style = glassText(alpha = 0.8f, size = 12))
                     }
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "去聊天",
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "播放",
                         tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
             }
 
-            // 5. 快捷入口方块：日记 · 相册 · 留言板 · 记忆库（4 个，不多不少）
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                QuickEntry(hazeState, Icons.Outlined.EditNote, "日记", Modifier.weight(1f)) {
-                    Toast.makeText(context, "「日记」随后端接线开放", Toast.LENGTH_SHORT).show()
+            // 5. 今日心情 | 相册（两个半宽玻璃卡，等高）
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(androidx.compose.foundation.layout.IntrinsicSize.Min)
+            ) {
+                GlassCard(hazeState = hazeState, modifier = Modifier.weight(1f).fillMaxHeight(), contentPadding = 14.dp) {
+                    Text("今日心情", style = glassText(alpha = 0.8f, size = 13))
+                    listOf("(´▽`)", "(￣▽￣)", "(>_<)", "(ㄒoㄒ)")
+                        .chunked(2)
+                        .forEach { pair ->
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                pair.forEach { face ->
+                                    Text(
+                                        text = face,
+                                        style = glassText(alpha = 0.95f, size = 14),
+                                        modifier = Modifier.clickable {
+                                            Toast.makeText(context, "点一个，哥哥回你一句（AI 回应随后端接线开放）", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    Text("点一个，哥哥回你一句", style = glassText(alpha = 0.75f, size = 11))
                 }
-                QuickEntry(hazeState, Icons.Outlined.PhotoLibrary, "相册", Modifier.weight(1f)) {
-                    Toast.makeText(context, "「相册」随后端接线开放", Toast.LENGTH_SHORT).show()
+                GlassCard(hazeState = hazeState, modifier = Modifier.weight(1f).fillMaxHeight(), contentPadding = 14.dp) {
+                    Text("相册", style = glassText(size = 15, weight = FontWeight.Medium))
+                    Text("照片墙 · Sean 的心里话", style = glassText(alpha = 0.8f, size = 12))
                 }
-                QuickEntry(hazeState, Icons.Outlined.Forum, "留言板", Modifier.weight(1f)) {
-                    Toast.makeText(context, "「留言板」随后端接线开放", Toast.LENGTH_SHORT).show()
-                }
-                QuickEntry(hazeState, Icons.Outlined.Psychology, "记忆库", Modifier.weight(1f)) {
-                    Toast.makeText(context, "「记忆库」随后端接线开放", Toast.LENGTH_SHORT).show()
+            }
+
+            // 6. 家里的存粮：三根细进度条（数值随后端接入，接不到显示占位）
+            GlassCard(hazeState = hazeState, contentPadding = 14.dp) {
+                Text("家里的存粮", style = glassText(alpha = 0.8f, size = 13))
+                HomecomingData.provisions().forEach { p ->
+                    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text(p.label, style = glassText(alpha = 0.95f, size = 13))
+                            Spacer(Modifier.weight(1f))
+                            Text(p.note, style = glassText(alpha = 0.7f, size = 11))
+                        }
+                        LinearProgressIndicator(
+                            progress = { p.percent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = Color.White.copy(alpha = 0.85f),
+                            trackColor = Color.White.copy(alpha = 0.25f)
+                        )
+                    }
                 }
             }
 
@@ -284,30 +329,6 @@ fun FrostCard(
     )
 }
 
-/** 快捷入口方块：与卡同材质、同描边、同圆角（死规矩四）。 */
-@Composable
-private fun QuickEntry(
-    hazeState: HazeState,
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .height(84.dp)
-            .clip(GlassShape)
-            .hazeEffect(state = hazeState, style = HazeMaterials.ultraThin())
-            .border(1.dp, GlassEdge, GlassShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-        Text(label, style = glassText(alpha = 0.95f, size = 12), modifier = Modifier.padding(top = 6.dp))
-    }
-}
 
 /** 头像占位（用户可换；先以透明白底 + 首字母占位，白色系贴玻璃）。 */
 @Composable
