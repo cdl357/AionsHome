@@ -31,7 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aion.chat.compose.ui.home.GlassCard
+import com.aion.chat.compose.ui.home.FrostCard
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import java.time.LocalDate
 import java.time.YearMonth
@@ -62,7 +62,7 @@ fun UsScreen() {
         Text("日历时光机 · 左右滑月份，点一天回去看看", fontSize = 12.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(14.dp))
 
-        GlassCard {
+        FrostCard {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -163,12 +163,12 @@ private fun DayDrawer(date: LocalDate) {
         )
         Spacer(Modifier.height(12.dp))
         listOf("① 那天 Sean 的日记", "② 那天两人的留言", "③ 那天的重要记忆摘要").forEach { title ->
-            GlassCard(modifier = Modifier.padding(vertical = 6.dp)) {
+            FrostCard(modifier = Modifier.padding(vertical = 6.dp)) {
                 Text(title, fontSize = 14.sp, color = HomecomingColors.Ink)
                 Text("点开卡片展开完整内容（内容接线在阶段二）", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
         }
-        GlassCard {
+        FrostCard {
             Text("新建", fontSize = 14.sp, color = HomecomingColors.Ink)
             Text(
                 "给这天加纪念日（可选爱心 / 白猫 / 黑猫 / 自定义图标，格子变色）或补写内容 —— 随后端表开放",

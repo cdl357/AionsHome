@@ -60,21 +60,19 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 fun HomecomingApp() {
     val navController = rememberNavController()
     var current by rememberSaveable { mutableStateOf(HomeTab.Home.route) }
+    val onSelect: (HomeTab) -> Unit = { tab ->
+        current = tab.route
+        navController.navigate(tab.route) {
+            popUpTo(HomeTab.Home.route) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            HomecomingBottomBar(
-                current = current,
-                onSelect = { tab ->
-                    current = tab.route
-                    navController.navigate(tab.route) {
-                        popUpTo(HomeTab.Home.route) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
-            )
+            HomecomingBottomBar(current = current, onSelect = onSelect)
         }
     ) { padding ->
         NavHost(
@@ -84,7 +82,7 @@ fun HomecomingApp() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            composable(HomeTab.Home.route) { HomeScreen() }
+            composable(HomeTab.Home.route) { HomeScreen(onOpenChat = { onSelect(HomeTab.Chat) }) }
             composable(HomeTab.Chat.route) { ChatScreen() }
             composable(HomeTab.Moments.route) { MomentsScreen() }
             composable(HomeTab.Us.route) { UsScreen() }

@@ -33,7 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
-import com.aion.chat.compose.ui.home.GlassCard
+import com.aion.chat.compose.ui.home.FrostCard
 import com.aion.chat.compose.ui.theme.HomecomingColors
 
 private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.ImageVector, val name: String, val sub: String)
@@ -68,7 +68,7 @@ fun MoreScreen() {
         Text("功能总入口", fontSize = 12.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(14.dp))
         entries.forEach { entry ->
-            GlassCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
+            FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
                 Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
             }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
