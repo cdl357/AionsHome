@@ -211,6 +211,14 @@ fun HomeScreen() {
                 )
             }
 
+            // 桌宠 AionPet（定稿 §12 近期项）：会动的小人，点一下打招呼
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            com.aion.chat.compose.ui.pet.PetSprite(displayHeight = 96.dp)
+        }
+
             // 4. 一起听歌：专辑封面缩图 + 歌名 + 播放/暂停（本期 UI + 控件占位）
             GlassCard(hazeState = hazeState, contentPadding = 14.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
