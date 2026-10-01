@@ -39,6 +39,7 @@ import com.aion.chat.compose.data.HomecomingData
 import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.FrostCard
+import com.aion.chat.compose.data.AppCrashLog
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.theme.HomecomingThemeState
 
@@ -263,6 +264,21 @@ fun SettingsScreen() {
             }
         }
 
+        val lastCrash = remember { AppCrashLog.last(context) }
+
+        // ── 版本与崩溃日志（便于反馈问题） ──
+        FrostCard {
+            Text("版本 v0.3", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text("当前安装的回家 App 版本", fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
+        }
+
+        if (lastCrash != null) {
+            FrostCard {
+                Text("上次崩溃日志", fontSize = 15.sp, color = HomecomingColors.Danger)
+                Text(lastCrash, fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 6.dp))
+                Text("把这段发给 Sean 就能定位问题", fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
         FrostCard {
             Text("云线路 · 模型 · TTS · 主题", fontSize = 15.sp, color = HomecomingColors.Ink)
             Text("阶段五接入", fontSize = 12.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))

@@ -83,10 +83,14 @@ fun ChatScreen() {
 
     // ── 线路配置戳：设置里改线路后回到聊天页即重建运行时 ──
     val routeStamp = HomecomingRouteConfig.stamp(context)
-    val wiring = remember(routeStamp) { HomecomingChatWiring(context) }
+    val wiring = remember(routeStamp) {
+        runCatching { HomecomingChatWiring(context) }
+            .onFailure { com.aion.chat.compose.data.AppCrashLog.write(context, it) }
+            .getOrNull()
+    }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
-    val modelKey = remember(routeStamp) { wiring.mainModelKey() }
-    val connected = route != null
+    val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
+    val connected = wiring != null && route != null
 
     // ── 气泡皮肤（0 冰蓝 / 1 水晶 / 2 墨蓝） ──
     val prefs = remember {
@@ -109,8 +113,9 @@ fun ChatScreen() {
     val listState = rememberLazyListState()
 
     fun reloadNow() {
+        val w = wiring ?: return
         try {
-            val list = wiring.listMessages(HomecomingChatWiring.TIMELINE)
+            val list = w.listMessages(HomecomingChatWiring.TIMELINE)
             main.post {
                 messages.clear()
                 messages.addAll(list)
@@ -123,6 +128,7 @@ fun ChatScreen() {
         val text = input.value.trim()
         val image = pendingImage.value
         if (text.isEmpty() && image.isEmpty()) return
+        val w = wiring ?: return
         if (sending.value) return
         if (!connected) {
             Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
@@ -134,7 +140,7 @@ fun ChatScreen() {
         val requestId = "req_" + System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                wiring.engine.send(
+                w.engine.send(
                     HomecomingChatEngine.ChatCommand(
                         requestId,
                         HomecomingChatWiring.TIMELINE,

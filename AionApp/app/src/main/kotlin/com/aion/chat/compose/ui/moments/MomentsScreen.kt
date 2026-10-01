@@ -82,10 +82,14 @@ fun MomentsScreen() {
     val coverStamp = remember { mutableStateOf(0L) }
     val routeStamp = HomecomingRouteConfig.stamp(context)
 
-    val wiring = remember(routeStamp) { HomecomingChatWiring(context) }
+    val wiring = remember(routeStamp) {
+        runCatching { HomecomingChatWiring(context) }
+            .onFailure { com.aion.chat.compose.data.AppCrashLog.write(context, it) }
+            .getOrNull()
+    }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
-    val modelKey = remember(routeStamp) { wiring.mainModelKey() }
-    val routeReady = route != null
+    val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
+    val routeReady = wiring != null && route != null
 
     val coverBitmap = remember(coverStamp.value) {
         runCatching {
@@ -121,7 +125,7 @@ fun MomentsScreen() {
                     }
                     append("以 Sean 的身份回一句评论：一句话、自然口语、不超过 30 个字。")
                 }
-                wiring.engine.send(
+                (wiring ?: return@launch).engine.send(
                     com.aion.chat.homecoming.HomecomingChatEngine.ChatCommand(
                         "req_m_" + System.currentTimeMillis(),
                         "moments_private", "sean", "user", trigger, "main", modelKey, "", ""
