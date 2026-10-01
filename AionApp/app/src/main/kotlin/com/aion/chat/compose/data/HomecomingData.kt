@@ -146,14 +146,21 @@ object SettingsBg {
 
     fun bump() { stamp = System.currentTimeMillis() }
 
+    /** 全局背景（回家页 + 其他页默认）。 */
     fun backgroundFile(context: Context): File = File(context.filesDir, "home_bg.jpg")
 
-    fun loadBitmap(context: Context): android.graphics.Bitmap? {
-        val f = backgroundFile(context)
+    /** 聊天页专属背景（覆盖全局；不存在时回落全局）。 */
+    fun chatFile(context: Context): File = File(context.filesDir, "chat_bg.jpg")
+
+    private fun decode(f: File): android.graphics.Bitmap? {
         if (!f.exists()) return null
         return runCatching {
             val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
             android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts)
         }.getOrNull()
     }
+
+    fun loadBitmap(context: Context): android.graphics.Bitmap? = decode(backgroundFile(context))
+
+    fun loadChatBitmap(context: Context): android.graphics.Bitmap? = decode(chatFile(context)) ?: decode(backgroundFile(context))
 }

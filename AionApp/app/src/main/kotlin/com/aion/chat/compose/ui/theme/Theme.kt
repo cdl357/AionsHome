@@ -22,6 +22,7 @@ object HomecomingColors {
     val GlassStrong = Color.White.copy(alpha = 0.85f)
     val GlassBorder = Color.White.copy(alpha = 0.60f)
     val Ok = Color(0xFF6FBF9A)
+    val Danger = Color(0xFFD98A8A)
 }
 
 private val LightScheme = lightColorScheme(
