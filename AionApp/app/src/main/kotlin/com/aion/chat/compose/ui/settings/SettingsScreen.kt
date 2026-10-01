@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +40,7 @@ import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.FrostCard
 import com.aion.chat.compose.ui.theme.HomecomingColors
+import com.aion.chat.compose.ui.theme.HomecomingThemeState
 
 /** 设置：换背景图先行；云线路 / 模型 / TTS / 主题在阶段五接入。 */
 @Composable
@@ -111,6 +117,45 @@ fun SettingsScreen() {
         Text("设置", fontSize = 22.sp, color = HomecomingColors.Ink)
         Text("先从换背景开始，其余在阶段五接入", fontSize = 12.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(14.dp))
+
+        // ── 主题（布局定稿·方案 C）：五预设 + 单主色调色盘 ──
+        val themeState = remember { androidx.compose.runtime.mutableStateOf(HomecomingThemeState.PRESETS[1]) }
+        val customHue = remember { androidx.compose.runtime.mutableStateOf(200f) }
+        FrostCard {
+            Text("主题", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomecomingThemeState.PRESETS.forEach { p ->
+                    Text(
+                        p.name,
+                        fontSize = 13.sp,
+                        color = if (themeState.value.key == p.key) Color.White else HomecomingColors.Ink,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(p.accent)
+                            .clickable {
+                                themeState.value = p
+                                HomecomingThemeState.applyPreset(context, p.key)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("调色盘：只调一个主色，其余自动配", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+            androidx.compose.material3.Slider(
+                value = customHue.value,
+                onValueChange = { hue ->
+                    customHue.value = hue
+                    HomecomingThemeState.applyCustomHue(context, hue)
+                },
+                valueRange = 0f..360f
+            )
+            Text(
+                "暖橙区会自动压饱和（无橘色）",
+                fontSize = 10.sp, color = HomecomingColors.InkSoft
+            )
+        }
 
         FrostCard {
             Text("主页背景图", fontSize = 15.sp, color = HomecomingColors.Ink)
