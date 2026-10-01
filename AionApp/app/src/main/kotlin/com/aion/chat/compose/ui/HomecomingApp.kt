@@ -37,6 +37,7 @@ import androidx.navigation.compose.rememberNavController
 import com.aion.chat.compose.ui.chat.ChatScreen
 import com.aion.chat.compose.ui.home.HomeScreen
 import com.aion.chat.compose.ui.more.MoreScreen
+import com.aion.chat.compose.ui.splash.SplashScreen
 import com.aion.chat.compose.ui.settings.SettingsScreen
 import com.aion.chat.compose.ui.moments.MomentsScreen
 import com.aion.chat.compose.ui.theme.HomecomingColors
@@ -65,7 +66,7 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 @Composable
 fun HomecomingApp() {
     val navController = rememberNavController()
-    var current by rememberSaveable { mutableStateOf(HomeTab.Home.route) }
+    var current by rememberSaveable { mutableStateOf("splash") }
     val onSelect: (HomeTab) -> Unit = { tab ->
         current = tab.route
         navController.navigate(tab.route) {
@@ -78,14 +79,25 @@ fun HomecomingApp() {
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            HomecomingBottomBar(current = current, onSelect = onSelect)
+            if (current != "splash") {
+                HomecomingBottomBar(current = current, onSelect = onSelect)
+            }
         }
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = HomeTab.Home.route,
+            startDestination = "splash",
             modifier = Modifier.fillMaxSize()
         ) {
+            composable("splash") {
+                SplashScreen(days = com.aion.chat.compose.data.HomecomingData.daysTogether(), onDone = {
+                    current = HomeTab.Home.route
+                    navController.navigate(HomeTab.Home.route) {
+                        popUpTo("splash") { inclusive = true }
+                        launchSingleTop = true
+                    }
+                })
+            }
             // 回家页背景全屏铺到底（导航胶囊浮在背景上），其余页正常避开导航
             composable(HomeTab.Home.route) {
                 Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) { HomeScreen() }
