@@ -65,6 +65,7 @@ import com.aion.chat.compose.data.HomecomingChatWiring
 import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.GlassAvatar
+import com.aion.chat.compose.ui.common.AvatarPhoto
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.homecoming.HomecomingChatEngine
 import com.aion.chat.homecoming.HomecomingChatRepository
@@ -267,7 +268,7 @@ fun ChatScreen() {
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    GlassAvatar(initial = "S", size = 42)
+                    AvatarPhoto(who = "sean", initial = "S", size = 42.dp)
                     Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                         Text("Sean", fontSize = 16.sp, color = HomecomingColors.Ink)
                         Row(verticalAlignment = Alignment.CenterVertically) {

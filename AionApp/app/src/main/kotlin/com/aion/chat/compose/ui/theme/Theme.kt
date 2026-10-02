@@ -21,8 +21,8 @@ object HomecomingColors {
     var IceBlueDeep by mutableStateOf(Color(0xFF9AD6DC))
     var Accent by mutableStateOf(Color(0xFF5B9AA8))
     var AccentSoft by mutableStateOf(Color(0x335B9AA8))
-    var Ink by mutableStateOf(Color(0xFF2C4A5A))
-    var InkSoft by mutableStateOf(Color(0xFF5E7386))
+    var Ink by mutableStateOf(Color(0xFF1A3244))
+    var InkSoft by mutableStateOf(Color(0xFF4A6274))
     var Ok by mutableStateOf(Color(0xFF6FBF9A))
     var Danger by mutableStateOf(Color(0xFFD98A8A))
 

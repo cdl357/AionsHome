@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,16 +41,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -58,19 +56,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aion.chat.compose.data.AvatarStore
 import com.aion.chat.compose.data.HomecomingChatWiring
 import com.aion.chat.compose.data.HomecomingMomentsStore
-import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.HomecomingMomentsStore.Moment
-import com.aion.chat.compose.ui.home.GlassAvatar
+import com.aion.chat.compose.ui.common.AvatarPhoto
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.Brush
+import com.aion.chat.compose.data.HomecomingRouteConfig
+import com.aion.chat.homecoming.HomecomingChatEngine
+import kotlinx.coroutines.delay
 import com.aion.chat.compose.ui.theme.HomecomingColors
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 页面④：朋友圈。双向动态流（发文字+配图、点赞评论），独立存本地，不进日历。 */
+/** 页面④：朋友圈。微信流式——封面 + Yuri 头像压沿 + 动态列表 + 发布。双向、配图、赞/评。 */
 @Composable
 fun MomentsScreen() {
     val context = LocalContext.current
@@ -79,103 +82,85 @@ fun MomentsScreen() {
 
     val feed = remember { mutableStateListOf<Moment>() }
     val reloadKey = remember { mutableStateOf(0) }
-    val coverStamp = remember { mutableStateOf(0L) }
-    val routeStamp = HomecomingRouteConfig.stamp(context)
+    val coverVersion = remember { mutableStateOf(0L) }
 
-    val wiring = remember(routeStamp) {
-        runCatching { HomecomingChatWiring(context) }
-            .onFailure { com.aion.chat.compose.data.AppCrashLog.write(context, it) }
-            .getOrNull()
-    }
-    val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
-    val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
-    val routeReady = wiring != null && route != null
+    val wiring = remember { HomecomingChatWiring(context) }
+    val route = remember { HomecomingRouteConfig.mainRoute(context) }
+    val modelKey = remember { wiring.mainModelKey() }
+    val routeReady = route != null
 
-    val coverBitmap = remember(coverStamp.value) {
-        runCatching {
-            val f = File(context.filesDir, "moments_cover.jpg")
-            if (f.exists()) BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() else null
-        }.getOrNull()
+    val coverBitmap = remember(coverVersion.value) {
+        val f = File(context.filesDir, "moments_cover.jpg")
+        if (f.exists()) BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() else null
     }
 
     fun reload() {
         try {
             val list = HomecomingMomentsStore.feed(context)
-            main.post {
-                feed.clear()
-                feed.addAll(list)
-            }
+            main.post { feed.clear(); feed.addAll(list) }
         } catch (e: Exception) { /* 安静 */ }
     }
 
-    LaunchedEffect(reloadKey.value) {
-        withContext(Dispatchers.IO) { reload() }
+    LaunchedEffect(reloadKey.value) { withContext(Dispatchers.IO) { reload() } }
+
+    // ── 发布弹窗状态 ──
+    val showCompose = remember { mutableStateOf(false) }
+    val composeText = remember { mutableStateOf("") }
+    val composeImages = remember { mutableStateListOf<android.net.Uri>() }
+    val composePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 4)
+    ) { uris ->
+        uris.take(4).forEach { uri ->
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val bytes = input.readBytes()
+                        HomecomingMomentsStore.saveMomentImage(context, bytes)
+                    }
+                }
+                main.post { /* reload cover */ }
+            }
+        }
     }
 
-    // ── Sean 惰性回应：Yuri 发动态/评论后，线路已配置时让 Sean 回一句 ──
+    // ── 评论状态 ──
+    val commentTarget = remember { mutableStateOf<Long?>(null) }
+    val commentDraft = remember { mutableStateOf("") }
+
     fun askSeanReply(momentId: Long, momentContent: String, userLine: String) {
         if (!routeReady) return
         scope.launch(Dispatchers.IO) {
-            delay(1200L) // 惰性生成：过一会儿才来
+            delay(1500L)
             try {
-                val trigger = buildString {
-                    append("Yuri 的朋友圈动态：『").append(momentContent.take(80)).append("』。")
-                    if (userLine.isNotBlank()) {
-                        append("Yuri 刚刚评论说：『").append(userLine.take(60)).append("』。")
-                    }
-                    append("以 Sean 的身份回一句评论：一句话、自然口语、不超过 30 个字。")
-                }
-                (wiring ?: return@launch).engine.send(
-                    com.aion.chat.homecoming.HomecomingChatEngine.ChatCommand(
-                        "req_m_" + System.currentTimeMillis(),
-                        "moments_private", "sean", "user", trigger, "main", modelKey, "", ""
+                var reply: String? = null
+                wiring.engine.send(
+                    HomecomingChatEngine.ChatCommand(
+                        "req_mm_" + System.currentTimeMillis(),
+                        "moments_private", "sean", "user",
+                        "Yuri 的朋友圈动态：『${momentContent.take(80)}』。" +
+                            (if (userLine.isNotBlank()) "Yuri 刚刚评论说：『${userLine.take(60)}』。" else "") +
+                            "以 Sean 的身份回一句评论：一句话、自然口语、不超过 30 个字。",
+                        "main", modelKey, "", ""
                     ),
                     object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
                         override fun onChunk(chunk: String) {}
                         override fun onComplete(messageId: String, text: String) {
-                            val reply = text.trim()
-                            if (reply.isNotEmpty()) {
-                                HomecomingMomentsStore.addComment(context, momentId, "sean", reply)
+                            val r = text.trim()
+                            if (r.isNotEmpty()) {
+                                HomecomingMomentsStore.addComment(context, momentId, "sean", r)
                                 main.post { reload() }
                             }
                         }
-                        override fun onFailure(code: String) { /* 无线路时安静 */ }
+                        override fun onFailure(code: String) { /* 安静 */ }
                     }
                 )
             } catch (e: Exception) { /* 安静 */ }
         }
     }
 
-    // ── 状态 ──
-    val showCompose = remember { mutableStateOf(false) }
-    val composeText = remember { mutableStateOf("") }
-    val composeImages = remember { mutableStateListOf<android.net.Uri>() }
-    val commentTarget = remember { mutableStateOf<Long?>(null) }
-    val commentDraft = remember { mutableStateOf("") }
-    val deleteTarget = remember { mutableStateOf<Long?>(null) }
-    var lastPostedId by remember { mutableStateOf(0L) }
-
-    // ── 发布配图选择（最多 4 张） ──
-    val composePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 4)
-    ) { uris ->
-        uris.take(4).forEach { uri ->
-            scope.launch(Dispatchers.IO) {
-                val saved = runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val bytes = input.readBytes()
-                        HomecomingMomentsStore.saveMomentImage(context, bytes)
-                    }
-                }.getOrNull()
-                if (saved != null) {
-                    main.post {
-                        composeImages.add(
-                            android.net.Uri.parse("file://" + saved)
-                        )
-                    }
-                }
-            }
-        }
+    // ── 配图选择（发布弹窗内用） ──
+    fun launchComposeImagePicker() {
+        composePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     // ── 封面更换 ──
@@ -189,182 +174,157 @@ fun MomentsScreen() {
                         }
                     }
                 }
-                main.post { coverStamp.value = System.currentTimeMillis() }
+                main.post { coverVersion.value = System.currentTimeMillis() }
             }
         }
     }
 
-    // ── Sean 回复后刷新 ──
-    fun reloadAfterSean() {
-        main.post { reload() }
-    }
-    LaunchedEffect(lastPostedId) {
-        if (lastPostedId != 0L) {
-            // Sean 的评论由 askSeanReply 异步落库，这里只负责保持最新
-        }
-    }
-
-    // ── 界面 ──
+    // ── 白底 + 封面 + 动态列表 ──
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(HomecomingColors.IceBlueLight)
+            .background(Color.White)
+            .verticalScroll(rememberScrollState())
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                // ── 封面头图（可换） ──
+        // ── 封面头图 ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+        ) {
+            val cover = coverBitmap
+            if (cover != null) {
+                Image(
+                    bitmap = cover,
+                    contentDescription = "封面",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(190.dp)
-                ) {
-                    val cover = coverBitmap
-                    if (cover != null) {
-                        Image(
-                            bitmap = cover,
-                            contentDescription = "封面",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFFB8D4D8), Color(0xFFD4E8EA))
+                            )
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(HomecomingColors.IceBlue, HomecomingColors.IceBlueLight)
-                                    )
-                                )
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Outlined.PhotoCamera,
-                        contentDescription = "换封面",
-                        tint = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(12.dp)
-                            .clickable {
-                                coverPicker.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            }
-                    )
-                    Text(
-                        "朋友圈",
-                        fontSize = 20.sp,
-                        color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(16.dp)
-                    )
-                }
-
-                // ── 动态流 ──
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    if (feed.isEmpty()) {
-                        Text(
-                            "还没有动态，发第一条吧",
-                            fontSize = 13.sp,
-                            color = HomecomingColors.InkSoft,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 24.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    feed.forEach { m ->
-                        MomentCard(
-                            moment = m,
-                            commentOpen = commentTarget.value == m.id,
-                            onToggleLike = {
-                                val liked = HomecomingMomentsStore.toggleLike(context, m.id, "user")
-                                reload()
-                                if (liked && m.author == "user") {
-                                    // 自己给自己点赞不需要 Sean 回应
-                                }
-                            },
-                            onComment = {
-                                commentTarget.value =
-                                    if (commentTarget.value == m.id) null else m.id
-                            },
-                            onSendComment = { text ->
-                                if (HomecomingMomentsStore.addComment(context, m.id, "user", text)) {
-                                    commentTarget.value = null
-                                    reload()
-                                    askSeanReply(m.id, m.content, text)
-                                }
-                            },
-                            onDeleteComment = { cid ->
-                                HomecomingMomentsStore.deleteComment(context, cid)
-                                reload()
-                            },
-                            onDeleteMoment = { deleteTarget.value = m.id }
-                        )
-                        Spacer(Modifier.height(12.dp))
-                    }
-                }
+                )
             }
-
-            // ── 发布按钮（右上角） ──
-            Box(
+            // 相机图标（换封面）
+            Icon(
+                imageVector = Icons.Outlined.PhotoCamera,
+                contentDescription = "换封面",
+                tint = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 10.dp, end = 14.dp)
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.30f))
-                    .clickable { showCompose.value = true },
-                contentAlignment = Alignment.Center
+                    .padding(14.dp)
+                    .size(26.dp)
+                    .clickable {
+                        coverPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+            )
+            // Yuri 头像压封面下沿（微信式）
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp)
+                    .offset(y = 28.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "发动态",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
+                AvatarPhoto(
+                    who = "yuri", initial = "Y",
+                    size = 68.dp, strokeWidth = 3.dp,
+                    onClick = null
                 )
             }
         }
+
+        Spacer(Modifier.height(40.dp)) // 给压沿头像留空间
+
+        // ── 动态列表 ──
+        if (feed.isEmpty()) {
+            Text(
+                "还没有动态，发第一条吧",
+                fontSize = 13.sp,
+                color = Color(0xFF999999),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 30.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+        feed.forEach { moment ->
+            MomentCard(
+                moment = moment,
+                commentOpen = commentTarget.value == moment.id,
+                onToggleLike = {
+                    val liked = HomecomingMomentsStore.toggleLike(context, moment.id, "user")
+                    reload()
+                    if (liked) askSeanReply(moment.id, moment.content, "")
+                },
+                onComment = {
+                    commentTarget.value =
+                        if (commentTarget.value == moment.id) null else moment.id
+                },
+                onSendComment = { text ->
+                    if (HomecomingMomentsStore.addComment(context, moment.id, "user", text)) {
+                        commentTarget.value = null
+                        reload()
+                        askSeanReply(moment.id, moment.content, text)
+                    }
+                },
+                onDeleteComment = { cid ->
+                    HomecomingMomentsStore.deleteComment(context, cid)
+                    reload()
+                },
+                onDeleteMoment = {
+                    HomecomingMomentsStore.deleteMoment(context, moment.id)
+                    reload()
+                }
+            )
+            // 分割线
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+                    .height(0.5.dp)
+                    .background(Color(0xFFEEEEEE))
+            )
+        }
+        Spacer(Modifier.height(60.dp))
     }
 
-    // ── 发布抽屉 ──
+    // ── 发布弹窗 ──
     if (showCompose.value) {
         AlertDialog(
             onDismissRequest = { showCompose.value = false },
-            title = { Text("发动态", fontSize = 16.sp, color = HomecomingColors.Ink) },
+            title = { Text("发动态", fontSize = 16.sp, color = Color(0xFF333333)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = composeText.value,
                         onValueChange = { composeText.value = it },
-                        placeholder = { Text("这一刻的想法…", color = HomecomingColors.InkSoft) },
+                        placeholder = { Text("这一刻的想法…", color = Color(0xFF999999)) },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (composeImages.isNotEmpty()) {
                         Text(
                             "已配 ${composeImages.size} 张图",
-                            fontSize = 11.sp,
-                            color = HomecomingColors.InkSoft
+                            fontSize = 11.sp, color = Color(0xFF999999)
                         )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = {
                             composePicker.launch(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
-                        }) { Text("配图", color = HomecomingColors.Accent) }
+                        }) { Text("配图", color = Color(0xFF576B95)) }
                         TextButton(onClick = {
                             val text = composeText.value.trim()
                             if (text.isEmpty() && composeImages.isEmpty()) {
-                                Toast.makeText(context, "写点什么或配张图", Toast.LENGTH_SHORT).show()
                                 return@TextButton
                             }
                             scope.launch(Dispatchers.IO) {
@@ -382,13 +342,10 @@ fun MomentsScreen() {
                                     composeImages.clear()
                                     showCompose.value = false
                                     reload()
-                                    if (newId > 0) {
-                                        lastPostedId = newId
-                                        askSeanReply(newId, text, "")
-                                    }
+                                    if (newId > 0) askSeanReply(newId, text, "")
                                 }
                             }
-                        }) { Text("发布", color = HomecomingColors.Accent) }
+                        }) { Text("发布", color = Color(0xFF576B95)) }
                     }
                 }
             },
@@ -396,29 +353,11 @@ fun MomentsScreen() {
             dismissButton = {}
         )
     }
-
-    // ── 删除确认 ──
-    deleteTarget.value?.let { targetId ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget.value = null },
-            title = { Text("删掉这条动态？", fontSize = 16.sp, color = HomecomingColors.Ink) },
-            confirmButton = {
-                TextButton(onClick = {
-                    HomecomingMomentsStore.deleteMoment(context, targetId)
-                    deleteTarget.value = null
-                    reload()
-                }) { Text("删除", color = HomecomingColors.Danger) }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget.value = null }) { Text("取消", color = HomecomingColors.InkSoft) }
-            }
-        )
-    }
 }
 
-/** 单条动态（微信式：头像+名字+文字+图，底下点赞评论灰盒）。 */
+/** 微信朋友圈式单条动态：头像左 + 名字/文字/图 + 底下时间/赞/评论灰盒。 */
 @Composable
-private fun MomentCard(
+fun MomentCard(
     moment: Moment,
     commentOpen: Boolean,
     onToggleLike: () -> Unit,
@@ -428,38 +367,41 @@ private fun MomentCard(
     onDeleteMoment: () -> Unit
 ) {
     val name = when (moment.author) { "user" -> "Yuri"; "sean" -> "Sean"; else -> moment.author }
+    val avatarInitial = if (moment.author == "user") "Y" else "S"
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.55f))
-            .border(1.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(18.dp))
-            .padding(14.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            GlassAvatar(
-                initial = if (moment.author == "user") "Y" else "S",
-                size = 44
-            )
-            Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                Text(
-                    name,
-                    fontSize = 14.sp, fontWeight = FontWeight.Medium, color = HomecomingColors.Ink
-                )
+        Row {
+            // 头像
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF0F0F0)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(avatarInitial, fontSize = 18.sp, color = Color(0xFF576B95), fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.width(10.dp))
+            // 右列
+            Column(modifier = Modifier.weight(1f)) {
+                Text(name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Color(0xFF576B95))
                 if (moment.content.isNotBlank()) {
                     Text(
-                        moment.content,
-                        fontSize = 15.sp, color = HomecomingColors.Ink,
-                        modifier = Modifier.padding(top = 3.dp)
+                        moment.content, fontSize = 15.sp, color = Color(0xFF333333),
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+                // 图片
                 if (moment.attachments.isNotEmpty()) {
                     Column(modifier = Modifier.padding(top = 8.dp)) {
                         moment.attachments.take(3).forEach { path ->
                             val bmp = remember(path) {
                                 runCatching {
-                                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                                    BitmapFactory.decodeFile(path, opts)
+                                    BitmapFactory.decodeFile(path)
                                 }.getOrNull()
                             }
                             if (bmp != null) {
@@ -469,54 +411,43 @@ private fun MomentCard(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(150.dp)
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(6.dp))
                                         .padding(vertical = 2.dp)
                                 )
                             }
                         }
                     }
                 }
+                // 时间 + 操作
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    Text(relTime(moment.createdAt), fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    Text(relTime(moment.createdAt), fontSize = 12.sp, color = Color(0xFF999999))
                     Spacer(Modifier.weight(1f))
                     if (moment.author == "user") {
                         Text(
                             "删除",
-                            fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                            fontSize = 12.sp, color = Color(0xFF576B95),
                             modifier = Modifier
-                                .padding(end = 10.dp)
+                                .padding(end = 12.dp)
                                 .clickable { onDeleteMoment() }
                         )
                     }
-                    Icon(
-                        imageVector = Icons.Filled.FavoriteBorder,
-                        contentDescription = "赞",
-                        tint = HomecomingColors.InkSoft,
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clickable { onToggleLike() }
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Icon(
-                        imageVector = Icons.Outlined.ChatBubbleOutline,
-                        contentDescription = "评论",
-                        tint = HomecomingColors.InkSoft,
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clickable { onComment() }
-                    )
+                    Text("赞", fontSize = 13.sp, color = Color(0xFF576B95),
+                        modifier = Modifier.clickable { onToggleLike() })
+                    Spacer(Modifier.width(14.dp))
+                    Text("评论", fontSize = 13.sp, color = Color(0xFF576B95),
+                        modifier = Modifier.clickable { onComment() })
                 }
+                // 赞+评论灰盒
                 if (moment.likes.isNotEmpty() || moment.comments.isNotEmpty() || commentOpen) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.White.copy(alpha = 0.55f))
+                            .padding(top = 6.dp)
+                            .background(Color(0xFFF7F7F7))
                             .padding(8.dp)
                     ) {
                         if (moment.likes.isNotEmpty()) {
@@ -524,28 +455,25 @@ private fun MomentCard(
                                 "♥ " + moment.likes.joinToString("、") { l ->
                                     when (l) { "user" -> "Yuri"; "sean" -> "Sean"; else -> l }
                                 },
-                                fontSize = 12.sp, color = HomecomingColors.Ink
+                                fontSize = 13.sp, color = Color(0xFF576B95)
                             )
                         }
                         moment.comments.forEach { c ->
-                            Row(modifier = Modifier.padding(top = 3.dp)) {
+                            Row(modifier = Modifier.padding(top = 2.dp)) {
                                 Text(
                                     buildString {
-                                        append(
-                                            when (c.author) {
-                                                "user" -> "Yuri"; "sean" -> "Sean"; else -> c.author
-                                            }
-                                        )
+                                        append(when (c.author) {
+                                            "user" -> "Yuri"; "sean" -> "Sean"; else -> c.author
+                                        })
                                         append("：")
                                         append(c.content)
                                     },
-                                    fontSize = 13.sp, color = HomecomingColors.Ink,
+                                    fontSize = 14.sp, color = Color(0xFF333333),
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (c.author == "user") {
                                     Text(
-                                        "✕",
-                                        fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                        "✕", fontSize = 11.sp, color = Color(0xFF999999),
                                         modifier = Modifier.clickable { onDeleteComment(c.id) }
                                     )
                                 }
@@ -554,23 +482,19 @@ private fun MomentCard(
                         if (commentOpen) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 6.dp)
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
                             ) {
                                 val draft = remember(moment.id) { mutableStateOf("") }
                                 OutlinedTextField(
                                     value = draft.value,
                                     onValueChange = { draft.value = it },
-                                    placeholder = {
-                                        Text("搭一句…", fontSize = 12.sp, color = HomecomingColors.InkSoft)
-                                    },
+                                    placeholder = { Text("评论…", fontSize = 13.sp, color = Color(0xFF999999)) },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true
                                 )
                                 TextButton(onClick = {
                                     if (draft.value.isNotBlank()) onSendComment(draft.value.trim())
-                                }) { Text("发送", color = HomecomingColors.Accent) }
+                                }) { Text("发送", color = Color(0xFF576B95)) }
                             }
                         }
                     }

@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingData
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.data.SupabaseQuoteSync
+import com.aion.chat.compose.ui.common.AvatarPhoto
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -167,7 +168,7 @@ fun HomeScreen() {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        GlassAvatar(initial = "S", size = 74)
+                        AvatarPhoto(who = "sean", initial = "S", size = 74.dp)
                         Text("Sean", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
                     }
                     Text(
@@ -176,7 +177,7 @@ fun HomeScreen() {
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        GlassAvatar(initial = "Y", size = 74)
+                        AvatarPhoto(who = "yuri", initial = "Y", size = 74.dp)
                         Text("Yuri", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
                     }
                 }
@@ -397,8 +398,8 @@ fun FrostCard(
     val base = modifier
         .fillMaxWidth()
         .clip(shape)
-        .background(Color.White.copy(alpha = 0.12f))
-        .border(1.dp, edgeBrush, shape)
+        .background(Color.White.copy(alpha = 0.72f))
+        .border(1.dp, Color.White.copy(alpha = 0.80f), shape)
         .padding(horizontal = 16.dp, vertical = 14.dp)
     Column(
         modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
