@@ -37,6 +37,12 @@ object HomecomingDayStore {
                 "author TEXT NOT NULL, content TEXT NOT NULL, " +
                 "created_at INTEGER NOT NULL)"
         )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS board_reply_local(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "note_id INTEGER NOT NULL, author TEXT NOT NULL, " +
+                "content TEXT NOT NULL, created_at INTEGER NOT NULL)"
+        )
     }
 
     // ── 纪念日 ──
@@ -139,14 +145,18 @@ object HomecomingDayStore {
         list
     } catch (e: Exception) { emptyList() }
 
-    fun addBoardNote(context: Context, author: String, content: String): Boolean = try {
+    fun addBoardNote(context: Context, author: String, content: String): Long = try {
         val db = db(context); ensure(db)
         db.execSQL(
             "INSERT INTO board_note_local(author, content, created_at) VALUES(?,?,?)",
             arrayOf(author, content, System.currentTimeMillis())
         )
-        db.close(); true
-    } catch (e: Exception) { false }
+        val cur = db.rawQuery("SELECT last_insert_rowid()", null)
+        val id = if (cur.moveToFirst()) cur.getLong(0) else -1L
+        cur.close()
+        db.close()
+        id
+    } catch (e: Exception) { -1L }
 
     // ── 重要记忆（复用 homecoming 的 memory_local，按天取摘要） ──
 
@@ -172,4 +182,32 @@ object HomecomingDayStore {
         cur.close(); db.close()
         list
     } catch (e: Exception) { emptyList() }
+
+    // ── 便利贴回复（点开一张便利贴后的你来我往） ──
+
+    data class NoteReply(val id: Long, val author: String, val content: String, val createdAt: Long)
+
+    fun noteReplies(context: Context, noteId: Long): List<NoteReply> = try {
+        val db = db(context); ensure(db)
+        val cur = db.rawQuery(
+            "SELECT id, author, content, created_at FROM board_reply_local "
+                + "WHERE note_id = ? ORDER BY created_at ASC",
+            arrayOf(noteId.toString())
+        )
+        val list = mutableListOf<NoteReply>()
+        while (cur.moveToNext()) {
+            list.add(NoteReply(cur.getLong(0), cur.getString(1), cur.getString(2), cur.getLong(3)))
+        }
+        cur.close(); db.close()
+        list
+    } catch (e: Exception) { emptyList() }
+
+    fun addNoteReply(context: Context, noteId: Long, author: String, content: String): Boolean = try {
+        val db = db(context); ensure(db)
+        db.execSQL(
+            "INSERT INTO board_reply_local(note_id, author, content, created_at) VALUES(?,?,?,?)",
+            arrayOf(noteId, author, content, System.currentTimeMillis())
+        )
+        db.close(); true
+    } catch (e: Exception) { false }
 }
