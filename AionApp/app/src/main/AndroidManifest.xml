@@ -111,6 +111,11 @@
             android:launchMode="singleTask"
             android:screenOrientation="portrait" />
 
+        <!-- 提醒到点接收器 -->
+        <receiver
+            android:name=".compose.rem.ReminderReceiver"
+            android:exported="false" />
+
         <!-- 新版回家前端（Kotlin + Compose） -->
         <activity
             android:name=".compose.MainActivity"
