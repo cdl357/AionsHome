@@ -38,7 +38,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingData
 import com.aion.chat.compose.data.SettingsBg
-import com.aion.chat.compose.data.SupabaseQuoteSync
 import com.aion.chat.compose.ui.common.AvatarPhoto
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import dev.chrisbanes.haze.HazeState
@@ -104,18 +102,11 @@ fun HomeScreen() {
     var quote by remember { mutableStateOf(HomecomingData.quoteForToday()) }
     var showQuoteEditor by remember { mutableStateOf(false) }
     var editDraft by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         recent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val local = HomecomingData.loadQuote(context)
-            val remote = SupabaseQuoteSync.pull()
-            if (!remote.isNullOrBlank()) {
-                HomecomingData.saveQuote(context, remote)
-                quote = remote
-            } else {
-                quote = local
-            }
+            // 情话只读本地：home_quote 表暂不存在，远程同步由 SupabaseQuoteSync 占位（不发请求）
+            quote = HomecomingData.loadQuote(context)
             HomecomingData.loadRecent(context)
         }
     }
@@ -347,7 +338,6 @@ fun HomeScreen() {
                         if (v.isNotEmpty()) {
                             quote = v
                             HomecomingData.saveQuote(context, v)
-                            scope.launch { SupabaseQuoteSync.push(v) }
                         }
                         showQuoteEditor = false
                     }) { Text("保存", color = HomecomingColors.Accent) }

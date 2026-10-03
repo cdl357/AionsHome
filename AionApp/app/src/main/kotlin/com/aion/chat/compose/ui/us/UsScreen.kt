@@ -64,14 +64,17 @@ fun UsScreen() {
     var diaries by remember { mutableStateOf(listOf<HomecomingDayStore.DiaryEntry>()) }
     var boardNotes by remember { mutableStateOf(listOf<HomecomingDayStore.BoardNote>()) }
     var memories by remember { mutableStateOf(listOf<HomecomingDayStore.MemorySummary>()) }
+    var diaryCloudError by remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
 
     LaunchedEffect(reloadKey) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             anniversaries = HomecomingDayStore.anniversaries(context)
-            // 云端连不上时（null）只落本地日记，不崩也不误标今天
-            val remoteDiaries = runCatching {
+            // 第一阶段只读：哥哥的日记（user_id=ai_哥哥）；网络/权限/解析失败分种提示，不影响本地
+            val res = runCatching {
                 com.aion.chat.compose.data.SupabaseMomentsStore.fetchSeanDiaries()
-            }.getOrNull().orEmpty()
+            }.getOrNull()
+            val remoteDiaries = if (res?.error == null) res?.data ?: emptyList() else emptyList()
+            diaryCloudError = res?.error
             diaries = HomecomingDayStore.diaries(context) + remoteDiaries.map { d ->
                 HomecomingDayStore.DiaryEntry(
                     0, "sean", d.title, d.content,
@@ -91,6 +94,20 @@ fun UsScreen() {
     ) {
         Text("我们", fontSize = 22.sp, color = HomecomingColors.Ink)
         Text("日历时光机 · 左右滑月份，点一天回去看看", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+        diaryCloudError?.let { kind ->
+            Text(
+                when (kind) {
+                    com.aion.chat.compose.data.CloudErrorKind.NETWORK -> "哥哥的日记：网络连不上云端"
+                    com.aion.chat.compose.data.CloudErrorKind.HTTP_401 -> "哥哥的日记：云端 401，权限未放行"
+                    com.aion.chat.compose.data.CloudErrorKind.HTTP_403 -> "哥哥的日记：云端 403，RLS 拒绝读取"
+                    com.aion.chat.compose.data.CloudErrorKind.HTTP_404 -> "哥哥的日记：云端 404，找不到 diary_entries"
+                    com.aion.chat.compose.data.CloudErrorKind.PARSE -> "哥哥的日记：字段解析失败（日志 tag=SupabaseClient）"
+                    com.aion.chat.compose.data.CloudErrorKind.OTHER_HTTP -> "哥哥的日记：云端返回异常状态"
+                },
+                fontSize = 11.sp, color = HomecomingColors.Danger,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
         Spacer(Modifier.height(14.dp))
 
         // ── 日历卡：整月格子 + 左右滑切月 ──
