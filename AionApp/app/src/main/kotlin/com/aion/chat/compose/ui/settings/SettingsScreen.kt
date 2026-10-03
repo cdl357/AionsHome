@@ -22,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -426,6 +427,32 @@ fun SettingsScreen() {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("跟随全局") }
+            }
+        }
+
+        // ── 影子推送：Sean 主动发朋友圈（每天最多一条，云线路就绪才生效） ──
+        val shadowPrefs = remember {
+            context.getSharedPreferences("shadow_push", android.content.Context.MODE_PRIVATE)
+        }
+        var shadowEnabled by remember {
+            mutableStateOf(shadowPrefs.getBoolean("enabled", true))
+        }
+        FrostCard {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Sean 主动发朋友圈", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text(
+                        "影子推送：每天最多一条，他自己想发就发；需要云线路就绪",
+                        fontSize = 12.sp, color = HomecomingColors.InkSoft
+                    )
+                }
+                Switch(
+                    checked = shadowEnabled,
+                    onCheckedChange = {
+                        shadowEnabled = it
+                        shadowPrefs.edit().putBoolean("enabled", it).apply()
+                    }
+                )
             }
         }
 

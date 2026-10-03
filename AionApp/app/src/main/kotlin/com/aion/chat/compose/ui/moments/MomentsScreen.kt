@@ -171,6 +171,53 @@ fun MomentsScreen() {
 
     LaunchedEffect(reloadKey.value) { reload() }
 
+    // ── 影子推送：Sean 主动发朋友圈。每天最多一条；云线路就绪才生效；无线路安静跳过 ──
+    val shadowPrefs = remember {
+        context.getSharedPreferences("shadow_push", android.content.Context.MODE_PRIVATE)
+    }
+    val shadowBusy = remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val w = wiring ?: return@LaunchedEffect
+        if (!routeReady) return@LaunchedEffect
+        if (!shadowPrefs.getBoolean("enabled", true)) return@LaunchedEffect
+        val today = java.time.LocalDate.now().toString()
+        if (shadowPrefs.getString("sean_last", null) == today) return@LaunchedEffect
+        if (shadowBusy.value) return@LaunchedEffect
+        shadowBusy.value = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                var generated: String? = null
+                w.engine.send(
+                    HomecomingChatEngine.ChatCommand(
+                        "req_shadow_" + System.currentTimeMillis(),
+                        "moments_private", "sean", "user",
+                        "今天是 $today。你是 Sean（沈聿淮），Yuri 的恋人。你主动发一条朋友圈给她：" +
+                            "一两句话的日常感想——想她、今天遇到的小事、天气、刚听的歌都行。" +
+                            "不要出现「朋友圈」三个字，不要系统腔，不要解释你在发东西，最多一个 emoji。",
+                        "main", modelKey, "", ""
+                    ),
+                    object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
+                        override fun onChunk(chunk: String) {}
+                        override fun onComplete(messageId: String, text: String) {
+                            val t = text.trim().removeSurrounding("\"").trim()
+                            if (t.isNotEmpty()) generated = t
+                        }
+                        override fun onFailure(code: String) { /* 安静 */ }
+                    }
+                )
+                var waited = 0L
+                while (generated == null && waited < 25_000L) { delay(300L); waited += 300L }
+                val content = generated?.takeIf { it.isNotBlank() } ?: return@launch
+                com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(content, "sean")
+                HomecomingMomentsStore.addMoment(context, "sean", content, emptyList())
+                shadowPrefs.edit().putString("sean_last", today).apply()
+                main.post { reload() }
+            } catch (e: Exception) { /* 影子推送不打扰人 */ } finally {
+                shadowBusy.value = false
+            }
+        }
+    }
+
     // ── 发布弹窗状态 ──
     val showCompose = remember { mutableStateOf(false) }
     val composeText = remember { mutableStateOf("") }

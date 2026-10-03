@@ -38,7 +38,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -101,6 +103,40 @@ fun ChatScreen() {
     }
     val skin = remember { mutableStateOf(prefs.getInt("bubble_skin", 0)) }
     val showSkinDialog = remember { mutableStateOf(false) }
+
+    // ── 语音朗读（语音通话第一块）：开关 + 手机自带 TTS 读 Sean 的回复 ──
+    val voiceOn = remember { mutableStateOf(prefs.getBoolean("voice_read", false)) }
+    val tts = remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+    LaunchedEffect(Unit) {
+        runCatching {
+            val engine = android.speech.tts.TextToSpeech(context) { status ->
+                if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                    runCatching { tts.value?.language = java.util.Locale.CHINA }
+                }
+            }
+            tts.value = engine
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            runCatching {
+                tts.value?.stop()
+                tts.value?.shutdown()
+            }
+            tts.value = null
+        }
+    }
+    fun speakReply(text: String) {
+        if (!voiceOn.value || text.isBlank()) return
+        runCatching {
+            tts.value?.speak(
+                text,
+                android.speech.tts.TextToSpeech.QUEUE_ADD,
+                null,
+                "sean_" + System.currentTimeMillis()
+            )
+        }
+    }
 
     // ── 背景：聊天专属图，无则跟随全局背景图 ──
     val bgStamp = SettingsBg.stamp
@@ -166,6 +202,7 @@ fun ChatScreen() {
 
                         override fun onComplete(messageId: String, completeText: String) {
                             main.post { sending.value = false }
+                            speakReply(completeText)
                             scope.launch(Dispatchers.IO) { reloadNow() }
                         }
 
@@ -298,6 +335,24 @@ fun ChatScreen() {
                         modifier = Modifier
                             .size(22.dp)
                             .clickable { showSkinDialog.value = true }
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Icon(
+                        imageVector = if (voiceOn.value) Icons.Filled.VolumeUp else Icons.Outlined.VolumeUp,
+                        contentDescription = "读出回复",
+                        tint = if (voiceOn.value) HomecomingColors.Accent else HomecomingColors.Ink,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable {
+                                voiceOn.value = !voiceOn.value
+                                prefs.edit().putBoolean("voice_read", voiceOn.value).apply()
+                                if (!voiceOn.value) runCatching { tts.value?.stop() }
+                                Toast.makeText(
+                                    context,
+                                    if (voiceOn.value) "会读出 Sean 的回复" else "语音朗读已关",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                     )
                     Spacer(Modifier.width(12.dp))
                     Icon(
