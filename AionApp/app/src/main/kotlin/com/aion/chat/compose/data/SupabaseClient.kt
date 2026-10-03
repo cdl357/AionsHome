@@ -20,8 +20,11 @@ object SupabaseClient {
 
     val configured: Boolean get() = URL.isNotBlank() && ANON_KEY.isNotBlank()
 
-    /** GET 请求，返回 JSONArray（空数组或错误返回空）。 */
-    suspend fun get(table: String, query: String = ""): JSONArray {
+    /**
+     * GET 请求。成功返回 JSONArray（可能为空数组＝表里真没数据）；
+     * 失败（网络不通 / HTTP 非 2xx / RLS 拦截）返回 null —— 调用方据此区分「连不上」和「没数据」。
+     */
+    suspend fun get(table: String, query: String = ""): JSONArray? {
         return withContext(Dispatchers.IO) {
             try {
                 val url = "$URL/rest/v1/$table${if (query.isNotBlank()) "?$query" else ""}"
@@ -36,9 +39,9 @@ object SupabaseClient {
                 if (code in 200..299) {
                     JSONArray(conn.inputStream.bufferedReader().readText())
                 } else {
-                    JSONArray()
+                    null
                 }
-            } catch (e: Exception) { JSONArray() }
+            } catch (e: Exception) { null }
         }
     }
 
@@ -146,7 +149,7 @@ object SupabaseMomentsStore {
 
     data class RemoteDiary(
         val id: String, val userId: String, val title: String,
-        val content: String, val mood: String, val createdAt: String
+        val content: String, val mood: String, val createdAt: String, val createdAtMs: Long
     )
 
     fun mapAuthor(raw: String): String = when {
@@ -159,10 +162,11 @@ object SupabaseMomentsStore {
         "sean" -> "Sean"; "yuri" -> "Yuri"; else -> author
     }
 
-    /** 读朋友圈动态（created_at 倒序）。 */
-    suspend fun fetchMoments(): List<RemoteMoment> = withContext(Dispatchers.IO) {
+    /** 读朋友圈动态（created_at 倒序）。null＝云端连不上（网络/权限），空列表＝云端确实没数据。 */
+    suspend fun fetchMoments(): List<RemoteMoment>? = withContext(Dispatchers.IO) {
+        val arr = SupabaseClient.get("moments", "select=*&order=created_at.desc&limit=50")
+            ?: return@withContext null
         try {
-            val arr = SupabaseClient.get("moments", "select=*&order=created_at.desc&limit=50")
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
                 val created = o.optString("created_at", "")
@@ -178,19 +182,21 @@ object SupabaseMomentsStore {
         } catch (e: Exception) { emptyList() }
     }
 
-    /** 读哥哥的日记（user_id = ai_哥哥）。 */
-    suspend fun fetchSeanDiaries(): List<RemoteDiary> = withContext(Dispatchers.IO) {
+    /** 读哥哥的日记（user_id = ai_哥哥）。null＝云端连不上。 */
+    suspend fun fetchSeanDiaries(): List<RemoteDiary>? = withContext(Dispatchers.IO) {
+        val arr = SupabaseClient.get(
+            "diary_entries",
+            "user_id=eq.ai_哥哥&select=*&order=created_at.desc&limit=50"
+        ) ?: return@withContext null
         try {
-            val arr = SupabaseClient.get(
-                "diary_entries",
-                "user_id=eq.ai_哥哥&select=*&order=created_at.desc&limit=50"
-            )
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
+                val created = o.optString("created_at", "")
                 RemoteDiary(
                     id = o.optString("id"), userId = o.optString("user_id", ""),
                     title = o.optString("title", ""), content = o.optString("content", ""),
-                    mood = o.optString("mood", ""), createdAt = o.optString("created_at", "")
+                    mood = o.optString("mood", ""), createdAt = created,
+                    createdAtMs = parseSupabaseTime(created)
                 )
             }
         } catch (e: Exception) { emptyList() }
@@ -213,7 +219,7 @@ object SupabaseQuoteSync {
 
     suspend fun pull(): String? = withContext(Dispatchers.IO) {
         try {
-            val arr = SupabaseClient.get("home_quote", "id=eq.1&select=content")
+            val arr = SupabaseClient.get("home_quote", "id=eq.1&select=content") ?: return@withContext null
             if (arr.length() > 0) arr.getJSONObject(0).optString("content", "") else null
         } catch (e: Exception) { null }
     }

@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -87,6 +89,8 @@ fun HomecomingApp() {
     val appContext = androidx.compose.ui.platform.LocalContext.current
     val bgStamp = SettingsBg.stamp
     val bgBitmap = remember(bgStamp) { SettingsBg.loadBitmap(appContext)?.asImageBitmap() }
+    // 键盘弹出时收起底部胶囊，别浮在聊天输入框上
+    val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 背景层
@@ -112,7 +116,7 @@ fun HomecomingApp() {
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                if (current != "splash") {
+                if (current != "splash" && !imeOpen) {
                     HomecomingBottomBar(current = current, onSelect = onSelect)
                 }
             }

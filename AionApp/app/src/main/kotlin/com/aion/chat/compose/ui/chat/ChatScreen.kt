@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
@@ -357,12 +359,17 @@ fun ChatScreen() {
                     }
                 }
 
-                // ── 底部输入栏 ──
+                // ── 底部输入栏（键盘没弹时给底部悬浮导航胶囊让位，不再被压住） ──
+                val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .imePadding()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(
+                            start = 14.dp, end = 14.dp,
+                            top = 10.dp,
+                            bottom = if (imeOpen) 10.dp else 84.dp
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {

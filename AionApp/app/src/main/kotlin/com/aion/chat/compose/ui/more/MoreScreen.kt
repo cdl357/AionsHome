@@ -57,11 +57,8 @@ fun MoreScreen(onOpenSettings: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(HomecomingColors.IceBlueLight, Color.White))
-            )
             .verticalScroll(rememberScrollState())
-            .padding(18.dp)
+            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 112.dp)
     ) {
         Text("更多", fontSize = 22.sp, color = HomecomingColors.Ink)
         Text("功能总入口", fontSize = 12.sp, color = HomecomingColors.InkSoft)

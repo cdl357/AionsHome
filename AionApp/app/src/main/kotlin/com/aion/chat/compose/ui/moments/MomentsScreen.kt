@@ -83,6 +83,7 @@ fun MomentsScreen() {
     val feed = remember { mutableStateListOf<Moment>() }
     val reloadKey = remember { mutableStateOf(0) }
     val coverVersion = remember { mutableStateOf(0L) }
+    val cloudError = remember { mutableStateOf(false) }
 
     val routeStamp = remember { HomecomingRouteConfig.stamp(context) }
     val wiring = remember(routeStamp) { HomecomingChatWiring.safeCreate(context) }
@@ -105,7 +106,12 @@ fun MomentsScreen() {
         scope.launch(Dispatchers.IO) {
             val remote = runCatching {
                 com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
-            }.getOrDefault(emptyList())
+            }.getOrNull()
+            if (remote == null) {
+                // 云端连不上：保留现有内容（本地缓存/本地动态），横幅提示 + 可重试
+                main.post { cloudError.value = true }
+                return@launch
+            }
             val local = runCatching { HomecomingMomentsStore.feed(context) }.getOrDefault(emptyList())
             val merged = mutableListOf<Moment>()
             val remoteKeys = mutableSetOf<String>()
@@ -130,6 +136,7 @@ fun MomentsScreen() {
                 .map { it.copy(remoteId = null, localRowId = it.id) }
             val all = (merged + localOnly).sortedByDescending { it.createdAt }
             main.post {
+                cloudError.value = false
                 feed.clear()
                 feed.addAll(all)
             }
@@ -270,10 +277,32 @@ fun MomentsScreen() {
 
         Spacer(Modifier.height(40.dp)) // 给压沿头像留空间
 
+        // ── 云端连不上横幅（区别于"真没数据"，点一下重试） ──
+        if (cloudError.value) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFFDECEC))
+                    .clickable { reloadKey.value++ }
+                    .padding(horizontal = 12.dp, vertical = 9.dp)
+            ) {
+                Text(
+                    "云端连不上，先显示手机里的内容（可能是网络到 Supabase 不通）",
+                    fontSize = 12.sp, color = Color(0xFFB3554D),
+                    modifier = Modifier.weight(1f)
+                )
+                Text("重试", fontSize = 12.sp, color = Color(0xFF576B95))
+            }
+        }
+
         // ── 动态列表 ──
         if (feed.isEmpty()) {
             Text(
-                "还没有动态，发第一条吧",
+                if (cloudError.value) "云端连不上，手机里也还没有动态"
+                else "还没有动态，发第一条吧",
                 fontSize = 13.sp,
                 color = Color(0xFF999999),
                 modifier = Modifier

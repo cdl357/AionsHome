@@ -68,7 +68,16 @@ fun UsScreen() {
     LaunchedEffect(reloadKey) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             anniversaries = HomecomingDayStore.anniversaries(context)
-            diaries = HomecomingDayStore.diaries(context) + com.aion.chat.compose.data.SupabaseMomentsStore.fetchSeanDiaries().map { d -> HomecomingDayStore.DiaryEntry(0, "sean", d.title, d.content, System.currentTimeMillis()) }
+            // 云端连不上时（null）只落本地日记，不崩也不误标今天
+            val remoteDiaries = runCatching {
+                com.aion.chat.compose.data.SupabaseMomentsStore.fetchSeanDiaries()
+            }.getOrNull().orEmpty()
+            diaries = HomecomingDayStore.diaries(context) + remoteDiaries.map { d ->
+                HomecomingDayStore.DiaryEntry(
+                    0, "sean", d.title, d.content,
+                    if (d.createdAtMs > 0) d.createdAtMs else System.currentTimeMillis()
+                )
+            }
             boardNotes = HomecomingDayStore.boardNotes(context)
             memories = HomecomingDayStore.memoriesOfDay(context, ::dayKey, "")
         }
@@ -77,11 +86,8 @@ fun UsScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(HomecomingColors.IceBlueLight, Color.White))
-            )
             .verticalScroll(rememberScrollState())
-            .padding(18.dp)
+            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 112.dp)
     ) {
         Text("我们", fontSize = 22.sp, color = HomecomingColors.Ink)
         Text("日历时光机 · 左右滑月份，点一天回去看看", fontSize = 12.sp, color = HomecomingColors.InkSoft)
