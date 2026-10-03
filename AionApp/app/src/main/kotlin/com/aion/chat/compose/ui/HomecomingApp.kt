@@ -4,6 +4,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
+import com.aion.chat.compose.data.SettingsBg
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,12 +27,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -76,44 +83,70 @@ fun HomecomingApp() {
         }
     }
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        bottomBar = {
-            if (current != "splash") {
-                HomecomingBottomBar(current = current, onSelect = onSelect)
-            }
+    // ── 全局背景：所有页面浮在同一张图上，设置换一次全 App 生效 ──
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    val bgStamp = SettingsBg.stamp
+    val bgBitmap = remember(bgStamp) { SettingsBg.loadBitmap(appContext)?.asImageBitmap() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 背景层
+        if (bgBitmap != null) {
+            Image(
+                bitmap = bgBitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(HomecomingColors.IceBlueLight, Color.White, HomecomingColors.IceBlue.copy(alpha = 0.30f))
+                        )
+                    )
+            )
         }
-    ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = "splash",
-            modifier = Modifier.fillMaxSize()
-        ) {
-            composable("splash") {
-                SplashScreen(days = com.aion.chat.compose.data.HomecomingData.daysTogether(), onDone = {
-                    current = HomeTab.Home.route
-                    navController.navigate(HomeTab.Home.route) {
-                        popUpTo("splash") { inclusive = true }
-                        launchSingleTop = true
-                    }
-                })
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            bottomBar = {
+                if (current != "splash") {
+                    HomecomingBottomBar(current = current, onSelect = onSelect)
+                }
             }
-            // 回家页背景全屏铺到底（导航胶囊浮在背景上），其余页正常避开导航
-            composable(HomeTab.Home.route) {
-                Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) { HomeScreen() }
-            }
-            composable(HomeTab.Chat.route) {
-                Box(Modifier.fillMaxSize().padding(padding)) { ChatScreen() }
-            }
-            composable(HomeTab.Moments.route) {
-                Box(Modifier.fillMaxSize().padding(padding)) { MomentsScreen() }
-            }
-            composable(HomeTab.Us.route) {
-                Box(Modifier.fillMaxSize().padding(padding)) { UsScreen() }
-            }
-            composable("settings") { SettingsScreen() }
-            composable(HomeTab.More.route) {
-                Box(Modifier.fillMaxSize().padding(padding)) { MoreScreen(onOpenSettings = { navController.navigate("settings") }) }
+        ) { padding ->
+            NavHost(
+                navController = navController,
+                startDestination = "splash",
+                modifier = Modifier.fillMaxSize()
+            ) {
+                composable("splash") {
+                    SplashScreen(days = com.aion.chat.compose.data.HomecomingData.daysTogether(), onDone = {
+                        current = HomeTab.Home.route
+                        navController.navigate(HomeTab.Home.route) {
+                            popUpTo("splash") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    })
+                }
+                composable(HomeTab.Home.route) {
+                    Box(Modifier.fillMaxSize()) { HomeScreen() }
+                }
+                composable(HomeTab.Chat.route) {
+                    Box(Modifier.fillMaxSize()) { ChatScreen() }
+                }
+                composable(HomeTab.Moments.route) {
+                    Box(Modifier.fillMaxSize()) { MomentsScreen() }
+                }
+                composable(HomeTab.Us.route) {
+                    Box(Modifier.fillMaxSize()) { UsScreen() }
+                }
+                composable("settings") { SettingsScreen() }
+                composable(HomeTab.More.route) {
+                    Box(Modifier.fillMaxSize()) { MoreScreen(onOpenSettings = { navController.navigate("settings") }) }
+                }
             }
         }
     }
