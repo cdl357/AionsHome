@@ -44,7 +44,9 @@ object HomecomingMomentsStore {
         val attachments: List<String>,
         val createdAt: Long,
         val likes: List<String>,          // author 列表
-        val comments: List<Comment>
+        val comments: List<Comment>,
+        val remoteId: String? = null,     // Supabase 行 id（本地独有动态为 null）
+        val localRowId: Long? = null      // 配对的本地行（远端动态的赞/评/配图挂在这行上）
     )
 
     data class Comment(val id: Long, val author: String, val content: String, val createdAt: Long)

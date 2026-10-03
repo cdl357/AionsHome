@@ -77,14 +77,71 @@ object SupabaseClient {
             conn.responseCode in 200..299
         } catch (e: Exception) { false }
     }
+
+    /** DELETE（按过滤条件删行）。 */
+    suspend fun delete(table: String, filter: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "$URL/rest/v1/$table?$filter"
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "DELETE"
+            conn.setRequestProperty("apikey", ANON_KEY)
+            conn.setRequestProperty("Authorization", "Bearer $ANON_KEY")
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 15_000
+            conn.responseCode in 200..299
+        } catch (e: Exception) { false }
+    }
 }
+
+/** Supabase Storage（朋友圈配图）。桶 moments 不存在/无权限时返回 null，调用方降级为仅本地保存。 */
+object SupabaseStorage {
+
+    suspend fun uploadMomentImage(bytes: ByteArray): String? = withContext(Dispatchers.IO) {
+        try {
+            val name = "m_" + System.currentTimeMillis() + "_" + (0..999).random() + ".jpg"
+            val conn = URL(SupabaseClient.URL + "/storage/v1/object/moments/" + name)
+                .openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("apikey", SupabaseClient.ANON_KEY)
+            conn.setRequestProperty("Authorization", "Bearer " + SupabaseClient.ANON_KEY)
+            conn.setRequestProperty("Content-Type", "image/jpeg")
+            conn.doOutput = true
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 30_000
+            conn.outputStream.use { it.write(bytes) }
+            if (conn.responseCode in 200..299) {
+                SupabaseClient.URL + "/storage/v1/object/public/moments/" + name
+            } else null
+        } catch (e: Exception) { null }
+    }
+}
+
+/** Supabase 返回的 ISO 时间（2026-10-02T15:04:05.123+00:00 / Z / 空格分隔都兼容）转毫秒；失败返回 0。 */
+fun parseSupabaseTime(iso: String): Long = try {
+    val cleaned = iso.trim().replace(Regex("\\.\\d+"), "").replace(" ", "T")
+    when {
+        cleaned.endsWith("Z") -> {
+            val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+            f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            f.parse(cleaned)?.time ?: 0L
+        }
+        Regex("[+-]\\d{2}:?\\d{2}$").containsMatchIn(cleaned) ->
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US)
+                .parse(cleaned)?.time ?: 0L
+        else -> {
+            val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            f.parse(cleaned)?.time ?: 0L
+        }
+    }
+} catch (e: Exception) { 0L }
 
 /** 朋友圈 + 日记 Supabase 数据层。 */
 object SupabaseMomentsStore {
 
     data class RemoteMoment(
         val id: String, val author: String, val content: String,
-        val imageUrl: String?, val createdAt: String
+        val imageUrl: String?, val createdAt: String, val createdAtMs: Long
     )
 
     data class RemoteDiary(
@@ -108,12 +165,14 @@ object SupabaseMomentsStore {
             val arr = SupabaseClient.get("moments", "select=*&order=created_at.desc&limit=50")
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
+                val created = o.optString("created_at", "")
                 RemoteMoment(
                     id = o.optString("id"),
                     author = mapAuthor(o.optString("author", "")),
                     content = o.optString("content", ""),
-                    imageUrl = o.optString("image_url", null.takeIf { false } ?: ""),
-                    createdAt = o.optString("created_at", "")
+                    imageUrl = o.optString("image_url", "").takeIf { it.isNotBlank() },
+                    createdAt = created,
+                    createdAtMs = parseSupabaseTime(created)
                 )
             }
         } catch (e: Exception) { emptyList() }
@@ -137,13 +196,15 @@ object SupabaseMomentsStore {
         } catch (e: Exception) { emptyList() }
     }
 
-    /** 发朋友圈（写入 Supabase）。 */
-    suspend fun postMoment(content: String, author: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject().put("author", author).put("content", content)
-            SupabaseClient.post("moments", body)
-        } catch (e: Exception) { false }
-    }
+    /** 发朋友圈（写入 Supabase；imageUrl 为 Storage 公网地址，未上传成功时不填）。 */
+    suspend fun postMoment(content: String, author: String, imageUrl: String = ""): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().put("author", author).put("content", content)
+                if (imageUrl.isNotBlank()) body.put("image_url", imageUrl)
+                SupabaseClient.post("moments", body)
+            } catch (e: Exception) { false }
+        }
 }
 
 /** SupabaseQuoteSync 使用同一 URL/Key，值从 SupabaseClient 读取。 */

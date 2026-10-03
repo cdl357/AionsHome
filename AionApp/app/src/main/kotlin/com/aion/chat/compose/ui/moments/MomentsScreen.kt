@@ -94,26 +94,48 @@ fun MomentsScreen() {
         if (f.exists()) BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() else null
     }
 
+    /**
+     * 远端动态 + 本地赞/评/配图合并：
+     * - 时间用 Supabase 的 created_at（不再全显示"刚刚"）
+     * - Yuri 的赞、Sean 的惰性评论挂在本地表（key=远端 id 的 hash），刷新后仍在
+     * - 本地独有动态（旧版本发的 / 云端未连上的兜底）与远端按 内容 去重后按时间排
+     */
     fun reload() {
         scope.launch(Dispatchers.IO) {
-            val remote = com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
+            val remote = runCatching {
+                com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
+            }.getOrDefault(emptyList())
+            val local = runCatching { HomecomingMomentsStore.feed(context) }.getOrDefault(emptyList())
+            val merged = mutableListOf<Moment>()
+            val remoteKeys = mutableSetOf<String>()
+            remote.forEach { rm ->
+                remoteKeys.add(rm.author + "|" + rm.content)
+                val hid = rm.id.hashCode().toLong()
+                val paired = local.firstOrNull { it.id == hid }
+                merged.add(
+                    Moment(
+                        id = hid, remoteId = rm.id,
+                        author = rm.author, content = rm.content,
+                        attachments = listOfNotNull(rm.imageUrl) + (paired?.attachments ?: emptyList()),
+                        createdAt = rm.createdAtMs,
+                        likes = paired?.likes ?: emptyList(),
+                        comments = paired?.comments ?: emptyList(),
+                        localRowId = paired?.id
+                    )
+                )
+            }
+            val localOnly = local
+                .filter { it.author + "|" + it.content !in remoteKeys }
+                .map { it.copy(remoteId = null, localRowId = it.id) }
+            val all = (merged + localOnly).sortedByDescending { it.createdAt }
             main.post {
                 feed.clear()
-                feed.addAll(remote.map { rm ->
-                    Moment(
-                        id = rm.id.hashCode().toLong(),
-                        author = rm.author,
-                        content = rm.content,
-                        attachments = if (rm.imageUrl?.isNotBlank() == true) listOfNotNull(rm.imageUrl) else emptyList(),
-                        createdAt = System.currentTimeMillis(), // Supabase ISO 日期解析在渲染层做
-                        likes = emptyList(), comments = emptyList()
-                    )
-                })
+                feed.addAll(all)
             }
         }
     }
 
-    LaunchedEffect(reloadKey.value) { withContext(Dispatchers.IO) { reload() } }
+    LaunchedEffect(reloadKey.value) { reload() }
 
     // ── 发布弹窗状态 ──
     val showCompose = remember { mutableStateOf(false) }
@@ -122,17 +144,8 @@ fun MomentsScreen() {
     val composePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 4)
     ) { uris ->
-        uris.take(4).forEach { uri ->
-            scope.launch(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val bytes = input.readBytes()
-                        HomecomingMomentsStore.saveMomentImage(context, bytes)
-                    }
-                }
-                main.post { /* reload cover */ }
-            }
-        }
+        composeImages.clear()
+        composeImages.addAll(uris.take(4))
     }
 
     // ── 评论状态 ──
@@ -292,8 +305,17 @@ fun MomentsScreen() {
                     reload()
                 },
                 onDeleteMoment = {
-                    HomecomingMomentsStore.deleteMoment(context, moment.id)
-                    reload()
+                    scope.launch(Dispatchers.IO) {
+                        if (moment.remoteId != null) {
+                            runCatching {
+                                com.aion.chat.compose.data.SupabaseClient.delete(
+                                    "moments", "id=eq." + moment.remoteId
+                                )
+                            }
+                        }
+                        HomecomingMomentsStore.deleteMoment(context, moment.localRowId ?: moment.id)
+                        main.post { reload() }
+                    }
                 }
             )
             // 分割线
@@ -340,21 +362,31 @@ fun MomentsScreen() {
                                 return@TextButton
                             }
                             scope.launch(Dispatchers.IO) {
-                                val saved = composeImages.mapNotNull { uri ->
+                                val bytesList = composeImages.mapNotNull { uri ->
                                     runCatching {
-                                        context.contentResolver.openInputStream(uri)?.use { input ->
-                                            val bytes = input.readBytes()
-                                            HomecomingMomentsStore.saveMomentImage(context, bytes)
-                                        }
+                                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                                     }.getOrNull()
                                 }
-                                val posted = com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(text, "yuri")
+                                // 第一张传 Storage（桶没建/没权限时返回 null，自动降级为仅本地）
+                                val remoteUrl = bytesList.firstOrNull()?.let {
+                                    com.aion.chat.compose.data.SupabaseStorage.uploadMomentImage(it)
+                                }
+                                // 本地留档：赞/评/配图都挂本地表，断网也有得看
+                                val localPaths = bytesList.mapNotNull { bytes ->
+                                    runCatching { HomecomingMomentsStore.saveMomentImage(context, bytes) }.getOrNull()
+                                }
+                                HomecomingMomentsStore.addMoment(context, "yuri", text, localPaths)
+                                val posted = com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(text, "yuri", remoteUrl ?: "")
                                 main.post {
                                     composeText.value = ""
                                     composeImages.clear()
                                     showCompose.value = false
                                     reload()
-                                    
+                                    Toast.makeText(
+                                        context,
+                                        if (posted) "已发布" else "已存本地（云端未连上）",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         }) { Text("发布", color = Color(0xFF576B95)) }
@@ -387,16 +419,12 @@ fun MomentCard(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row {
-            // 头像
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFF0F0F0)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(avatarInitial, fontSize = 18.sp, color = Color(0xFF576B95), fontWeight = FontWeight.Medium)
-            }
+            // 头像（真实照片，全 App 共用；未设置时首字母占位）
+            AvatarPhoto(
+                who = if (moment.author == "user") "yuri" else "sean",
+                initial = avatarInitial,
+                size = 44.dp, strokeWidth = 1.dp
+            )
             Spacer(Modifier.width(10.dp))
             // 右列
             Column(modifier = Modifier.weight(1f)) {
@@ -407,27 +435,18 @@ fun MomentCard(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                // 图片
+                // 图片（本地路径或 http 地址都能显示；大图降采样，远端图落盘缓存）
                 if (moment.attachments.isNotEmpty()) {
                     Column(modifier = Modifier.padding(top = 8.dp)) {
-                        moment.attachments.take(3).forEach { path ->
-                            val bmp = remember(path) {
-                                runCatching {
-                                    BitmapFactory.decodeFile(path)
-                                }.getOrNull()
-                            }
-                            if (bmp != null) {
-                                Image(
-                                    bitmap = bmp.asImageBitmap(),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(180.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .padding(vertical = 2.dp)
-                                )
-                            }
+                        moment.attachments.take(3).forEach { ref ->
+                            MomentImage(
+                                ref = ref,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .padding(vertical = 2.dp)
+                            )
                         }
                     }
                 }
@@ -527,4 +546,53 @@ private fun relTime(ts: Long): String {
         m < 43200 -> "${m / 1440} 天前"
         else -> java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA).format(java.util.Date(ts))
     }
+}
+
+/** 朋友圈配图：本地路径直接解码；http(s) 先落盘缓存再解码；加载中灰底占位。 */
+@Composable
+fun MomentImage(ref: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bmp = remember(ref) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(ref) {
+        bmp.value = withContext(Dispatchers.IO) { loadMomentBitmap(context, ref) }
+    }
+    val loaded = bmp.value
+    if (loaded != null) {
+        Image(
+            bitmap = loaded.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+        )
+    } else {
+        Box(modifier.background(Color(0xFFF2F2F2)))
+    }
+}
+
+private fun loadMomentBitmap(context: android.content.Context, ref: String): Bitmap? = runCatching {
+    if (ref.startsWith("http")) {
+        val cacheDir = File(File(context.filesDir, "moments"), "cache").apply { mkdirs() }
+        val cache = File(cacheDir, "%08x.jpg".format(ref.hashCode()))
+        if (!cache.exists() || cache.length() == 0L) {
+            val conn = java.net.URL(ref).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 20000
+            conn.instanceFollowRedirects = true
+            if (conn.responseCode !in 200..299) return@runCatching null
+            conn.inputStream.use { input -> cache.outputStream().use { input.copyTo(it) } }
+        }
+        decodeSampled(cache)
+    } else {
+        decodeSampled(File(ref))
+    }
+}.getOrNull()
+
+/** 大图降采样：长边压到 ~1280px 内，避免整图解码 OOM。 */
+private fun decodeSampled(f: File): Bitmap? {
+    if (!f.exists() || f.length() == 0L) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(f.absolutePath, bounds)
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= 1280 || bounds.outHeight / (sample * 2) >= 1280) sample *= 2
+    return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
 }
