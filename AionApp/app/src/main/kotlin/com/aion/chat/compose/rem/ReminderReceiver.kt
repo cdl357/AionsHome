@@ -61,7 +61,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     /** 用聊天引擎生成 Sean 的主动戳（无线路/失败返回 null，不伪造）。 */
     private suspend fun generateSeanPoke(context: Context, reminderText: String): String? {
-        val wiring = HomecomingChatWiring(context)
+        val wiring = HomecomingChatWiring.safeCreate(context) ?: return null
         if (!wiring.hasRoute()) return null
         var reply: String? = null
         val requestId = "poke_" + System.currentTimeMillis()

@@ -155,7 +155,13 @@ object SettingsBg {
     private fun decode(f: File): android.graphics.Bitmap? {
         if (!f.exists()) return null
         return runCatching {
-            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+            // 先量尺寸再按长边 ~2048 降采样：相册原图直接全尺寸解码会 OOM
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(f.absolutePath, bounds)
+            var sample = 1
+            val maxEdge = maxOf(bounds.outWidth, bounds.outHeight)
+            while (maxEdge / (sample * 2) >= 2048) sample *= 2
+            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
             android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts)
         }.getOrNull()
     }

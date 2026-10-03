@@ -84,14 +84,15 @@ fun MomentsScreen() {
     val reloadKey = remember { mutableStateOf(0) }
     val coverVersion = remember { mutableStateOf(0L) }
 
-    val wiring = remember { HomecomingChatWiring(context) }
-    val route = remember { HomecomingRouteConfig.mainRoute(context) }
-    val modelKey = remember { wiring.mainModelKey() }
-    val routeReady = route != null
+    val routeStamp = remember { HomecomingRouteConfig.stamp(context) }
+    val wiring = remember(routeStamp) { HomecomingChatWiring.safeCreate(context) }
+    val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
+    val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
+    val routeReady = wiring != null && route != null
 
     val coverBitmap = remember(coverVersion.value) {
         val f = File(context.filesDir, "moments_cover.jpg")
-        if (f.exists()) BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() else null
+        runCatching { decodeSampled(f) }.getOrNull()?.asImageBitmap()
     }
 
     /**
@@ -153,12 +154,13 @@ fun MomentsScreen() {
     val commentDraft = remember { mutableStateOf("") }
 
     fun askSeanReply(momentId: Long, momentContent: String, userLine: String) {
+        val w = wiring ?: return
         if (!routeReady) return
         scope.launch(Dispatchers.IO) {
             delay(1500L)
             try {
                 var reply: String? = null
-                wiring.engine.send(
+                w.engine.send(
                     HomecomingChatEngine.ChatCommand(
                         "req_mm_" + System.currentTimeMillis(),
                         "moments_private", "sean", "user",

@@ -74,5 +74,14 @@ class HomecomingChatWiring(context: Context) {
         const val USER = "user"
 
         fun chatBackgroundFile(context: Context): File = File(context.filesDir, "chat_bg.jpg")
+
+        /**
+         * 唯一合法的构造入口：引擎组装（数据库/身份/记忆/线路加密）任一步失败
+         * 都只记崩溃日志并返回 null，绝不把异常抛进 UI 合成期（点页闪退的根源）。
+         */
+        fun safeCreate(context: Context): HomecomingChatWiring? =
+            runCatching { HomecomingChatWiring(context) }
+                .onFailure { AppCrashLog.write(context, it) }
+                .getOrNull()
     }
 }
