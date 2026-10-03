@@ -95,10 +95,22 @@ fun MomentsScreen() {
     }
 
     fun reload() {
-        try {
-            val list = HomecomingMomentsStore.feed(context)
-            main.post { feed.clear(); feed.addAll(list) }
-        } catch (e: Exception) { /* 安静 */ }
+        scope.launch(Dispatchers.IO) {
+            val remote = com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
+            main.post {
+                feed.clear()
+                feed.addAll(remote.map { rm ->
+                    Moment(
+                        id = rm.id.hashCode().toLong(),
+                        author = rm.author,
+                        content = rm.content,
+                        attachments = if (rm.imageUrl?.isNotBlank() == true) listOfNotNull(rm.imageUrl) else emptyList(),
+                        createdAt = System.currentTimeMillis(), // Supabase ISO 日期解析在渲染层做
+                        likes = emptyList(), comments = emptyList()
+                    )
+                })
+            }
+        }
     }
 
     LaunchedEffect(reloadKey.value) { withContext(Dispatchers.IO) { reload() } }
@@ -336,13 +348,13 @@ fun MomentsScreen() {
                                         }
                                     }.getOrNull()
                                 }
-                                val newId = HomecomingMomentsStore.addMoment(context, "user", text, saved)
+                                val posted = com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(text, "yuri")
                                 main.post {
                                     composeText.value = ""
                                     composeImages.clear()
                                     showCompose.value = false
                                     reload()
-                                    if (newId > 0) askSeanReply(newId, text, "")
+                                    
                                 }
                             }
                         }) { Text("发布", color = Color(0xFF576B95)) }

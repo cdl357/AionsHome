@@ -68,7 +68,7 @@ fun UsScreen() {
     LaunchedEffect(reloadKey) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             anniversaries = HomecomingDayStore.anniversaries(context)
-            diaries = HomecomingDayStore.diaries(context)
+            diaries = HomecomingDayStore.diaries(context) + com.aion.chat.compose.data.SupabaseMomentsStore.fetchSeanDiaries().map { d -> HomecomingDayStore.DiaryEntry(0, "sean", d.title, d.content, System.currentTimeMillis()) }
             boardNotes = HomecomingDayStore.boardNotes(context)
             memories = HomecomingDayStore.memoriesOfDay(context, ::dayKey, "")
         }
