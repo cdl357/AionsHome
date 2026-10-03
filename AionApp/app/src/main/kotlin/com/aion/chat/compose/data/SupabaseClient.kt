@@ -12,110 +12,91 @@ import java.net.URL
 /**
  * Supabase REST 客户端（anon key）。
  * 所有远端数据（朋友圈/日记/情话）统一走这里，不引第三方 SDK。
+ * 线路策略：大陆宽带/蜂窝直连 supabase.co（Cloudflare 线路）常被 TLS 拦截，
+ * 所以先走自家 VPS 中转（nginx 只转发这个 Supabase 项目），失败再直连兜底。
  */
 object SupabaseClient {
 
     const val URL = "https://byqqwypdfiwvalozihgs.supabase.co"
     const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NTQwODAsImV4cCI6MjA5OTIzMDA4MH0.Gacxi6TVGzL3pNn-KdUHkPTYW8dvSpt7A05FpmkZlyc"
 
+    /** VPS 中转（134.175.7.196，nginx 18443 → /supabase/）。端口要在云控制台安全组放行。 */
+    const val RELAY_URL = "http://134.175.7.196:18443/supabase"
+
+    private val BASES = arrayOf(RELAY_URL, URL)
+
     val configured: Boolean get() = URL.isNotBlank() && ANON_KEY.isNotBlank()
+
+    /**
+     * 依次尝试中转 → 直连。网络异常才换下一条线路；
+     * 4xx（RLS 拦截/表不存在/冲突）换线结果一样，直接终止返回 null。
+     */
+    internal suspend fun request(
+        path: String,
+        method: String,
+        body: ByteArray? = null,
+        contentType: String = "application/json",
+        parse: ((HttpURLConnection) -> Any?)? = null
+    ): Any? = withContext(Dispatchers.IO) {
+        for (base in BASES) {
+            try {
+                val conn = URL("$base/$path").openConnection() as HttpURLConnection
+                conn.requestMethod = method
+                conn.setRequestProperty("apikey", ANON_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $ANON_KEY")
+                if (body != null) {
+                    conn.setRequestProperty("Content-Type", contentType)
+                    conn.setRequestProperty("Prefer", "return=minimal")
+                    conn.doOutput = true
+                }
+                conn.connectTimeout = 8_000
+                conn.readTimeout = 20_000
+                if (body != null) conn.outputStream.use { it.write(body) }
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    if (parse != null) return@withContext parse(conn) else return@withContext true
+                }
+                if (code in 400..499) return@withContext null
+            } catch (e: Exception) { /* 这条线路不通 → 试下一条 */ }
+        }
+        null
+    }
 
     /**
      * GET 请求。成功返回 JSONArray（可能为空数组＝表里真没数据）；
      * 失败（网络不通 / HTTP 非 2xx / RLS 拦截）返回 null —— 调用方据此区分「连不上」和「没数据」。
      */
     suspend fun get(table: String, query: String = ""): JSONArray? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val url = "$URL/rest/v1/$table${if (query.isNotBlank()) "?$query" else ""}"
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", ANON_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $ANON_KEY")
-                conn.setRequestProperty("Accept", "application/json")
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 15_000
-                val code = conn.responseCode
-                if (code in 200..299) {
-                    JSONArray(conn.inputStream.bufferedReader().readText())
-                } else {
-                    null
-                }
-            } catch (e: Exception) { null }
-        }
+        val r = request(
+            "rest/v1/$table" + (if (query.isNotBlank()) "?$query" else ""),
+            "GET"
+        ) { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
+        return r as? JSONArray
     }
 
     /** POST（插入一行）。 */
-    suspend fun post(table: String, body: JSONObject): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val url = "$URL/rest/v1/$table"
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("apikey", ANON_KEY)
-            conn.setRequestProperty("Authorization", "Bearer $ANON_KEY")
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Prefer", "return=minimal")
-            conn.doOutput = true
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 15_000
-            conn.outputStream.write(body.toString().toByteArray(Charsets.UTF_8))
-            conn.responseCode in 200..299
-        } catch (e: Exception) { false }
-    }
+    suspend fun post(table: String, body: JSONObject): Boolean =
+        request("rest/v1/$table", "POST", body.toString().toByteArray(Charsets.UTF_8)) != null
 
     /** PATCH（更新）。 */
-    suspend fun patch(table: String, filter: String, body: JSONObject): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val url = "$URL/rest/v1/$table?$filter"
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "PATCH"
-            conn.setRequestProperty("apikey", ANON_KEY)
-            conn.setRequestProperty("Authorization", "Bearer $ANON_KEY")
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Prefer", "return=minimal")
-            conn.doOutput = true
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 15_000
-            conn.outputStream.write(body.toString().toByteArray(Charsets.UTF_8))
-            conn.responseCode in 200..299
-        } catch (e: Exception) { false }
-    }
+    suspend fun patch(table: String, filter: String, body: JSONObject): Boolean =
+        request("rest/v1/$table?$filter", "PATCH", body.toString().toByteArray(Charsets.UTF_8)) != null
 
     /** DELETE（按过滤条件删行）。 */
-    suspend fun delete(table: String, filter: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val url = "$URL/rest/v1/$table?$filter"
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "DELETE"
-            conn.setRequestProperty("apikey", ANON_KEY)
-            conn.setRequestProperty("Authorization", "Bearer $ANON_KEY")
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 15_000
-            conn.responseCode in 200..299
-        } catch (e: Exception) { false }
-    }
+    suspend fun delete(table: String, filter: String): Boolean =
+        request("rest/v1/$table?$filter", "DELETE") != null
 }
 
 /** Supabase Storage（朋友圈配图）。桶 moments 不存在/无权限时返回 null，调用方降级为仅本地保存。 */
 object SupabaseStorage {
 
-    suspend fun uploadMomentImage(bytes: ByteArray): String? = withContext(Dispatchers.IO) {
-        try {
-            val name = "m_" + System.currentTimeMillis() + "_" + (0..999).random() + ".jpg"
-            val conn = URL(SupabaseClient.URL + "/storage/v1/object/moments/" + name)
-                .openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("apikey", SupabaseClient.ANON_KEY)
-            conn.setRequestProperty("Authorization", "Bearer " + SupabaseClient.ANON_KEY)
-            conn.setRequestProperty("Content-Type", "image/jpeg")
-            conn.doOutput = true
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 30_000
-            conn.outputStream.use { it.write(bytes) }
-            if (conn.responseCode in 200..299) {
-                SupabaseClient.URL + "/storage/v1/object/public/moments/" + name
-            } else null
-        } catch (e: Exception) { null }
+    suspend fun uploadMomentImage(bytes: ByteArray): String? {
+        val name = "m_" + System.currentTimeMillis() + "_" + (0..999).random() + ".jpg"
+        val ok = SupabaseClient.request(
+            "storage/v1/object/moments/$name", "POST", bytes, "image/jpeg"
+        ) != null
+        // 表里存直连规范地址；展示端下载时中转/直连两条线路都会试
+        return if (ok) SupabaseClient.URL + "/storage/v1/object/public/moments/" + name else null
     }
 }
 

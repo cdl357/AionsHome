@@ -127,7 +127,7 @@ fun UsScreen() {
                         hasDiary(diaries, y, m, d) || hasMem(memories, y, m, d) || hasAnniv(anniversaries, y, m, d)
                     },
                     anniversaryOf = { y, m, d -> annivOn(anniversaries, y, m, d) },
-                    onDayClick = { date -> selected = date; showDrawer = true }
+                    onDayClick = { date -> selected = date; drawerAction = ""; showDrawer = true }
                 )
                 Text(
                     "左右滑动翻月 · 有内容的日子带小圆点 · 纪念日有专属图标",
@@ -137,23 +137,22 @@ fun UsScreen() {
             }
         }
 
-        // ── 新建 ──
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            TextButton(onClick = { selected = LocalDate.now(); showDrawer = true; drawerAction = "diary" }) {
-                Text("写一篇日记", color = HomecomingColors.Ink)
-            }
-            TextButton(onClick = { selected = LocalDate.now(); showDrawer = true; drawerAction = "anniversary" }) {
-                Text("钉一个纪念日", color = HomecomingColors.Ink)
-            }
-        }
-
-        // ── 那天预览（选中即显示） ──
+        // ── 那天（点了具体日期才出现：预览 + 在这天新建，定稿 §4） ──
         selected?.let { date ->
             Text(
                 "那天 · ${date.monthValue} 月 ${date.dayOfMonth} 日" + if (date == LocalDate.now()) "（今天）" else "",
                 fontSize = 14.sp, fontWeight = FontWeight.Medium, color = HomecomingColors.Ink,
-                modifier = Modifier.padding(top = 6.dp, bottom = 6.dp)
+                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
             )
+            // 新建入口只属于选中的那天
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = { drawerAction = "diary"; showDrawer = true }) {
+                    Text("在这天写日记", color = HomecomingColors.Ink)
+                }
+                TextButton(onClick = { drawerAction = "anniversary"; showDrawer = true }) {
+                    Text("在这天钉纪念日", color = HomecomingColors.Ink)
+                }
+            }
             val dayAnniv = annivOn(anniversaries, date.year, date.monthValue, date.dayOfMonth)
             if (dayAnniv != null) {
                 FrostCard {

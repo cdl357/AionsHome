@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -25,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,6 +42,7 @@ import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.FrostCard
 import com.aion.chat.compose.data.AppCrashLog
+import com.aion.chat.compose.data.HomecomingMcpStore
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.theme.HomecomingThemeState
 
@@ -230,6 +233,168 @@ fun SettingsScreen() {
             if (routeSaved.value) {
                 Text("已保存。回「聊天」页即可开聊。", fontSize = 11.sp, color = HomecomingColors.Ok)
             }
+        }
+
+        // ── MCP 服务器管理：先把配置攒好，聊天引擎的工具接线下一阶段开放 ──
+        val mcps = remember {
+            mutableStateListOf<HomecomingMcpStore.McpServer>().apply { addAll(HomecomingMcpStore.list(context)) }
+        }
+        fun reloadMcp() { mcps.clear(); mcps.addAll(HomecomingMcpStore.list(context)) }
+        val mcpEditing = remember { mutableStateOf<HomecomingMcpStore.McpServer?>(null) }
+        val showMcpDialog = remember { mutableStateOf(false) }
+
+        FrostCard {
+            Text("MCP 服务器", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text(
+                "要接的 MCP 都配在这里；聊天引擎会用它们当工具（接线下一阶段开放）",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft
+            )
+            Spacer(Modifier.height(8.dp))
+            if (mcps.isEmpty()) {
+                Text("还没有配置，点下面「添加」", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+            }
+            mcps.forEach { m ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { mcpEditing.value = m; showMcpDialog.value = true }
+                    ) {
+                        Text(
+                            m.name + if (m.enabled) "" else "（已停用）",
+                            fontSize = 14.sp, color = HomecomingColors.Ink
+                        )
+                        Text(
+                            if (m.type == "http") m.url else (m.command + " " + m.args),
+                            fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                            maxLines = 1
+                        )
+                    }
+                    Text(
+                        if (m.enabled) "停用" else "启用",
+                        fontSize = 12.sp, color = HomecomingColors.Accent,
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .clickable { HomecomingMcpStore.toggle(context, m.id); reloadMcp() }
+                    )
+                }
+            }
+            TextButton(onClick = { mcpEditing.value = null; showMcpDialog.value = true }) {
+                Text("+ 添加 MCP 服务器", color = HomecomingColors.Accent)
+            }
+            if (mcps.isNotEmpty()) {
+                TextButton(onClick = {
+                    runCatching {
+                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        cm.setPrimaryClip(
+                            android.content.ClipData.newPlainText(
+                                "mcp", HomecomingMcpStore.exportJson(mcps.toList())
+                            )
+                        )
+                        Toast.makeText(context, "标准 MCP 配置已复制，可贴到桌面端/后端", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("复制为标准配置 JSON", color = HomecomingColors.InkSoft, fontSize = 12.sp) }
+            }
+        }
+
+        if (showMcpDialog.value) {
+            val editing = mcpEditing.value
+            val dlgName = remember(editing) { mutableStateOf(editing?.name ?: "") }
+            val dlgHttp = remember(editing) { mutableStateOf(editing?.type != "stdio") }
+            val dlgUrl = remember(editing) { mutableStateOf(editing?.url ?: "") }
+            val dlgCommand = remember(editing) { mutableStateOf(editing?.command ?: "") }
+            val dlgArgs = remember(editing) { mutableStateOf(editing?.args ?: "") }
+            AlertDialog(
+                onDismissRequest = { showMcpDialog.value = false },
+                title = {
+                    Text(
+                        if (editing == null) "添加 MCP 服务器" else "编辑 MCP 服务器",
+                        fontSize = 16.sp, color = HomecomingColors.Ink
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = dlgName.value, onValueChange = { dlgName.value = it },
+                            label = { Text("名称（如 淘宝 MCP）") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { dlgHttp.value = true }) {
+                                Text(if (dlgHttp.value) "● 远程 HTTP" else "○ 远程 HTTP", color = HomecomingColors.Accent)
+                            }
+                            TextButton(onClick = { dlgHttp.value = false }) {
+                                Text(if (!dlgHttp.value) "● 本地命令" else "○ 本地命令", color = HomecomingColors.Accent)
+                            }
+                        }
+                        if (dlgHttp.value) {
+                            OutlinedTextField(
+                                value = dlgUrl.value, onValueChange = { dlgUrl.value = it },
+                                label = { Text("URL（如 https://xx.example/mcp）") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                        } else {
+                            OutlinedTextField(
+                                value = dlgCommand.value, onValueChange = { dlgCommand.value = it },
+                                label = { Text("命令（如 npx / python）") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = dlgArgs.value, onValueChange = { dlgArgs.value = it },
+                                label = { Text("参数（空格分隔，如 -y mcp-xx）") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                        }
+                        Text(
+                            "本地命令型 MCP 在手机上跑不了，先存配置；到后端/桌面端用时用「复制标准配置」",
+                            fontSize = 10.sp, color = HomecomingColors.InkSoft
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val nm = dlgName.value.trim()
+                        if (nm.isEmpty()) {
+                            Toast.makeText(context, "名称要填一个", Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        HomecomingMcpStore.upsert(
+                            context,
+                            HomecomingMcpStore.McpServer(
+                                id = editing?.id ?: HomecomingMcpStore.newId(),
+                                name = nm,
+                                type = if (dlgHttp.value) "http" else "stdio",
+                                url = dlgUrl.value.trim(),
+                                command = dlgCommand.value.trim(),
+                                args = dlgArgs.value.trim(),
+                                enabled = editing?.enabled ?: true
+                            )
+                        )
+                        reloadMcp()
+                        showMcpDialog.value = false
+                        Toast.makeText(context, "MCP 已保存", Toast.LENGTH_SHORT).show()
+                    }) { Text("保存", color = HomecomingColors.Accent) }
+                },
+                dismissButton = {
+                    Row {
+                        if (editing != null) {
+                            TextButton(onClick = {
+                                HomecomingMcpStore.remove(context, editing.id)
+                                reloadMcp()
+                                showMcpDialog.value = false
+                                Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
+                            }) { Text("删除", color = HomecomingColors.Danger) }
+                        }
+                        TextButton(onClick = { showMcpDialog.value = false }) {
+                            Text("取消", color = HomecomingColors.InkSoft)
+                        }
+                    }
+                }
+            )
         }
 
         FrostCard {

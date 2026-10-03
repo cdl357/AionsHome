@@ -290,7 +290,7 @@ fun MomentsScreen() {
                     .padding(horizontal = 12.dp, vertical = 9.dp)
             ) {
                 Text(
-                    "云端连不上，先显示手机里的内容（可能是网络到 Supabase 不通）",
+                    "云端读不到：网络不通或表权限未放行（详意见交接说明）",
                     fontSize = 12.sp, color = Color(0xFFB3554D),
                     modifier = Modifier.weight(1f)
                 )
@@ -602,20 +602,38 @@ fun MomentImage(ref: String, modifier: Modifier = Modifier) {
 
 private fun loadMomentBitmap(context: android.content.Context, ref: String): Bitmap? = runCatching {
     if (ref.startsWith("http")) {
-        val cacheDir = File(File(context.filesDir, "moments"), "cache").apply { mkdirs() }
-        val cache = File(cacheDir, "%08x.jpg".format(ref.hashCode()))
-        if (!cache.exists() || cache.length() == 0L) {
-            val conn = java.net.URL(ref).openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 8000
-            conn.readTimeout = 20000
-            conn.instanceFollowRedirects = true
-            if (conn.responseCode !in 200..299) return@runCatching null
-            conn.inputStream.use { input -> cache.outputStream().use { input.copyTo(it) } }
+        // 远端图：直连地址失败时换 VPS 中转线路再试
+        val candidates = mutableListOf(ref)
+        if (ref.startsWith(com.aion.chat.compose.data.SupabaseClient.URL)) {
+            candidates.add(
+                com.aion.chat.compose.data.SupabaseClient.RELAY_URL +
+                    ref.removePrefix(com.aion.chat.compose.data.SupabaseClient.URL)
+            )
         }
-        decodeSampled(cache)
+        var cache: File? = null
+        for (c in candidates) {
+            cache = fetchToCache(context, c) ?: continue
+            val bmp = decodeSampled(cache)
+            if (bmp != null) return@runCatching bmp
+        }
+        null
     } else {
         decodeSampled(File(ref))
     }
+}.getOrNull()
+
+private fun fetchToCache(context: android.content.Context, url: String): File? = runCatching {
+    val cacheDir = File(File(context.filesDir, "moments"), "cache").apply { mkdirs() }
+    val cache = File(cacheDir, "%08x.jpg".format(url.hashCode()))
+    if (!cache.exists() || cache.length() == 0L) {
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 20000
+        conn.instanceFollowRedirects = true
+        if (conn.responseCode !in 200..299) return@runCatching null
+        conn.inputStream.use { input -> cache.outputStream().use { input.copyTo(it) } }
+    }
+    cache
 }.getOrNull()
 
 /** 大图降采样：长边压到 ~1280px 内，避免整图解码 OOM。 */
