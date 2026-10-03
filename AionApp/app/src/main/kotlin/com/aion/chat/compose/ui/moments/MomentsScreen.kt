@@ -115,6 +115,13 @@ fun MomentsScreen() {
             }
             val remote = res.data ?: emptyList()
             val local = runCatching { HomecomingMomentsStore.feed(context) }.getOrDefault(emptyList())
+            // 评论是独立表：读得到就并入；读不到（权限/网络）静默降级，不影响动态主列表
+            val commentsRes = runCatching {
+                com.aion.chat.compose.data.SupabaseMomentsStore.fetchMomentComments()
+            }.getOrNull()
+            val cloudCommentsByMoment = if (commentsRes?.error == null) {
+                (commentsRes?.data ?: emptyList()).groupBy { it.momentId }
+            } else emptyMap()
             val merged = mutableListOf<Moment>()
             val remoteKeys = mutableSetOf<String>()
             remote.forEach { rm ->
@@ -126,10 +133,16 @@ fun MomentsScreen() {
                     if (rm.liked) add("sean")
                     if (rm.yuriLiked) add("yuri")
                 }
-                // 旧表 reply_content = 哥哥当时写的回应，作为 Sean 的评论展示
-                val remoteComments = if (rm.replyContent.isNotBlank()) {
-                    listOf(HomecomingMomentsStore.Comment(-1L - hid, "sean", rm.replyContent, rm.createdAtMs))
+                // 旧表 reply_content = 哥哥当时写的回应；id 落负数空间，不和本地表自增 id 撞
+                val seanReply = if (rm.replyContent.isNotBlank()) {
+                    listOf(HomecomingMomentsStore.Comment(Long.MIN_VALUE, "sean", rm.replyContent, rm.createdAtMs))
                 } else emptyList()
+                val cloudComments = (cloudCommentsByMoment[rm.id] ?: emptyList()).map { c ->
+                    HomecomingMomentsStore.Comment(
+                        Long.MIN_VALUE + (c.id.hashCode().toLong() and 0x7FFFFFFFL),
+                        c.author, c.content, c.createdAtMs
+                    )
+                }
                 merged.add(
                     Moment(
                         id = hid, remoteId = rm.id,
@@ -137,7 +150,9 @@ fun MomentsScreen() {
                         attachments = rm.imageUrls + (paired?.attachments ?: emptyList()),
                         createdAt = rm.createdAtMs,
                         likes = (remoteLikes + (paired?.likes ?: emptyList())).distinct(),
-                        comments = remoteComments + (paired?.comments ?: emptyList()),
+                        comments = (seanReply + cloudComments + (paired?.comments ?: emptyList()))
+                            .distinctBy { it.id }
+                            .sortedBy { it.createdAt },
                         localRowId = paired?.id
                     )
                 )
@@ -559,7 +574,8 @@ fun MomentCard(
                                     fontSize = 14.sp, color = Color(0xFF333333),
                                     modifier = Modifier.weight(1f)
                                 )
-                                if (c.author == "user") {
+                                // 只有本地表里的评论（真实自增 id）能删；云端/合成的删不了
+                                if (c.author == "user" && c.id > 0) {
                                     Text(
                                         "✕", fontSize = 11.sp, color = Color(0xFF999999),
                                         modifier = Modifier.clickable { onDeleteComment(c.id) }

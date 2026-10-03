@@ -178,6 +178,14 @@ object SupabaseMomentsStore {
         val createdAtMs: Long
     )
 
+    data class RemoteComment(
+        val id: String,
+        val momentId: String,
+        val author: String,
+        val content: String,
+        val createdAtMs: Long
+    )
+
     fun mapAuthor(raw: String): String = when {
         raw.contains("沈聿淮") || raw == "sean" || raw == "a_哥哥" || raw.contains("ai_") -> "sean"
         raw.contains("小鑫") || raw == "yuri" || raw == "user" -> "yuri"
@@ -267,6 +275,47 @@ object SupabaseMomentsStore {
                 )
             } catch (e: Exception) {
                 Log.w(SupabaseClient.TAG, "[PARSE] diary_entries 第 $i 行字段解析失败: ${e.message}")
+            }
+        }
+        return CloudResult(out, null)
+    }
+
+    /**
+     * 读朋友圈评论（独立表 moment_comments，不假设 moments 自带）。
+     * 列结构没有交接文档，防御式解析：author 兼容 user_id 列、content 兼容 text 列。
+     * 失败时返回 CloudResult(error)——调用方对评论失败应静默降级，不影响动态主列表。
+     */
+    suspend fun fetchMomentComments(): CloudResult<List<RemoteComment>> {
+        val reply = supabaseRequest(
+            "rest/v1/moment_comments?select=*&order=created_at.asc&limit=200",
+            "GET",
+            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
+        )
+        if (reply.error != null) return CloudResult(null, reply.error)
+        val arr = reply.payload as? JSONArray
+            ?: return CloudResult(null, CloudErrorKind.PARSE)
+        if (arr.length() == 0) {
+            Log.i(SupabaseClient.TAG, "[EMPTY] moment_comments 返回空数组（云端没评论）")
+            return CloudResult(emptyList(), null)
+        }
+        val out = mutableListOf<RemoteComment>()
+        for (i in 0 until arr.length()) {
+            try {
+                val o = arr.getJSONObject(i)
+                val created = o.optString("created_at", "")
+                out.add(
+                    RemoteComment(
+                        id = o.optString("id"),
+                        momentId = o.optString("moment_id", o.optString("momentid", "")),
+                        author = mapAuthor(
+                            o.optString("author", o.optString("user_id", ""))
+                        ),
+                        content = o.optString("content", o.optString("text", "")),
+                        createdAtMs = parseSupabaseTime(created)
+                    )
+                )
+            } catch (e: Exception) {
+                Log.w(SupabaseClient.TAG, "[PARSE] moment_comments 第 $i 行字段解析失败: ${e.message}")
             }
         }
         return CloudResult(out, null)
