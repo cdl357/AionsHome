@@ -91,7 +91,7 @@ import kotlinx.coroutines.withContext
 /** 页面③：聊天。接 HomecomingChatEngine 真实链路；分条冒泡 + 气泡皮肤 + 背景可换。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen() {
+fun ChatScreen(onOpenCall: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val main = remember { Handler(Looper.getMainLooper()) }
@@ -481,7 +481,7 @@ fun ChatScreen() {
                         tint = HomecomingColors.Ink,
                         modifier = Modifier
                             .size(22.dp)
-                            .clickable { Toast.makeText(context, "语音通话在阶段五接线", Toast.LENGTH_SHORT).show() }
+                            .clickable { onOpenCall() }
                     )
                 }
 
