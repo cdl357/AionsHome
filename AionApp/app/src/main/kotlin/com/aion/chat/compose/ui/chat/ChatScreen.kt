@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.Palette
@@ -150,6 +151,43 @@ fun ChatScreen() {
     val pendingImage = remember { mutableStateOf("") }
     val errorText = remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+
+    // ── 语音输入（语音通话第二块）：系统语音识别，说完变文字进输入框 ──
+    val voiceInputAvailable = remember {
+        runCatching { android.speech.SpeechRecognizer.isRecognitionAvailable(context) }.getOrDefault(false)
+    }
+    val speechLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val heard = result.data
+            ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull().orEmpty().trim()
+        if (heard.isNotBlank()) {
+            input.value = if (input.value.isBlank()) heard else input.value + heard
+        } else {
+            Toast.makeText(context, "没听清，再说一次试试", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun startVoiceInput() {
+        if (!voiceInputAvailable) {
+            Toast.makeText(context, "这台手机没有可用的语音识别服务", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching {
+            speechLauncher.launch(
+                android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(
+                        android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                    )
+                    putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                    putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "和 Sean 说点什么…")
+                }
+            )
+        }.onFailure {
+            Toast.makeText(context, "语音识别没能启动", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     fun reloadNow() {
         val w = wiring ?: return
@@ -450,6 +488,20 @@ fun ChatScreen() {
                         shape = RoundedCornerShape(14.dp),
                         maxLines = 4
                     )
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.85f))
+                            .clickable { startVoiceInput() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Mic,
+                            contentDescription = "语音输入",
+                            tint = HomecomingColors.Ink
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .size(44.dp)

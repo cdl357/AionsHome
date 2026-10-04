@@ -43,7 +43,7 @@ private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.Image
  * 相册 / 留言板 / 记忆库 / 语音通话 / 陪伴阅读 / 提醒闹钟 / 设置。其余 AionsHome 功能全部不做。
  */
 @Composable
-fun MoreScreen(onOpenSettings: () -> Unit = {}) {
+fun MoreScreen(onOpenSettings: () -> Unit = {}, onOpenAlbum: () -> Unit = {}) {
     val context = LocalContext.current
     val entries = listOf(
         MoreEntry(Icons.Filled.Favorite, "相册", "照片墙 + Sean 存这张时的心里话"),
@@ -65,7 +65,10 @@ fun MoreScreen(onOpenSettings: () -> Unit = {}) {
         Spacer(Modifier.height(14.dp))
         entries.forEach { entry ->
             FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
-                Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
+                when (entry.name) {
+                    "相册" -> onOpenAlbum()
+                    else -> Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
+                }
             }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(

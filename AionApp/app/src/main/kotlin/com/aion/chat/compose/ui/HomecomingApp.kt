@@ -45,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.aion.chat.compose.ui.chat.ChatScreen
 import com.aion.chat.compose.ui.home.HomeScreen
+import com.aion.chat.compose.ui.album.AlbumScreen
 import com.aion.chat.compose.ui.more.MoreScreen
 import com.aion.chat.compose.ui.splash.SplashScreen
 import com.aion.chat.compose.ui.settings.SettingsScreen
@@ -136,7 +137,9 @@ fun HomecomingApp() {
                     })
                 }
                 composable(HomeTab.Home.route) {
-                    Box(Modifier.fillMaxSize()) { HomeScreen() }
+                    Box(Modifier.fillMaxSize()) {
+                        HomeScreen(onOpenAlbum = { navController.navigate("album") })
+                    }
                 }
                 composable(HomeTab.Chat.route) {
                     Box(Modifier.fillMaxSize()) { ChatScreen() }
@@ -148,8 +151,14 @@ fun HomecomingApp() {
                     Box(Modifier.fillMaxSize()) { UsScreen() }
                 }
                 composable("settings") { SettingsScreen() }
+                composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
                 composable(HomeTab.More.route) {
-                    Box(Modifier.fillMaxSize()) { MoreScreen(onOpenSettings = { navController.navigate("settings") }) }
+                    Box(Modifier.fillMaxSize()) {
+                        MoreScreen(
+                            onOpenSettings = { navController.navigate("settings") },
+                            onOpenAlbum = { navController.navigate("album") }
+                        )
+                    }
                 }
             }
         }

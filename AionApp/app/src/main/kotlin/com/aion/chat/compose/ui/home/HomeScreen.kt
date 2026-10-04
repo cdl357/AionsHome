@@ -94,7 +94,7 @@ private fun glassText(
 
 /** 页面①：回家（中心首页）。Haze 液态玻璃：折射 + 通透 + 边缘高光；布局严格六项，不自加卡。 */
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
@@ -262,7 +262,12 @@ fun HomeScreen() {
                         }
                     Text("点一个，哥哥回你一句", style = glassText(alpha = 0.75f, size = 11))
                 }
-                GlassCard(hazeState = hazeState, modifier = Modifier.weight(1f).fillMaxHeight(), contentPadding = 14.dp) {
+                GlassCard(
+                    hazeState = hazeState,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentPadding = 14.dp,
+                    onClick = onOpenAlbum
+                ) {
                     Text("相册", style = glassText(size = 15, weight = FontWeight.Medium))
                     Text("照片墙 · Sean 的心里话", style = glassText(alpha = 0.8f, size = 12))
                 }
