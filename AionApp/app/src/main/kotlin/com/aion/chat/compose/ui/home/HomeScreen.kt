@@ -121,6 +121,12 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
     var moodReply by remember { mutableStateOf("") }
     var moodBusy by remember { mutableStateOf(false) }
 
+    // Sean 的当前心跳（戳一戳的状态在主页外显，读取时自动按半衰期衰减）
+    var seanHeart by remember { mutableStateOf(62) }
+    LaunchedEffect(Unit) {
+        seanHeart = com.aion.chat.compose.data.HomecomingPokeStore.currentHeart(context)
+    }
+
     fun tapMood(face: String, word: String) {
         if (moodBusy) return
         if (com.aion.chat.compose.data.HomecomingRouteConfig.mainRoute(context) == null) {
@@ -223,8 +229,13 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         AvatarPhoto(who = "sean", initial = "S", size = 74.dp)
                         Text("Sean", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
+                        // 戳一戳留下的心跳，在这里慢慢落回来
+                        Text(
+                            "♥ $seanHeart",
+                            style = glassText(alpha = 0.85f, size = 11, color = Color(0xFFFFD9DE)),
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
-                    // 连接符：会上下浮动的爱心（定稿"待定"符号的动态版）
                     val heartFloat = rememberInfiniteTransition(label = "heart")
                     val heartY by heartFloat.animateFloat(
                         initialValue = -5f,

@@ -248,6 +248,10 @@ private fun Reader(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val fontPrefs = remember {
+        context.getSharedPreferences("reading_prefs", android.content.Context.MODE_PRIVATE)
+    }
+    val fontSp = remember { mutableStateOf(fontPrefs.getInt("font_sp", 16).coerceIn(13, 24)) }
     val paragraphs = remember(book.id) { ReadingStore.readBook(context, book.id) }
     val listState = rememberLazyListState()
     val reloadKey = remember { mutableStateOf(0) }
@@ -300,6 +304,27 @@ private fun Reader(
                         fontSize = 11.sp, color = HomecomingColors.InkSoft
                     )
                 }
+                // 字号调节
+                Text(
+                    "A-",
+                    fontSize = 14.sp, color = HomecomingColors.InkSoft,
+                    modifier = Modifier
+                        .clickable {
+                            fontSp.value = (fontSp.value - 1).coerceIn(13, 24)
+                            fontPrefs.edit().putInt("font_sp", fontSp.value).apply()
+                        }
+                        .padding(6.dp)
+                )
+                Text(
+                    "A+",
+                    fontSize = 18.sp, color = HomecomingColors.InkSoft,
+                    modifier = Modifier
+                        .clickable {
+                            fontSp.value = (fontSp.value + 1).coerceIn(13, 24)
+                            fontPrefs.edit().putInt("font_sp", fontSp.value).apply()
+                        }
+                        .padding(6.dp)
+                )
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -319,8 +344,8 @@ private fun Reader(
             ) {
                 Text(
                     para,
-                    fontSize = 16.sp,
-                    lineHeight = 28.sp,
+                    fontSize = fontSp.value.sp,
+                    lineHeight = (fontSp.value * 1.8f).sp,
                     color = HomecomingColors.Ink,
                     fontFamily = FontFamily.Serif
                 )

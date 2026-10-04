@@ -1049,17 +1049,19 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int) {
         segments.forEach { seg ->
             val style = userStyle(skin)
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .clip(style.shape)
-                        .background(style.fill)
-                        .let { m ->
-                            if (skin == 1) m.border(1.dp, Color.White.copy(alpha = 0.6f), style.shape) else m
-                        }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Text(seg, fontSize = 15.sp, color = style.textColor)
+                CopyOnLongPress(text = seg) {
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .clip(style.shape)
+                            .background(style.fill)
+                            .let { m ->
+                                if (skin == 1) m.border(1.dp, Color.White.copy(alpha = 0.6f), style.shape) else m
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(seg, fontSize = 15.sp, color = style.textColor)
+                    }
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -1076,18 +1078,40 @@ fun AssistantBubbles(text: String, skin: Int) {
     }
 }
 
+/** 长按复制气泡文本（聊天里最常用的隐性需求）。 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CopyOnLongPress(text: String, content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier.combinedClickable(
+            onClick = {},
+            onLongClick = {
+                runCatching {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("chat", text))
+                    Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    ) { content() }
+}
+
 @Composable
 private fun AssistantBubbleSingle(text: String, skin: Int) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.92f))
-                .border(1.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(18.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
-            Text(text, fontSize = 15.sp, color = HomecomingColors.Ink)
+        CopyOnLongPress(text = text) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 300.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.White.copy(alpha = 0.92f))
+                    .border(1.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Text(text, fontSize = 15.sp, color = HomecomingColors.Ink)
+            }
         }
     }
 }

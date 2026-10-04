@@ -85,6 +85,7 @@ fun MomentsScreen() {
     val reloadKey = remember { mutableStateOf(0) }
     val coverVersion = remember { mutableStateOf(0L) }
     val cloudError = remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
+    val isRefreshing = remember { mutableStateOf(false) }
 
     val routeStamp = remember { HomecomingRouteConfig.stamp(context) }
     val wiring = remember(routeStamp) { HomecomingChatWiring.safeCreate(context) }
@@ -111,7 +112,10 @@ fun MomentsScreen() {
             if (res == null || res.error != null) {
                 // 网络 / 权限 / 解析失败分种提示；保留现有内容，可重试
                 val kind = res?.error ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
-                main.post { cloudError.value = kind }
+                main.post {
+                    cloudError.value = kind
+                    isRefreshing.value = false
+                }
                 return@launch
             }
             val remote = res.data ?: emptyList()
@@ -166,6 +170,7 @@ fun MomentsScreen() {
                 cloudError.value = null
                 feed.clear()
                 feed.addAll(all)
+                isRefreshing.value = false
             }
         }
     }
@@ -287,7 +292,15 @@ fun MomentsScreen() {
         }
     }
 
-    // ── 白底 + 封面 + 动态列表 ──
+    // ── 白底 + 封面 + 动态列表（下拉刷新） ──
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = isRefreshing.value,
+        onRefresh = {
+            isRefreshing.value = true
+            reloadKey.value++
+        },
+        modifier = Modifier.fillMaxSize()
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -453,6 +466,7 @@ fun MomentsScreen() {
         }
         Spacer(Modifier.height(60.dp))
     }
+    } // PullToRefreshBox
 
     // ── 发布弹窗 ──
     if (showCompose.value) {
