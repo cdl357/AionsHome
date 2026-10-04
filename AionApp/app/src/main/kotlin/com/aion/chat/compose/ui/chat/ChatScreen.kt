@@ -48,6 +48,9 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -55,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
@@ -162,6 +166,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     val pendingImagePath = remember { mutableStateOf("") }
     val showStickerPanel = remember { mutableStateOf(false) }
     val stickerVersion = remember { mutableStateOf(0L) }
+    // 加号面板：表情包 / 相册 / 拍照 / 戳一戳
+    val plusOpen = remember { mutableStateOf(false) }
+    val showPokePanel = remember { mutableStateOf(false) }
+    val pokeVerb = remember { mutableStateOf(com.aion.chat.compose.data.HomecomingPokeStore.VERBS.first().first) }
+    val pokeSpot = remember { mutableStateOf(com.aion.chat.compose.data.HomecomingPokeStore.SPOTS.first().first) }
+    // 戳一戳先上屏的回显（不等网络），回复到了就清掉
+    val pokeEcho = remember { mutableStateOf("") }
     val errorText = remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
@@ -209,6 +220,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
             main.post {
                 messages.clear()
                 messages.addAll(list)
+                pokeEcho.value = "" // 回到了，回显行功成身退
             }
         } catch (e: Exception) { /* 首次库为空保持安静 */ }
     }
@@ -334,6 +346,97 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     showStickerPanel.value = false
                     send()
                 }
+            }
+        }
+    }
+
+    // ── 拍照（相机权限 + 系统相机拍一张直接发） ──
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicturePreview()
+    ) { bmp ->
+        if (bmp != null) {
+            scope.launch(Dispatchers.IO) {
+                val bytes = ByteArrayOutputStream().also { out ->
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                }.toByteArray()
+                val saved = saveChatImage(context, bytes, sticker = false)
+                val dataUrl = "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+                main.post {
+                    pendingImage.value = dataUrl
+                    pendingImagePath.value = saved
+                    plusOpen.value = false
+                    send()
+                }
+            }
+        }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) cameraLauncher.launch(null)
+        else Toast.makeText(context, "没有相机权限，拍不了", Toast.LENGTH_SHORT).show()
+    }
+    fun takePhoto() {
+        runCatching {
+            cameraPermission.launch(android.Manifest.permission.CAMERA)
+        }.onFailure {
+            Toast.makeText(context, "相机没能启动", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ── 戳一戳（教程四步）：先上屏 + 心跳先到 + 忙时挡住说人话 ──
+    fun sendPoke() {
+        if (sending.value || pendingSegments.isNotEmpty()) {
+            // 教程：他忙的时候要说人话，别假装成功
+            Toast.makeText(context, "他这会儿在忙，这一下先欠着", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!connected) {
+            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val w = wiring ?: return
+        val verb = pokeVerb.value
+        val spot = pokeSpot.value
+        val gain = com.aion.chat.compose.data.HomecomingPokeStore.poke(context, verb, spot)
+        // 先上屏，再发请求：戳 → 心跳跳了一下 → 过一会儿他才说话
+        pokeEcho.value = "你${verb}了他的${spot} · 他心跳跳了一下 ♥ +$gain"
+        showPokePanel.value = false
+        plusOpen.value = false
+        sending.value = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                // 旁白插进一直活着的会话进程（教程第一步：只陈述事实，不写反应）
+                w.engine.send(
+                    HomecomingChatEngine.ChatCommand(
+                        "req_poke_" + System.currentTimeMillis(),
+                        HomecomingChatWiring.TIMELINE,
+                        HomecomingChatWiring.RESPONDER,
+                        HomecomingChatWiring.USER,
+                        com.aion.chat.compose.data.HomecomingPokeStore.narration(verb, spot),
+                        "main", modelKey, "", ""
+                    ),
+                    object : HomecomingChatEngine.Observer {
+                        override fun onChunk(chunk: String) {
+                            main.post {
+                                pendingSegments.clear()
+                                pendingSegments.addAll(splitBubbles(chunk))
+                            }
+                        }
+
+                        override fun onComplete(messageId: String, completeText: String) {
+                            main.post { sending.value = false }
+                            speakReply(completeText)
+                            scope.launch(Dispatchers.IO) { reloadNow() }
+                        }
+
+                        override fun onFailure(code: String) {
+                            main.post { sending.value = false }
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                main.post { sending.value = false }
             }
         }
     }
@@ -532,6 +635,20 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                             AssistantBubbles(text = msg.text, skin = skin.value)
                         }
                     }
+                    // 戳一戳回显行：先上屏（教程第四步），他回话后消失
+                    if (pokeEcho.value.isNotBlank()) {
+                        item(key = "poke_echo") {
+                            Text(
+                                pokeEcho.value,
+                                fontSize = 11.sp,
+                                color = HomecomingColors.Accent,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                            )
+                        }
+                    }
                     pendingSegments.forEachIndexed { index, seg ->
                         item(key = "pending_$index") {
                             AssistantBubbleSingle(text = seg, skin = skin.value)
@@ -624,6 +741,122 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     }
                 }
 
+                // ── 加号面板：表情包 / 相册 / 拍照 / 戳一戳 ──
+                if (plusOpen.value) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.70f))
+                    ) {
+                        if (showPokePanel.value) {
+                            // 戳一戳：两排可选项 + 发送键（教程第四步：动作 × 落点）
+                            Text(
+                                "戳一戳 · 他会先心跳，再接话",
+                                fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                modifier = Modifier.padding(start = 14.dp, top = 10.dp)
+                            )
+                            listOf(
+                                com.aion.chat.compose.data.HomecomingPokeStore.VERBS,
+                                com.aion.chat.compose.data.HomecomingPokeStore.SPOTS
+                            ).forEachIndexed { dimIndex, options ->
+                                val selected = if (dimIndex == 0) pokeVerb.value else pokeSpot.value
+                                options.chunked(3).forEach { rowOptions ->
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                                    ) {
+                                        rowOptions.forEach { (name, _) ->
+                                            val picked = selected == name
+                                            Text(
+                                                name,
+                                                fontSize = 13.sp,
+                                                color = if (picked) Color.White else HomecomingColors.Ink,
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(
+                                                        if (picked) HomecomingColors.Accent
+                                                        else Color.White.copy(alpha = 0.9f)
+                                                    )
+                                                    .clickable {
+                                                        if (dimIndex == 0) pokeVerb.value = name
+                                                        else pokeSpot.value = name
+                                                    }
+                                                    .padding(vertical = 8.dp),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                        repeat(3 - rowOptions.size) { Spacer(Modifier.weight(1f)) }
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { showPokePanel.value = false }) {
+                                    Text("返回", color = HomecomingColors.InkSoft, fontSize = 12.sp)
+                                }
+                                TextButton(onClick = { sendPoke() }) {
+                                    Text("戳下去", color = HomecomingColors.Accent, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 14.dp)
+                            ) {
+                                listOf(
+                                    Triple(Icons.Outlined.EmojiEmotions, "表情包", {
+                                        plusOpen.value = false
+                                        showStickerPanel.value = true
+                                    }),
+                                    Triple(Icons.Outlined.PhotoLibrary, "相册", {
+                                        plusOpen.value = false
+                                        imagePicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }),
+                                    Triple(Icons.Outlined.PhotoCamera, "拍照", {
+                                        plusOpen.value = false
+                                        takePhoto()
+                                    }),
+                                    Triple(Icons.Outlined.TouchApp, "戳一戳", {
+                                        showPokePanel.value = true
+                                    })
+                                ).forEach { (icon, label, action) ->
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { action() }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .clip(CircleShape)
+                                                .background(HomecomingColors.Accent.copy(alpha = 0.14f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(icon, contentDescription = label, tint = HomecomingColors.Accent)
+                                        }
+                                        Text(
+                                            label,
+                                            fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                            modifier = Modifier.padding(top = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ── 底部输入栏（键盘没弹时给底部悬浮导航胶囊让位，不再被压住） ──
                 val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
                 Row(
@@ -642,14 +875,19 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.85f))
+                            .background(if (plusOpen.value) HomecomingColors.Accent else Color.White.copy(alpha = 0.85f))
                             .clickable {
-                                imagePicker.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
+                                plusOpen.value = !plusOpen.value
+                                if (plusOpen.value) showStickerPanel.value = false
                             },
                         contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Filled.Add, contentDescription = "发图片", tint = HomecomingColors.Ink) }
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = "更多功能",
+                            tint = if (plusOpen.value) Color.White else HomecomingColors.Ink
+                        )
+                    }
                     OutlinedTextField(
                         value = input.value,
                         onValueChange = { input.value = it },
@@ -658,38 +896,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                             Text("和 Sean 说点什么…", fontSize = 14.sp, color = HomecomingColors.InkSoft)
                         },
                         shape = RoundedCornerShape(14.dp),
-                        maxLines = 4
+                        maxLines = 4,
+                        trailingIcon = {
+                            Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = "语音输入",
+                                tint = HomecomingColors.InkSoft,
+                                modifier = Modifier.clickable { startVoiceInput() }
+                            )
+                        }
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.85f))
-                            .clickable {
-                                showStickerPanel.value = !showStickerPanel.value
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Outlined.EmojiEmotions,
-                            contentDescription = "表情包",
-                            tint = if (showStickerPanel.value) HomecomingColors.Accent else HomecomingColors.Ink
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.85f))
-                            .clickable { startVoiceInput() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Mic,
-                            contentDescription = "语音输入",
-                            tint = HomecomingColors.Ink
-                        )
-                    }
                     Box(
                         modifier = Modifier
                             .size(44.dp)
