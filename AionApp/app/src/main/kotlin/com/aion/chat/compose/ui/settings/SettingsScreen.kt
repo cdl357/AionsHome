@@ -46,6 +46,7 @@ import com.aion.chat.compose.data.AppCrashLog
 import com.aion.chat.compose.data.HomecomingMcpStore
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.theme.HomecomingThemeState
+import kotlinx.coroutines.launch
 
 /** 设置：换背景图先行；云线路 / 模型 / TTS / 主题在阶段五接入。 */
 @Composable
@@ -57,6 +58,8 @@ fun SettingsScreen() {
     val routeApiKey = remember { mutableStateOf("") }
     val routeModel = remember { mutableStateOf("") }
     val routeSaved = remember { mutableStateOf(false) }
+    val routeTest = remember { mutableStateOf("") }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     fun saveRoute() {
         val baseUrl = routeBaseUrl.value.trim()
@@ -229,10 +232,29 @@ fun SettingsScreen() {
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.End
             ) {
+                TextButton(onClick = {
+                    val base = routeBaseUrl.value.trim()
+                    val key = routeApiKey.value.trim()
+                    val model = routeModel.value.trim()
+                    if (base.isBlank() || key.isBlank() || model.isBlank()) {
+                        Toast.makeText(context, "先填好 Base URL / API Key / 模型", Toast.LENGTH_SHORT).show()
+                        return@TextButton
+                    }
+                    routeTest.value = "正在测…"
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val res = pingRoute(base, key, model)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            routeTest.value = res
+                        }
+                    }
+                }) { Text("测一下", color = HomecomingColors.InkSoft) }
                 TextButton(onClick = { saveRoute() }) { Text("保存线路", color = HomecomingColors.Accent) }
             }
             if (routeSaved.value) {
                 Text("已保存。回「聊天」页即可开聊。", fontSize = 11.sp, color = HomecomingColors.Ok)
+            }
+            if (routeTest.value.isNotBlank()) {
+                Text(routeTest.value, fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
         }
 
@@ -477,3 +499,55 @@ fun SettingsScreen() {
         }
     }
 }
+
+/** 云线路连通性测试：真实打一次 /chat/completions（max_tokens 极小），把成败原因说人话。 */
+private suspend fun pingRoute(baseUrl: String, apiKey: String, model: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val url = baseUrl.trimEnd('/') + "/chat/completions"
+            val body = org.json.JSONObject()
+                .put("model", model)
+                .put(
+                    "messages",
+                    org.json.JSONArray().put(
+                        org.json.JSONObject().put("role", "user").put("content", "只回一个字：好")
+                    )
+                )
+                .put("max_tokens", 8)
+            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 20_000
+            conn.doOutput = true
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val content = runCatching {
+                    org.json.JSONObject(conn.inputStream.bufferedReader().readText())
+                        .optJSONArray("choices")?.getJSONObject(0)
+                        ?.optJSONObject("message")?.optString("content")
+                }.getOrNull()
+                "通了 · 模型回：" + (content?.take(20)?.ifBlank { "（有响应）" } ?: "（有响应）")
+            } else {
+                val err = runCatching {
+                    conn.errorStream?.bufferedReader()?.readText()?.take(160)
+                }.getOrNull().orEmpty()
+                when (code) {
+                    401 -> "HTTP 401：API Key 不对"
+                    403 -> "HTTP 403：这个 Key 没权限用这个模型"
+                    404 -> "HTTP 404：Base URL 或模型名不对"
+                    else -> "HTTP $code：$err"
+                }
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            "超时：连不上这个 Base URL（当前网络可能到不了它）"
+        } catch (e: javax.net.ssl.SSLException) {
+            "TLS 握手失败：当前网络到这个地址被拦"
+        } catch (e: java.net.UnknownHostException) {
+            "域名解析失败：检查 Base URL 拼写"
+        } catch (e: Exception) {
+            "${e.javaClass.simpleName}: ${e.message?.take(120)}"
+        }
+    }

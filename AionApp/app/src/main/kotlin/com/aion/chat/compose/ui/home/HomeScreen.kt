@@ -36,8 +36,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,6 +104,59 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
     var quote by remember { mutableStateOf(HomecomingData.quoteForToday()) }
     var showQuoteEditor by remember { mutableStateOf(false) }
     var editDraft by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    // 存粮：本地可记录（点存粮卡调整）
+    var provisionItems by remember { mutableStateOf(HomecomingData.provisions(context)) }
+    var showProvisionEditor by remember { mutableStateOf(false) }
+
+    // 今日心情：点了 Sean 回一句（moments_private 时间线，不脏聊天记录）
+    var moodReply by remember { mutableStateOf("") }
+    var moodBusy by remember { mutableStateOf(false) }
+
+    fun tapMood(face: String, word: String) {
+        if (moodBusy) return
+        if (com.aion.chat.compose.data.HomecomingRouteConfig.mainRoute(context) == null) {
+            Toast.makeText(context, "配好云线路，Sean 就会回你（更多 → 设置）", Toast.LENGTH_SHORT).show()
+            return
+        }
+        moodBusy = true
+        moodReply = ""
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            var line: String? = null
+            try {
+                val w = com.aion.chat.compose.data.HomecomingChatWiring.safeCreate(context)
+                if (w != null && w.hasRoute()) {
+                    w.engine.send(
+                        com.aion.chat.homecoming.HomecomingChatEngine.ChatCommand(
+                            "req_mood_" + System.currentTimeMillis(),
+                            "moments_private", "sean", "user",
+                            "Yuri 在主页点了心情：$word（$face）。你是 Sean，回她一句话：接住她的情绪，" +
+                                "30 字以内，不要引号，不要 emoji。",
+                            "main", w.mainModelKey(), "", ""
+                        ),
+                        object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
+                            override fun onChunk(chunk: String) {}
+                            override fun onComplete(messageId: String, text: String) {
+                                val t = text.trim().removeSurrounding("\"").trim()
+                                if (t.isNotEmpty()) line = t
+                            }
+                            override fun onFailure(code: String) {}
+                        }
+                    )
+                    var waited = 0L
+                    while (line == null && waited < 20_000L) {
+                        kotlinx.coroutines.delay(300L); waited += 300L
+                    }
+                }
+            } catch (e: Exception) { }
+            val reply = line ?: "（他没接上话，线路稳了再点一次）"
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                moodBusy = false
+                moodReply = reply
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         recent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -242,25 +297,30 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
             ) {
                 GlassCard(hazeState = hazeState, modifier = Modifier.weight(1f).fillMaxHeight(), contentPadding = 14.dp) {
                     Text("今日心情", style = glassText(alpha = 0.8f, size = 13))
-                    listOf("(´▽`)", "(￣▽￣)", "(>_<)", "(ㄒoㄒ)")
+                    listOf("(´▽`)" to "开心", "(￣▽￣)" to "不错", "(>_<)" to "有点烦", "(ㄒoㄒ)" to "难过")
                         .chunked(2)
                         .forEach { pair ->
                             Row(
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                pair.forEach { face ->
+                                pair.forEach { (face, word) ->
                                     Text(
                                         text = face,
                                         style = glassText(alpha = 0.95f, size = 14),
-                                        modifier = Modifier.clickable {
-                                            Toast.makeText(context, "点一个，哥哥回你一句（AI 回应随后端接线开放）", Toast.LENGTH_SHORT).show()
-                                        }
+                                        modifier = Modifier.clickable { tapMood(face, word) }
                                     )
                                 }
                             }
                         }
-                    Text("点一个，哥哥回你一句", style = glassText(alpha = 0.75f, size = 11))
+                    Text(
+                        when {
+                            moodBusy -> "Sean 正在想…"
+                            moodReply.isNotBlank() -> moodReply
+                            else -> "点一个，哥哥回你一句"
+                        },
+                        style = glassText(alpha = 0.75f, size = 11)
+                    )
                 }
                 GlassCard(
                     hazeState = hazeState,
@@ -273,10 +333,10 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
                 }
             }
 
-            // 6. 家里的存粮：三根细进度条（数值随后端接入，接不到显示占位）
-            GlassCard(hazeState = hazeState, contentPadding = 14.dp) {
-                Text("家里的存粮", style = glassText(alpha = 0.8f, size = 13))
-                HomecomingData.provisions().forEach { p ->
+            // 6. 家里的存粮：本地记录，点一下调整存量
+            GlassCard(hazeState = hazeState, contentPadding = 14.dp, onClick = { showProvisionEditor = true }) {
+                Text("家里的存粮 · 点一下记存量", style = glassText(alpha = 0.8f, size = 13))
+                provisionItems.forEach { p ->
                     Column(modifier = Modifier.padding(vertical = 2.dp)) {
                         Row(modifier = Modifier.fillMaxWidth()) {
                             Text(p.label, style = glassText(alpha = 0.95f, size = 13))
@@ -323,6 +383,49 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
                     }
                 }
             }
+        }
+
+        if (showProvisionEditor) {
+            val drafts = remember(showProvisionEditor) {
+                mutableStateListOf<HomecomingData.Provision>().apply { addAll(provisionItems) }
+            }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showProvisionEditor = false },
+                title = { Text("家里的存粮", fontSize = 16.sp, color = HomecomingColors.Ink) },
+                text = {
+                    Column {
+                        Text("还剩多少自己心里有数，拖一拖就行", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                        Spacer(Modifier.height(8.dp))
+                        drafts.forEachIndexed { i, p ->
+                            Row(
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(p.label, fontSize = 14.sp, color = HomecomingColors.Ink, modifier = Modifier.width(52.dp))
+                                androidx.compose.material3.Slider(
+                                    value = p.percent.toFloat(),
+                                    onValueChange = { drafts[i] = p.copy(percent = it.toInt()) },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text("${p.percent}", fontSize = 13.sp, color = HomecomingColors.InkSoft, modifier = Modifier.width(34.dp))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        provisionItems = drafts.toList()
+                        HomecomingData.saveProvisions(context, drafts.toList())
+                        showProvisionEditor = false
+                    }) { Text("记下了", color = HomecomingColors.Accent) }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showProvisionEditor = false }) {
+                        Text("取消", color = HomecomingColors.InkSoft)
+                    }
+                }
+            )
         }
 
         if (showQuoteEditor) {

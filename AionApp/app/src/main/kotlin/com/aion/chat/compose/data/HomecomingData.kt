@@ -129,14 +129,36 @@ object HomecomingData {
         }
     }
 
-    /** 家里的存粮：本期占位，后续接模型额度 / TTS 余额 / 服务器余额。 */
+    /** 家里的存粮：Yuri 本地自己记（点存粮卡调整存量），filesDir/provisions.json。 */
     data class Provision(val label: String, val percent: Int, val note: String)
 
-    fun provisions(): List<Provision> = listOf(
-        Provision("模型额度", 0, "待接入"),
-        Provision("语音字数", 0, "待接入"),
-        Provision("服务器余额", 0, "本期不做服务器")
+    private val DEFAULT_PROVISIONS = listOf(
+        Provision("零食", 62, "补货点"),
+        Provision("日用", 45, ""),
+        Provision("猫粮", 80, "")
     )
+
+    fun provisions(context: Context): List<Provision> {
+        val fallback = DEFAULT_PROVISIONS
+        return try {
+            val f = File(context.filesDir, "provisions.json")
+            if (!f.exists()) return fallback
+            val arr = JSONObject(f.readText()).optJSONArray("items") ?: return fallback
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                Provision(o.optString("label"), o.optInt("percent", 0), o.optString("note", ""))
+            }
+        } catch (e: Exception) { fallback }
+    }
+
+    fun saveProvisions(context: Context, items: List<Provision>): Boolean = try {
+        val arr = org.json.JSONArray()
+        items.forEach {
+            arr.put(org.json.JSONObject().put("label", it.label).put("percent", it.percent).put("note", it.note))
+        }
+        File(context.filesDir, "provisions.json").writeText(org.json.JSONObject().put("items", arr).toString(2))
+        true
+    } catch (e: Exception) { false }
 }
 
 /** 主页背景图：用户在设置里可随时更换（存 filesDir/home_bg.jpg），stamp 变化即触发重载。 */
