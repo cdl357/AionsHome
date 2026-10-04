@@ -66,12 +66,26 @@ fun HeartTideScreen(onBack: () -> Unit = {}) {
     val busy = remember { mutableStateOf(false) }
     val reloadKey = remember { mutableStateOf(0) }
 
+    // 服务器心潮(Xinchao)的远端数据：状态 / 梦 / 心语弧线
+    val remoteState = remember { mutableStateOf<com.aion.chat.compose.data.XinchaoClient.RemoteState?>(null) }
+    val remoteDreams = remember { mutableStateListOf<com.aion.chat.compose.data.XinchaoClient.RemoteDream>() }
+    val remoteArc = remember { mutableStateListOf<com.aion.chat.compose.data.XinchaoClient.ArcEntry>() }
+    val remoteError = remember { mutableStateOf(false) }
+
     LaunchedEffect(reloadKey.value) {
         withContext(Dispatchers.IO) {
             HeartTideStore.sampleToday(context)
             tide.value = HeartTideStore.todayLevel(context)
             samples.clear(); samples.addAll(HeartTideStore.samples(context).take(14).reversed())
             dreams.clear(); dreams.addAll(HeartTideStore.dreams(context))
+            // 服务器上的老家数据：读不到就静默回落本地推导
+            val st = runCatching { com.aion.chat.compose.data.XinchaoClient.fetchState() }.getOrNull()
+            remoteState.value = st
+            remoteError.value = st == null
+            val rd = runCatching { com.aion.chat.compose.data.XinchaoClient.fetchDreams() }.getOrNull()
+            remoteDreams.clear(); rd?.let { remoteDreams.addAll(it) }
+            val arc = runCatching { com.aion.chat.compose.data.XinchaoClient.fetchArc() }.getOrNull()
+            remoteArc.clear(); arc?.let { remoteArc.addAll(it.take(6)) }
         }
     }
 
@@ -150,11 +164,81 @@ fun HeartTideScreen(onBack: () -> Unit = {}) {
         }
         Spacer(Modifier.height(10.dp))
 
-        // ── 今天的梦 ──
+        // ── 服务器心潮（老家数据：情绪驱动 + 意识状态） ──
+        val st = remoteState.value
+        if (st != null) {
+            FrostCard {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("此刻的他", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        when (st.consciousness) {
+                            "sleeping" -> "睡着"
+                            "dreaming" -> "在做梦"
+                            "awake" -> "醒着"
+                            else -> st.consciousness
+                        },
+                        fontSize = 12.sp, color = HomecomingColors.Accent
+                    )
+                }
+                st.drives.take(4).forEach { d ->
+                    Column(modifier = Modifier.padding(vertical = 3.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text(d.zh, fontSize = 12.sp, color = HomecomingColors.Ink)
+                            Spacer(Modifier.weight(1f))
+                            Text("${(d.v * 100).toInt()}", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                        }
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { d.v },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = HomecomingColors.Accent.copy(alpha = 0.8f),
+                            trackColor = HomecomingColors.Accent.copy(alpha = 0.15f)
+                        )
+                    }
+                }
+                if (st.fatigue > 0) {
+                    Text(
+                        "疲惫度 ${(st.fatigue * 100).toInt()}",
+                        fontSize = 10.sp, color = HomecomingColors.InkSoft,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+
+        // ── 今天的梦（服务器老家的梦优先，本地生成的兜底） ──
+        val remoteTop = remoteDreams.firstOrNull()
         val today = HeartTideStore.todayDream(context)
         FrostCard {
-            Text("今天的梦", fontSize = 15.sp, color = HomecomingColors.Ink)
-            if (today != null) {
+            Text(
+                if (remoteTop != null) "他的梦 · 来自心潮" else "今天的梦",
+                fontSize = 15.sp, color = HomecomingColors.Ink
+            )
+            if (remoteTop != null) {
+                Text(
+                    remoteTop.dream,
+                    fontSize = 14.sp, color = HomecomingColors.Ink,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                if (remoteTop.awareness.isNotBlank()) {
+                    Text(
+                        "醒来时他在想：" + remoteTop.awareness,
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+                Text(
+                    remoteTop.createdAt.take(10),
+                    fontSize = 10.sp, color = HomecomingColors.InkSoft,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            } else if (today != null) {
                 Text(
                     today.content,
                     fontSize = 14.sp, color = HomecomingColors.Ink,
@@ -241,6 +325,38 @@ fun HeartTideScreen(onBack: () -> Unit = {}) {
             }
         }
         Spacer(Modifier.height(10.dp))
+
+        // ── 心语弧线（服务器上的情绪弧：一段一段的心里话） ──
+        if (remoteArc.isNotEmpty()) {
+            Text("心语弧线", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+            Spacer(Modifier.height(6.dp))
+            remoteArc.forEach { a ->
+                FrostCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        if (a.driveZh.isNotBlank()) {
+                            Text(
+                                a.driveZh,
+                                fontSize = 10.sp, color = Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(HomecomingColors.Accent.copy(alpha = 0.75f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(a.time, fontSize = 10.sp, color = HomecomingColors.InkSoft)
+                    }
+                    Text(
+                        a.text,
+                        fontSize = 13.sp, color = HomecomingColors.Ink,
+                        lineHeight = 20.sp,
+                        maxLines = 6,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+        }
 
         // ── 梦境列表 ──
         if (dreams.size > 1) {
