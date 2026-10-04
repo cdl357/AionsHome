@@ -46,7 +46,9 @@ private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.Image
 fun MoreScreen(
     onOpenSettings: () -> Unit = {},
     onOpenAlbum: () -> Unit = {},
-    onOpenMemories: () -> Unit = {}
+    onOpenMemories: () -> Unit = {},
+    onOpenReading: () -> Unit = {},
+    onOpenReminders: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
@@ -72,6 +74,8 @@ fun MoreScreen(
                 when (entry.name) {
                     "相册" -> onOpenAlbum()
                     "记忆库" -> onOpenMemories()
+                    "陪伴阅读" -> onOpenReading()
+                    "提醒 / 闹钟" -> onOpenReminders()
                     else -> Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
                 }
             }) {

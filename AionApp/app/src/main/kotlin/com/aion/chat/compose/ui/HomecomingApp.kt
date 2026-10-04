@@ -47,6 +47,8 @@ import com.aion.chat.compose.ui.chat.ChatScreen
 import com.aion.chat.compose.ui.home.HomeScreen
 import com.aion.chat.compose.ui.album.AlbumScreen
 import com.aion.chat.compose.ui.memories.MemoriesScreen
+import com.aion.chat.compose.ui.reading.ReadingScreen
+import com.aion.chat.compose.rem.ReminderScreen
 import com.aion.chat.compose.ui.more.MoreScreen
 import com.aion.chat.compose.ui.splash.SplashScreen
 import com.aion.chat.compose.ui.settings.SettingsScreen
@@ -154,12 +156,16 @@ fun HomecomingApp() {
                 composable("settings") { SettingsScreen() }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
                 composable("memories") { MemoriesScreen(onBack = { navController.popBackStack() }) }
+                composable("reading") { ReadingScreen(onBack = { navController.popBackStack() }) }
+                composable("reminders") { ReminderScreen() }
                 composable(HomeTab.More.route) {
                     Box(Modifier.fillMaxSize()) {
                         MoreScreen(
                             onOpenSettings = { navController.navigate("settings") },
                             onOpenAlbum = { navController.navigate("album") },
-                            onOpenMemories = { navController.navigate("memories") }
+                            onOpenMemories = { navController.navigate("memories") },
+                            onOpenReading = { navController.navigate("reading") },
+                            onOpenReminders = { navController.navigate("reminders") }
                         )
                     }
                 }
