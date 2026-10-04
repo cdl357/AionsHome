@@ -15,6 +15,17 @@ drop policy if exists "anon insert moments" on public.moments;
 create policy "anon insert moments" on public.moments
     for insert to anon with check (true);
 
+-- ── 朋友圈评论：anon 可读、可发（Yuri 评论同步到云） ──
+alter table public.moment_comments enable row level security;
+
+drop policy if exists "anon read moment_comments" on public.moment_comments;
+create policy "anon read moment_comments" on public.moment_comments
+    for select to anon using (true);
+
+drop policy if exists "anon insert moment_comments" on public.moment_comments;
+create policy "anon insert moment_comments" on public.moment_comments
+    for insert to anon with check (true);
+
 -- ── 日记：anon 只读（哥哥的日记 user_id = ai_哥哥）；不开放写入/删除 ──
 alter table public.diary_entries enable row level security;
 

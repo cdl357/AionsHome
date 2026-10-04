@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -416,6 +417,16 @@ fun MomentsScreen() {
                     if (HomecomingMomentsStore.addComment(context, moment.id, "user", text)) {
                         commentTarget.value = null
                         reload()
+                        // 评论同步到 moment_comments（尽力而为，失败已存本地）
+                        if (moment.remoteId != null) {
+                            scope.launch(Dispatchers.IO) {
+                                runCatching {
+                                    com.aion.chat.compose.data.SupabaseMomentsStore.postComment(
+                                        moment.remoteId, "yuri", text
+                                    )
+                                }
+                            }
+                        }
                         askSeanReply(moment.id, moment.content, text)
                     }
                 },
@@ -553,18 +564,39 @@ fun MomentCard(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                // 图片（本地路径或 http 地址都能显示；大图降采样，远端图落盘缓存）
+                // 图片九宫格（微信式：1 张满宽，2-3 单行，4+ 三列；大图降采样，远端图落盘缓存）
                 if (moment.attachments.isNotEmpty()) {
-                    Column(modifier = Modifier.padding(top = 8.dp)) {
-                        moment.attachments.take(3).forEach { ref ->
+                    val refs = moment.attachments.take(9)
+                    Column(
+                        modifier = Modifier.padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (refs.size == 1) {
                             MomentImage(
-                                ref = ref,
+                                ref = refs[0],
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(180.dp)
+                                    .height(200.dp)
                                     .clip(RoundedCornerShape(6.dp))
-                                    .padding(vertical = 2.dp)
                             )
+                        } else {
+                            refs.chunked(3).forEach { rowRefs ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    rowRefs.forEach { ref ->
+                                        MomentImage(
+                                            ref = ref,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .aspectRatio(1f)
+                                                .clip(RoundedCornerShape(6.dp))
+                                        )
+                                    }
+                                    repeat(3 - rowRefs.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
                         }
                     }
                 }

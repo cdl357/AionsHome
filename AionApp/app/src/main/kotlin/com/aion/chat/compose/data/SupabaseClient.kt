@@ -322,6 +322,24 @@ object SupabaseMomentsStore {
     }
 
     /**
+     * 发评论到 moment_comments（Yuri 自己的评论）。
+     * 列结构无文档，只发最可能的三个字段；失败（列名不符/权限）静默降级——本地一定有。
+     */
+    suspend fun postComment(momentId: String, author: String, content: String): Boolean {
+        val body = JSONObject()
+            .put("moment_id", momentId)
+            .put("author", author)
+            .put("content", content)
+        val reply = supabaseRequest(
+            "rest/v1/moment_comments", "POST", body.toString().toByteArray(Charsets.UTF_8)
+        )
+        if (reply.error != null) {
+            Log.w(SupabaseClient.TAG, "[COMMENT] 评论上云未成（${reply.error}），已存本地")
+        }
+        return reply.error == null
+    }
+
+    /**
      * 发朋友圈（只写 Yuri 自己的动态）。图片列固定写 images 数组（text[]），没有 image_url。
      * imageUrls 是 Storage 公网地址；上传不成功就传空数组（配图只在本地留档）。
      */

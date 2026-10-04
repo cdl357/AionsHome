@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,6 +67,7 @@ import java.util.Locale
  * - 阅读器：正文一段一块；点段落 → 「Sean 聊聊这段 / 读出这段」
  * - Sean 的伴读话挂在段落下面（记住，重进还在）；需要云线路就绪
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ReadingScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
@@ -130,6 +133,32 @@ fun ReadingScreen(onBack: () -> Unit = {}) {
     }
 
     val current = openBook.value
+
+    // ── 长按删书确认 ──
+    val deleteCandidate = remember { mutableStateOf<ReadingStore.Book?>(null) }
+    deleteCandidate.value?.let { victim ->
+        AlertDialog(
+            onDismissRequest = { deleteCandidate.value = null },
+            title = { Text("移出这本书？", fontSize = 16.sp, color = HomecomingColors.Ink) },
+            text = { Text("《${victim.title}》连同 Sean 在里面的伴读话一起删除。", fontSize = 13.sp, color = HomecomingColors.InkSoft) },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch(Dispatchers.IO) {
+                        ReadingStore.deleteBook(context, victim.id)
+                        withContext(Dispatchers.Main) {
+                            deleteCandidate.value = null
+                            reloadKey.value++
+                            Toast.makeText(context, "已移出书架", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("删除", color = HomecomingColors.Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate.value = null }) { Text("留着", color = HomecomingColors.InkSoft) }
+            }
+        )
+    }
+
     if (current == null) {
         // ── 书架 ──
         Column(
@@ -179,7 +208,10 @@ fun ReadingScreen(onBack: () -> Unit = {}) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color.White.copy(alpha = 0.72f))
-                        .clickable { openBook.value = b }
+                        .combinedClickable(
+                            onClick = { openBook.value = b },
+                            onLongClick = { deleteCandidate.value = b }
+                        )
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
                     Text(b.title, fontSize = 15.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
@@ -189,7 +221,7 @@ fun ReadingScreen(onBack: () -> Unit = {}) {
             }
             if (books.isNotEmpty()) {
                 Text(
-                    "长按书名可删除？——暂未开放，删书下一版加",
+                    "长按书名可以把它从书架移走",
                     fontSize = 10.sp, color = HomecomingColors.InkSoft,
                     modifier = Modifier.padding(top = 4.dp)
                 )
