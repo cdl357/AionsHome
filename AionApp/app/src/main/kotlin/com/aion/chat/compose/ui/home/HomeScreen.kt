@@ -15,7 +15,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -217,10 +224,23 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
                         AvatarPhoto(who = "sean", initial = "S", size = 74.dp)
                         Text("Sean", style = glassText(alpha = 0.95f, size = 13), modifier = Modifier.padding(top = 6.dp))
                     }
+                    // 连接符：会上下浮动的爱心（定稿"待定"符号的动态版）
+                    val heartFloat = rememberInfiniteTransition(label = "heart")
+                    val heartY by heartFloat.animateFloat(
+                        initialValue = -5f,
+                        targetValue = 5f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(850, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "heartY"
+                    )
                     Text(
                         "♥",
                         style = glassText(alpha = 0.95f, size = 26),
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        modifier = Modifier
+                            .offset(y = heartY.dp)
+                            .padding(horizontal = 16.dp)
                     )
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         AvatarPhoto(who = "yuri", initial = "Y", size = 74.dp)

@@ -10,9 +10,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,9 +22,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.width
@@ -30,6 +34,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -40,6 +47,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -81,6 +89,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 页面③：聊天。接 HomecomingChatEngine 真实链路；分条冒泡 + 气泡皮肤 + 背景可换。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen() {
     val context = LocalContext.current
@@ -149,6 +158,10 @@ fun ChatScreen() {
     val sending = remember { mutableStateOf(false) }
     val input = remember { mutableStateOf("") }
     val pendingImage = remember { mutableStateOf("") }
+    // 图片消息的本地文件（气泡渲染真图/表情用），发送完成后挂到消息 id 上
+    val pendingImagePath = remember { mutableStateOf("") }
+    val showStickerPanel = remember { mutableStateOf(false) }
+    val stickerVersion = remember { mutableStateOf(0L) }
     val errorText = remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
@@ -204,6 +217,7 @@ fun ChatScreen() {
     fun send() {
         val text = input.value.trim()
         val image = pendingImage.value
+        val imagePath = pendingImagePath.value
         if (text.isEmpty() && image.isEmpty()) return
         val w = wiring ?: return
         if (sending.value) return
@@ -214,6 +228,7 @@ fun ChatScreen() {
         sending.value = true
         input.value = ""
         pendingImage.value = ""
+        pendingImagePath.value = ""
         val requestId = "req_" + System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
@@ -241,7 +256,21 @@ fun ChatScreen() {
                         override fun onComplete(messageId: String, completeText: String) {
                             main.post { sending.value = false }
                             speakReply(completeText)
-                            scope.launch(Dispatchers.IO) { reloadNow() }
+                            scope.launch(Dispatchers.IO) {
+                                reloadNow()
+                                // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片通用）
+                                if (imagePath.isNotBlank()) {
+                                    val latest = runCatching {
+                                        w.listMessages(HomecomingChatWiring.TIMELINE)
+                                            .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
+                                    }.getOrNull()
+                                    if (latest != null) {
+                                        com.aion.chat.compose.data.HomecomingChatImageStore.map(
+                                            context, latest.id, imagePath
+                                        )
+                                    }
+                                }
+                            }
                         }
 
                         override fun onFailure(code: String) {
@@ -262,13 +291,62 @@ fun ChatScreen() {
         }
     }
 
+    // ── 表情包：从相册导入小图，点一下当消息发出；长按删除 ──
+    val stickerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()?.let { bytes -> saveChatImage(context, bytes, sticker = true) }
+                main.post { stickerVersion.value = System.currentTimeMillis() }
+            }
+        }
+    }
+
+    fun sendSticker(f: java.io.File) {
+        if (sending.value) return
+        if (!connected) {
+            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val dataUrl = runCatching {
+                val bytes = f.readBytes()
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                var w2 = bounds.outWidth
+                while (w2 / 2 >= 512) { sample *= 2; w2 /= 2 }
+                val bmp = BitmapFactory.decodeByteArray(
+                    bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }
+                )
+                val out = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                bmp.recycle()
+                "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+            }.getOrNull()
+            main.post {
+                if (dataUrl == null) {
+                    Toast.makeText(context, "表情读取失败", Toast.LENGTH_SHORT).show()
+                } else {
+                    pendingImage.value = dataUrl
+                    pendingImagePath.value = f.absolutePath
+                    showStickerPanel.value = false
+                    send()
+                }
+            }
+        }
+    }
+
     // ── 图片选择（加号） ──
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             scope.launch(Dispatchers.IO) {
-                val dataUrl = runCatching {
+                val pair = runCatching {
                     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                         ?: return@runCatching null
+                    // 本地存一份（气泡渲染用），再压成 dataUrl 给模型看
+                    val saved = saveChatImage(context, bytes, sticker = false)
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                     var sample = 1
@@ -280,11 +358,15 @@ fun ChatScreen() {
                     val out = ByteArrayOutputStream()
                     bmp.compress(Bitmap.CompressFormat.JPEG, 82, out)
                     bmp.recycle()
-                    "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+                    "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP) to saved
                 }.getOrNull()
                 main.post {
-                    if (dataUrl != null) pendingImage.value = dataUrl
-                    else Toast.makeText(context, "图片读取失败", Toast.LENGTH_SHORT).show()
+                    if (pair != null) {
+                        pendingImage.value = pair.first
+                        pendingImagePath.value = pair.second
+                    } else {
+                        Toast.makeText(context, "图片读取失败", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -440,7 +522,12 @@ fun ChatScreen() {
                     }
                     items(messages, key = { it.id }) { msg ->
                         if (msg.role == "user") {
-                            UserBubbles(text = msg.text, hasImage = msg.attachmentKind == "image", skin = skin.value)
+                            val imgPath = remember(msg.id) {
+                                if (msg.attachmentKind == "image") {
+                                    com.aion.chat.compose.data.HomecomingChatImageStore.pathFor(context, msg.id)
+                                } else null
+                            }
+                            UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value)
                         } else {
                             AssistantBubbles(text = msg.text, skin = skin.value)
                         }
@@ -448,6 +535,91 @@ fun ChatScreen() {
                     pendingSegments.forEachIndexed { index, seg ->
                         item(key = "pending_$index") {
                             AssistantBubbleSingle(text = seg, skin = skin.value)
+                        }
+                    }
+                }
+
+                // ── 表情包面板 ──
+                if (showStickerPanel.value) {
+                    val stickerFiles = remember(showStickerPanel.value, stickerVersion.value) {
+                        java.io.File(context.filesDir, "stickers").listFiles()
+                            ?.filter { it.isFile }?.sortedBy { it.name }?.take(48)
+                            ?: emptyList()
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.70f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "表情包 · 长按可删",
+                                fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "添加",
+                                fontSize = 13.sp, color = HomecomingColors.Accent,
+                                modifier = Modifier.clickable {
+                                    stickerPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            )
+                        }
+                        if (stickerFiles.isEmpty()) {
+                            Text(
+                                "还没有表情，点「添加」从相册选几张",
+                                fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 20.dp)
+                            )
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(4),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(176.dp)
+                                    .padding(horizontal = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                gridItems(stickerFiles, key = { it.absolutePath }) { f ->
+                                    val bmp = remember(f.absolutePath, stickerVersion.value) {
+                                        decodeChatImage(f, 256)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFFF4F2EE))
+                                            .combinedClickable(
+                                                onClick = { sendSticker(f) },
+                                                onLongClick = {
+                                                    if (f.delete()) {
+                                                        stickerVersion.value = System.currentTimeMillis()
+                                                        Toast.makeText(context, "表情已删除", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (bmp != null) {
+                                            Image(
+                                                bitmap = bmp.asImageBitmap(),
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Fit,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -488,6 +660,22 @@ fun ChatScreen() {
                         shape = RoundedCornerShape(14.dp),
                         maxLines = 4
                     )
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.85f))
+                            .clickable {
+                                showStickerPanel.value = !showStickerPanel.value
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.EmojiEmotions,
+                            contentDescription = "表情包",
+                            tint = if (showStickerPanel.value) HomecomingColors.Accent else HomecomingColors.Ink
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .size(44.dp)
@@ -599,23 +787,48 @@ private fun userStyle(skin: Int): UserStyle = when (skin) {
 
 /** 用户气泡组（一条消息渲染为多条小气泡）。 */
 @Composable
-fun UserBubbles(text: String, hasImage: Boolean, skin: Int) {
+fun UserBubbles(text: String, imagePath: String?, skin: Int) {
     val segments = splitBubbles(text)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.End
     ) {
-        if (hasImage) {
-            Text(
-                "📷 图片已发送",
-                fontSize = 11.sp,
-                color = HomecomingColors.InkSoft,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 2.dp),
-                textAlign = TextAlign.End
-            )
+        if (imagePath != null) {
+            val isSticker = imagePath.contains("/stickers/")
+            val bmp = remember(imagePath) { decodeChatImage(java.io.File(imagePath), if (isSticker) 384 else 1024) }
+            val shown = bmp
+            if (shown != null) {
+                if (isSticker) {
+                    // 表情：无气泡底，直接一张大图
+                    Image(
+                        bitmap = shown.asImageBitmap(),
+                        contentDescription = "表情",
+                        modifier = Modifier.size(120.dp)
+                    )
+                } else {
+                    Image(
+                        bitmap = shown.asImageBitmap(),
+                        contentDescription = "图片",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .widthIn(max = 240.dp)
+                            .heightIn(max = 320.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+            } else {
+                Text(
+                    "📷 图片已发送",
+                    fontSize = 11.sp,
+                    color = HomecomingColors.InkSoft,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 2.dp),
+                    textAlign = TextAlign.End
+                )
+            }
         }
         segments.forEach { seg ->
             val style = userStyle(skin)
@@ -663,3 +876,32 @@ private fun AssistantBubbleSingle(text: String, skin: Int) {
     }
 }
 
+
+/** 聊天图片落盘：sticker=true 存表情包库（压到 ~256px），否则存聊天图片（~1024px）。失败返回空串。 */
+private fun saveChatImage(context: android.content.Context, bytes: ByteArray, sticker: Boolean): String = runCatching {
+    val dir = java.io.File(context.filesDir, if (sticker) "stickers" else "chat_images").apply { mkdirs() }
+    val maxEdge = if (sticker) 256 else 1024
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    var sample = 1
+    val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+    while (maxDim / (sample * 2) >= maxEdge) sample *= 2
+    val bmp = BitmapFactory.decodeByteArray(
+        bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }
+    ) ?: return@runCatching ""
+    val f = java.io.File(dir, "img_" + System.currentTimeMillis() + "_" + (0..999).random() + ".jpg")
+    f.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+    bmp.recycle()
+    f.absolutePath
+}.getOrDefault("")
+
+/** 气泡/表情格用降采样解码；文件没了返回 null（调用方回落占位）。 */
+private fun decodeChatImage(f: java.io.File, maxEdge: Int): Bitmap? = runCatching {
+    if (!f.exists() || f.length() == 0L) return@runCatching null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(f.absolutePath, bounds)
+    var sample = 1
+    val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+    while (maxDim / (sample * 2) >= maxEdge) sample *= 2
+    BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
