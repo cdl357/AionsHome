@@ -127,6 +127,12 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
         seanHeart = com.aion.chat.compose.data.HomecomingPokeStore.currentHeart(context)
     }
 
+    // 心潮：驱动桌宠动画与状态词
+    var tide by remember { mutableStateOf(50) }
+    LaunchedEffect(Unit) {
+        tide = com.aion.chat.compose.data.HeartTideStore.todayLevel(context)
+    }
+
     fun tapMood(face: String, word: String) {
         if (moodBusy) return
         if (com.aion.chat.compose.data.HomecomingRouteConfig.mainRoute(context) == null) {
@@ -135,6 +141,8 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
         }
         moodBusy = true
         moodReply = ""
+        com.aion.chat.compose.data.HeartTideStore.bumpMoodTap(context)
+        tide = com.aion.chat.compose.data.HeartTideStore.todayLevel(context)
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             var line: String? = null
             try {
@@ -289,13 +297,22 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
                 )
             }
 
-            // 桌宠 AionPet（定稿 §12 近期项）：会动的小人，点一下打招呼
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            com.aion.chat.compose.ui.pet.PetSprite(displayHeight = 96.dp)
-        }
+            // 桌宠 AionPet（定稿 §12）：会动的小人 + 心潮联动（越雀跃动画越欢）
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "他的心潮 · " + com.aion.chat.compose.data.HeartTideStore.tideWord(tide),
+                        style = glassText(alpha = 0.7f, size = 10)
+                    )
+                    com.aion.chat.compose.ui.pet.PetSprite(
+                        displayHeight = 96.dp,
+                        moodAnim = com.aion.chat.compose.data.HeartTideStore.tideAnim(tide)
+                    )
+                }
+            }
 
             // 4. 一起听歌：专辑封面缩图 + 歌名 + 播放/暂停（本期 UI + 控件占位）
             GlassCard(hazeState = hazeState, contentPadding = 14.dp) {

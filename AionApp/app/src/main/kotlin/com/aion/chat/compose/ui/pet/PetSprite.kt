@@ -79,6 +79,7 @@ private fun loadStrip(context: android.content.Context, src: String): androidx.c
 fun PetSprite(
     modifier: Modifier = Modifier,
     displayHeight: Dp = 104.dp,
+    moodAnim: String? = null,
     onTap: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -89,15 +90,26 @@ fun PetSprite(
 
     val anim = manifest[manifest.keys.elementAtOrNull(currentAnim) ?: "idle"]
 
+    // 心潮联动：外部指定动画（happy/jumping/tsundere…），变化时切换；空则回 idle
+    LaunchedEffect(moodAnim) {
+        val target = moodAnim?.takeIf { it.isNotBlank() && manifest.containsKey(it) } ?: "idle"
+        if (manifest.keys.elementAtOrNull(currentAnim) != target) {
+            currentAnim = manifest.keys.indexOf(target).coerceAtLeast(0)
+            frameIndex = 0
+        }
+    }
+
     // 帧推进：按 manifest 帧时长；非循环动画播完回 idle
-    LaunchedEffect(currentAnim) {
+    // 心潮指定了动画时，该动画被"钉住"持续循环，不被弹回 idle
+    LaunchedEffect(currentAnim, moodAnim) {
         val a = anim ?: return@LaunchedEffect
+        val pinned = !moodAnim.isNullOrBlank() && a.name == moodAnim
         while (true) {
             val d = a.durationsMs.getOrElse(frameIndex) { 140L }
             delay(d)
             val next = frameIndex + 1
             if (next >= a.frameCount) {
-                if (a.name != "idle") {
+                if (a.name != "idle" && !pinned) {
                     // 小动作播完回 idle
                     currentAnim = manifest.keys.indexOf("idle").coerceAtLeast(0)
                     frameIndex = 0

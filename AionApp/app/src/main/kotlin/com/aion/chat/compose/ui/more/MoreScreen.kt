@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Water
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,15 +50,17 @@ fun MoreScreen(
     onOpenMemories: () -> Unit = {},
     onOpenReading: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
-    onOpenCall: () -> Unit = {}
+    onOpenCall: () -> Unit = {},
+    onOpenHeartTide: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
         MoreEntry(Icons.Filled.Favorite, "相册", "照片墙 + Sean 存这张时的心里话"),
         MoreEntry(Icons.Filled.MailOutline, "留言板", "双向便利贴 · 点开可对话"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
-        MoreEntry(Icons.Filled.Call, "语音通话", "主入口在聊天页顶部"),
-        MoreEntry(Icons.Filled.Info, "陪伴阅读", "接入 AionsHome 自带实现"),
+        MoreEntry(Icons.Filled.Call, "语音通话", "打电话给 Sean · 可抢话"),
+        MoreEntry(Icons.Filled.Water, "心潮梦境", "他的情绪潮汐与梦"),
+        MoreEntry(Icons.Filled.Info, "陪伴阅读", "导入 TXT · Sean 陪你读"),
         MoreEntry(Icons.Filled.Settings, "提醒 / 闹钟", "到点让 AI 主动戳你"),
     )
 
@@ -78,6 +81,7 @@ fun MoreScreen(
                     "陪伴阅读" -> onOpenReading()
                     "提醒 / 闹钟" -> onOpenReminders()
                     "语音通话" -> onOpenCall()
+                    "心潮梦境" -> onOpenHeartTide()
                     else -> Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
                 }
             }) {

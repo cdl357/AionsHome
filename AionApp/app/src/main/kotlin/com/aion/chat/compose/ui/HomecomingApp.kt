@@ -49,6 +49,7 @@ import com.aion.chat.compose.ui.album.AlbumScreen
 import com.aion.chat.compose.ui.call.CallScreen
 import com.aion.chat.compose.ui.memories.MemoriesScreen
 import com.aion.chat.compose.ui.reading.ReadingScreen
+import com.aion.chat.compose.ui.hearttide.HeartTideScreen
 import com.aion.chat.compose.rem.ReminderScreen
 import com.aion.chat.compose.ui.more.MoreScreen
 import com.aion.chat.compose.ui.splash.SplashScreen
@@ -161,6 +162,7 @@ fun HomecomingApp() {
                 composable("memories") { MemoriesScreen(onBack = { navController.popBackStack() }) }
                 composable("reading") { ReadingScreen(onBack = { navController.popBackStack() }) }
                 composable("reminders") { ReminderScreen() }
+                composable("hearttide") { HeartTideScreen(onBack = { navController.popBackStack() }) }
                 composable("call") { CallScreen(onHangUp = { navController.popBackStack() }) }
                 composable(HomeTab.More.route) {
                     Box(Modifier.fillMaxSize()) {
@@ -170,7 +172,8 @@ fun HomecomingApp() {
                             onOpenMemories = { navController.navigate("memories") },
                             onOpenReading = { navController.navigate("reading") },
                             onOpenReminders = { navController.navigate("reminders") },
-                            onOpenCall = { navController.navigate("call") }
+                            onOpenCall = { navController.navigate("call") },
+                            onOpenHeartTide = { navController.navigate("hearttide") }
                         )
                     }
                 }
