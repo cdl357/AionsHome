@@ -1,8 +1,6 @@
 package com.aion.chat.compose.ui.common
 
 import android.graphics.BitmapFactory
-import androidx.compose.ui.graphics.asImageBitmap
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,16 +21,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aion.chat.compose.data.AvatarStore
 import java.io.File
 
 /**
- * 头像（布局定稿：真实图片，点一下随时能换；未设置时首字母占位）。
- * 全 App 共用同一份文件——回家页/朋友圈/聊天页传同一 who 就自动同步。
+ * 头像（布局定稿：真实图片，点头像随时能换；未设置时首字母占位）。
+ * 全 App 共用同一份文件——首页/朋友圈/聊天传同一 who 就自动同步；
+ * 点一下（可点时）弹相册选图，换完全局图章刷新，所有在屏头像立即更新。
  */
 @Composable
 fun AvatarPhoto(
@@ -40,20 +41,27 @@ fun AvatarPhoto(
     initial: String,
     size: Dp = 56.dp,
     strokeWidth: Dp = 2.dp,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = {}   // 默认可点换头像；传 null 则不可点（如通话中）
 ) {
     val context = LocalContext.current
     val file = remember(who) {
         File(context.filesDir, if (who == "yuri") "avatar_yuri.jpg" else "avatar_sean.jpg")
     }
-    val version = remember(who) { mutableStateOf(file.lastModified()) }
+    // 全局图章：任何一处换了头像，这里观察到变化就重载位图
+    val stamps = AvatarStore.stampState.value
+    val versionKey = when (who) {
+        "yuri" -> stamps.yuri
+        else -> stamps.sean
+    }
 
-    // 文件存在则加载位图（降采样防 OOM）
-    val bitmap: androidx.compose.ui.graphics.ImageBitmap? = remember(version.value) {
-        if (!file.exists()) return@remember null
+    // 位图按 全局图章 降采样加载
+    val bitmap: androidx.compose.ui.graphics.ImageBitmap? = remember(versionKey, who) {
         runCatching {
-            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-            BitmapFactory.decodeFile(file.absolutePath, opts)?.asImageBitmap()
+            if (!file.exists()) null
+            else {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeFile(file.absolutePath, opts)?.asImageBitmap()
+            }
         }.getOrNull()
     }
 
@@ -66,33 +74,55 @@ fun AvatarPhoto(
         if (uri != null) {
             runCatching {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (bytes != null) file.writeBytes(bytes)
+                if (bytes != null) AvatarStore.save(context, who, bytes)
             }
-            version.value = file.lastModified()
+            // 图章由 AvatarStore.save → bump 更新
         }
     }
+
+    val clickableModifier = if (onClick != null) {
+        Modifier.clickable { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    } else Modifier
 
     Box(
         modifier = Modifier
             .size(size)
-            .clip(CircleShape)
-            .background(placeholder)
-            .border(strokeWidth, borderColor.copy(alpha = 0.55f), CircleShape)
-            .let { m -> if (onClick != null) m.clickable {
-                launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            } else m },
+            .then(clickableModifier),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = initial,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size)
-            )
-        } else {
-            Text(initial, fontSize = (size.value * 0.4f).sp, color = borderColor,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(placeholder)
+                .border(strokeWidth, borderColor.copy(alpha = 0.55f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = initial,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(size)
+                )
+            } else {
+                Text(initial, fontSize = (size.value * 0.4f).sp, color = borderColor,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
+            }
+        }
+        // 可点头像右下角的小角标：提示"点我换头像"
+        if (onClick != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size((size.value * 0.32f).dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.92f))
+                    .border(1.dp, borderColor.copy(alpha = 0.7f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("📷", fontSize = (size.value * 0.16f).sp)
+            }
         }
     }
 }

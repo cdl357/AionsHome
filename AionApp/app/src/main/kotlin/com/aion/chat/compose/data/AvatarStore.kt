@@ -18,9 +18,13 @@ object AvatarStore {
     var stamp: Stamps = Stamps(0, 0)
         private set
 
+    /** Compose 响应式图章：头像一换，所有在屏的 AvatarPhoto 立刻重载（Compose 观察它）。 */
+    val stampState = androidx.compose.runtime.mutableStateOf(Stamps(0, 0))
+
     fun bump(who: String) {
         stamp = if (who == "yuri") Stamps(System.currentTimeMillis(), stamp.sean)
                 else Stamps(stamp.yuri, System.currentTimeMillis())
+        stampState.value = stamp
     }
 
     fun yuriFile(context: Context): File = File(context.filesDir, "avatar_yuri.jpg")

@@ -137,7 +137,7 @@ fun CallScreen(onHangUp: () -> Unit = {}) {
                             .background(Color.White.copy(alpha = ringA))
                     )
                 }
-                AvatarPhoto(who = "sean", initial = "S", size = 132.dp, strokeWidth = 3.dp)
+                AvatarPhoto(who = "sean", initial = "S", size = 132.dp, strokeWidth = 3.dp, onClick = null)
             }
             Text(
                 "Sean",

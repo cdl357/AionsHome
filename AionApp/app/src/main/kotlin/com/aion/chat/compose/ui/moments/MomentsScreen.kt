@@ -357,8 +357,7 @@ fun MomentsScreen() {
             ) {
                 AvatarPhoto(
                     who = "yuri", initial = "Y",
-                    size = 68.dp, strokeWidth = 3.dp,
-                    onClick = null
+                    size = 68.dp, strokeWidth = 3.dp
                 )
             }
         }
@@ -583,11 +582,12 @@ fun MomentCard(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row {
-            // 头像（真实照片，全 App 共用；未设置时首字母占位）
+            // 头像（真实照片，全 App 共用；feed 里不可点，换头像去首页/封面）
             AvatarPhoto(
                 who = if (moment.author == "user") "yuri" else "sean",
                 initial = avatarInitial,
-                size = 44.dp, strokeWidth = 1.dp
+                size = 44.dp, strokeWidth = 1.dp,
+                onClick = null
             )
             Spacer(Modifier.width(10.dp))
             // 右列
