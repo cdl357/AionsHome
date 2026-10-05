@@ -51,7 +51,8 @@ fun MoreScreen(
     onOpenReading: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
     onOpenCall: () -> Unit = {},
-    onOpenHeartTide: () -> Unit = {}
+    onOpenHeartTide: () -> Unit = {},
+    onOpenBoard: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
@@ -82,6 +83,7 @@ fun MoreScreen(
                     "提醒 / 闹钟" -> onOpenReminders()
                     "语音通话" -> onOpenCall()
                     "心潮梦境" -> onOpenHeartTide()
+                    "留言板" -> onOpenBoard()
                     else -> Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
                 }
             }) {

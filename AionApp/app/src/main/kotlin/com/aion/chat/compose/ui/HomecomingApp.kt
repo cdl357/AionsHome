@@ -47,6 +47,7 @@ import androidx.navigation.compose.rememberNavController
 import com.aion.chat.compose.ui.chat.ChatScreen
 import com.aion.chat.compose.ui.home.HomeScreen
 import com.aion.chat.compose.ui.album.AlbumScreen
+import com.aion.chat.compose.ui.board.BoardScreen
 import com.aion.chat.compose.ui.call.CallScreen
 import com.aion.chat.compose.ui.memories.MemoriesScreen
 import com.aion.chat.compose.ui.reading.ReadingScreen
@@ -149,7 +150,25 @@ fun HomecomingApp() {
                 }
                 composable(HomeTab.Home.route) {
                     Box(Modifier.fillMaxSize()) {
-                        HomeScreen(onOpenAlbum = { navController.navigate("album") })
+                        HomeScreen(
+                            onOpenAlbum = { navController.navigate("album") },
+                            onOpenChat = {
+                                navController.navigate(HomeTab.Chat.route) {
+                                    popUpTo(HomeTab.Home.route) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            onOpenDiary = {
+                                navController.navigate(HomeTab.Us.route) {
+                                    popUpTo(HomeTab.Home.route) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            onOpenBoard = { navController.navigate("board") },
+                            onOpenMemories = { navController.navigate("memories") }
+                        )
                     }
                 }
                 composable(HomeTab.Chat.route) {
@@ -165,6 +184,7 @@ fun HomecomingApp() {
                 }
                 composable("settings") { SettingsScreen() }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
+                composable("board") { BoardScreen() }
                 composable("memories") { MemoriesScreen(onBack = { navController.popBackStack() }) }
                 composable("reading") { ReadingScreen(onBack = { navController.popBackStack() }) }
                 composable("reminders") { ReminderScreen() }
@@ -179,7 +199,8 @@ fun HomecomingApp() {
                             onOpenReading = { navController.navigate("reading") },
                             onOpenReminders = { navController.navigate("reminders") },
                             onOpenCall = { navController.navigate("call") },
-                            onOpenHeartTide = { navController.navigate("hearttide") }
+                            onOpenHeartTide = { navController.navigate("hearttide") },
+                            onOpenBoard = { navController.navigate("board") }
                         )
                     }
                 }

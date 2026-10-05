@@ -284,6 +284,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                                         )
                                     }
                                 }
+                                // 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写今天的日记
+                                if (text.contains("晚安")) {
+                                    runCatching { generateTonightDiary(context) }
+                                }
                             }
                         }
 
@@ -1217,3 +1221,42 @@ private fun decodeChatImage(f: java.io.File, maxEdge: Int): Bitmap? = runCatchin
     while (maxDim / (sample * 2) >= maxEdge) sample *= 2
     BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
 }.getOrNull()
+
+/** 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写当天日记。已有则跳过；无线路安静跳过。 */
+private suspend fun generateTonightDiary(context: android.content.Context) {
+    val today = java.time.LocalDate.now().toString()
+    val has = com.aion.chat.compose.data.HomecomingDayStore.diaries(context).any {
+        it.author == "sean" &&
+            java.time.Instant.ofEpochMilli(it.createdAt)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() == today
+    }
+    if (has) return
+    val w = HomecomingChatWiring.safeCreate(context) ?: return
+    if (!w.hasRoute()) return
+    var diary: String? = null
+    w.engine.send(
+        HomecomingChatEngine.ChatCommand(
+            "req_diary_" + System.currentTimeMillis(),
+            HomecomingChatWiring.TIMELINE,
+            HomecomingChatWiring.RESPONDER,
+            HomecomingChatWiring.USER,
+            "你刚和 Yuri 互道了晚安。按约定写下今天的日记：只输出日记正文，" +
+                "写今天你们之间具体的事（对话里提过的优先），真诚、口语、别文艺腔，100 字以内。",
+            "main", w.mainModelKey(), "", "", false
+        ),
+        object : HomecomingChatEngine.Observer {
+            override fun onChunk(chunk: String) {}
+            override fun onComplete(messageId: String, text: String) {
+                val t = text.trim()
+                if (t.isNotEmpty()) diary = t
+            }
+            override fun onFailure(code: String) {}
+        }
+    )
+    var waited = 0L
+    while (diary == null && waited < 30_000L) { kotlinx.coroutines.delay(300L); waited += 300L }
+    val d = diary ?: return
+    com.aion.chat.compose.data.HomecomingDayStore.addDiary(
+        context, "sean", "$today 日记", d, System.currentTimeMillis()
+    )
+}
