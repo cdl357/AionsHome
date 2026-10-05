@@ -26,6 +26,19 @@ final class CompanionWidgetRenderer {
         views.setTextViewText(R.id.widget_banner_text, bannerText);
         views.setImageViewResource(R.id.widget_background, backgroundFor(period));
 
+        // 回家数据行：Compose 数据层直供（在一起天数 · 今日情话 · 心跳）
+        try {
+            int days = com.aion.chat.compose.data.HomecomingData.INSTANCE
+                    .daysTogether(java.time.LocalDate.now());
+            String quote = com.aion.chat.compose.data.HomecomingData.INSTANCE.loadQuote(context);
+            int heart = com.aion.chat.compose.data.HomecomingPokeStore.INSTANCE.currentHeart(context);
+            views.setTextViewText(R.id.widget_days_line,
+                    "在一起 " + days + " 天 · ♥ " + heart);
+            views.setTextViewText(R.id.widget_quote_line, quote);
+        } catch (Throwable t) {
+            // 小组件不因数据层异常而空白
+        }
+
         WidgetStateStore widgetState = new WidgetStateStore(context);
         boolean impatient = period == WidgetTimeTheme.Period.MORNING
                 || period == WidgetTimeTheme.Period.AFTERNOON;

@@ -86,6 +86,7 @@ fun MomentsScreen() {
     val coverVersion = remember { mutableStateOf(0L) }
     val cloudError = remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
     val isRefreshing = remember { mutableStateOf(false) }
+    val viewerRef = remember { mutableStateOf<String?>(null) }
 
     val routeStamp = remember { HomecomingRouteConfig.stamp(context) }
     val wiring = remember(routeStamp) { HomecomingChatWiring.safeCreate(context) }
@@ -453,7 +454,8 @@ fun MomentsScreen() {
                         HomecomingMomentsStore.deleteMoment(context, moment.localRowId ?: moment.id)
                         main.post { reload() }
                     }
-                }
+                },
+                onImageTap = { ref -> viewerRef.value = ref }
             )
             // 分割线
             Box(
@@ -467,6 +469,24 @@ fun MomentsScreen() {
         Spacer(Modifier.height(60.dp))
     }
     } // PullToRefreshBox
+
+    // ── 图片全屏查看 ──
+    viewerRef.value?.let { ref ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { viewerRef.value = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.96f))
+                    .clickable { viewerRef.value = null },
+                contentAlignment = Alignment.Center
+            ) {
+                MomentImage(ref = ref, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
 
     // ── 发布弹窗 ──
     if (showCompose.value) {
@@ -551,7 +571,8 @@ fun MomentCard(
     onComment: () -> Unit,
     onSendComment: (String) -> Unit,
     onDeleteComment: (Long) -> Unit,
-    onDeleteMoment: () -> Unit
+    onDeleteMoment: () -> Unit,
+    onImageTap: (String) -> Unit = {}
 ) {
     val name = when (moment.author) { "user" -> "Yuri"; "sean" -> "Sean"; else -> moment.author }
     val avatarInitial = if (moment.author == "user") "Y" else "S"
@@ -588,6 +609,7 @@ fun MomentCard(
                         if (refs.size == 1) {
                             MomentImage(
                                 ref = refs[0],
+                                onClick = { onImageTap(refs[0]) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
@@ -602,6 +624,7 @@ fun MomentCard(
                                     rowRefs.forEach { ref ->
                                         MomentImage(
                                             ref = ref,
+                                            onClick = { onImageTap(ref) },
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .aspectRatio(1f)
@@ -714,24 +737,25 @@ private fun relTime(ts: Long): String {
     }
 }
 
-/** 朋友圈配图：本地路径直接解码；http(s) 先落盘缓存再解码；加载中灰底占位。 */
+/** 朋友圈配图：本地路径直接解码；http(s) 先落盘缓存再解码；加载中灰底占位；可点开全屏。 */
 @Composable
-fun MomentImage(ref: String, modifier: Modifier = Modifier) {
+fun MomentImage(ref: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val context = LocalContext.current
     val bmp = remember(ref) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(ref) {
         bmp.value = withContext(Dispatchers.IO) { loadMomentBitmap(context, ref) }
     }
     val loaded = bmp.value
+    val finalModifier = if (onClick != null) modifier.clickable { onClick() } else modifier
     if (loaded != null) {
         Image(
             bitmap = loaded.asImageBitmap(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = modifier
+            modifier = finalModifier
         )
     } else {
-        Box(modifier.background(Color(0xFFF2F2F2)))
+        Box(finalModifier.background(Color(0xFFF2F2F2)))
     }
 }
 

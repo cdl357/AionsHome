@@ -97,6 +97,45 @@
 
         </LinearLayout>
 
+        <!-- 回家数据行：在一起天数 · 今日情话 · 心跳（Compose 数据层直供） -->
+        <LinearLayout
+            android:id="@+id/widget_home_line"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_marginBottom="14dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_days_line"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:shadowColor="#88000000"
+                android:shadowDy="1"
+                android:shadowRadius="4" />
+
+            <TextView
+                android:id="@+id/widget_quote_line"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="2"
+                android:textColor="#E6FFFFFF"
+                android:textSize="11sp"
+                android:shadowColor="#88000000"
+                android:shadowDy="1"
+                android:shadowRadius="4" />
+
+        </LinearLayout>
+
         <ImageView
             android:id="@+id/widget_microphone"
             android:layout_width="72dp"

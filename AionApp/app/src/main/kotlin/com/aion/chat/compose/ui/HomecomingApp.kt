@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,6 +98,11 @@ fun HomecomingApp() {
     val bgBitmap = remember(bgStamp) { SettingsBg.loadBitmap(appContext)?.asImageBitmap() }
     // 键盘弹出时收起底部胶囊，别浮在聊天输入框上
     val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+
+    // App 打开时把桌面小组件刷成最新数据（天数/情话/心跳）
+    LaunchedEffect(Unit) {
+        runCatching { com.aion.chat.widget.CompanionWidgetProvider.refreshAll(appContext) }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 背景层

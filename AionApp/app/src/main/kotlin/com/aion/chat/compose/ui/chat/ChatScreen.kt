@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -165,6 +166,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     // 图片消息的本地文件（气泡渲染真图/表情用），发送完成后挂到消息 id 上
     val pendingImagePath = remember { mutableStateOf("") }
     val showStickerPanel = remember { mutableStateOf(false) }
+    val showSearch = remember { mutableStateOf(false) }
     val stickerVersion = remember { mutableStateOf(0L) }
     // 加号面板：表情包 / 相册 / 拍照 / 戳一戳
     val plusOpen = remember { mutableStateOf(false) }
@@ -561,6 +563,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     )
                     Spacer(Modifier.width(12.dp))
                     Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "找聊天记录",
+                        tint = HomecomingColors.Ink,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable { showSearch.value = true }
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Icon(
                         imageVector = if (voiceOn.value) Icons.Filled.VolumeUp else Icons.Outlined.VolumeUp,
                         contentDescription = "读出回复",
                         tint = if (voiceOn.value) HomecomingColors.Accent else HomecomingColors.Ink,
@@ -917,6 +928,67 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                 }
             }
         }
+    }
+
+    // ── 聊天记录搜索 ──
+    if (showSearch.value) {
+        val q = remember { mutableStateOf("") }
+        val results = remember(q.value) {
+            val key = q.value.trim()
+            val w = wiring
+            if (key.isEmpty() || w == null) emptyList()
+            else runCatching {
+                w.listMessages(HomecomingChatWiring.TIMELINE, 500)
+                    .filter { it.text.contains(key) }
+                    .take(30)
+            }.getOrDefault(emptyList())
+        }
+        AlertDialog(
+            onDismissRequest = { showSearch.value = false },
+            title = { Text("找聊天记录", fontSize = 16.sp, color = HomecomingColors.Ink) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = q.value,
+                        onValueChange = { q.value = it },
+                        singleLine = true,
+                        placeholder = { Text("关键词…", color = HomecomingColors.InkSoft) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                        items(results, key = { it.id }) { m ->
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    if (m.role == "user") "你" else "Sean",
+                                    fontSize = 10.sp,
+                                    color = if (m.role == "user") HomecomingColors.Accent else HomecomingColors.Ok,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    m.text,
+                                    fontSize = 13.sp, color = HomecomingColors.Ink,
+                                    maxLines = 3
+                                )
+                            }
+                        }
+                        if (results.isEmpty() && q.value.isNotBlank()) {
+                            item {
+                                Text(
+                                    "没找到",
+                                    fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSearch.value = false }) { Text("关闭", color = HomecomingColors.InkSoft) }
+            }
+        )
     }
 
     // ── 气泡皮肤选择 ──

@@ -478,6 +478,55 @@ fun SettingsScreen() {
             }
         }
 
+        // ── 一键备份：打包本地数据（绝不含 routes.json/API Key） ──
+        val exportLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/zip")
+        ) { uri ->
+            if (uri != null) {
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val ok = runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            java.util.zip.ZipOutputStream(out.buffered()).use { zip ->
+                                fun add(name: String, f: java.io.File?) {
+                                    if (f != null && f.exists() && f.length() > 0) {
+                                        zip.putNextEntry(java.util.zip.ZipEntry(name))
+                                        f.inputStream().use { it.copyTo(zip) }
+                                        zip.closeEntry()
+                                    }
+                                }
+                                add("homecoming.db", context.getDatabasePath("homecoming.db"))
+                                add("homecoming.db-wal", java.io.File(context.filesDir.parentFile, "databases/homecoming.db-wal"))
+                                add("provisions.json", java.io.File(context.filesDir, "provisions.json"))
+                                add("heart_tide.json", com.aion.chat.compose.data.HeartTideStore.tideFile(context))
+                                add("mcp.json", java.io.File(context.filesDir, "mcp.json"))
+                                add("avatar_yuri.jpg", java.io.File(context.filesDir, "avatar_yuri.jpg"))
+                                add("avatar_sean.jpg", java.io.File(context.filesDir, "avatar_sean.jpg"))
+                                add("home_bg.jpg", java.io.File(context.filesDir, "home_bg.jpg"))
+                                add("chat_bg.jpg", java.io.File(context.filesDir, "chat_bg.jpg"))
+                                add("moments_cover.jpg", java.io.File(context.filesDir, "moments_cover.jpg"))
+                            }
+                        } != null
+                    }.getOrDefault(false)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (ok) "备份已导出（不含任何 API Key）" else "导出失败",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+        }
+        FrostCard(onClick = {
+            exportLauncher.launch("aionshome-backup-" + java.time.LocalDate.now() + ".zip")
+        }) {
+            Text("备份数据", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text(
+                "聊天/记忆/日记/相册记录/梦境/头像/背景 打包成 zip 存到你选的位置；不含任何 API Key",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft
+            )
+        }
+
         val lastCrash = remember { AppCrashLog.last(context) }
 
         // ── 版本与崩溃日志（便于反馈问题） ──
