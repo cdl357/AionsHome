@@ -1121,7 +1121,7 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int) {
         horizontalAlignment = Alignment.End
     ) {
         if (imagePath != null) {
-            val isSticker = imagePath.contains("/stickers/")
+            val isSticker = imagePath.contains("/stickers")  // 本地 stickers/ 与远端 stickers_remote/ 都算表情
             val bmp = remember(imagePath) { decodeChatImage(java.io.File(imagePath), if (isSticker) 384 else 1024) }
             val shown = bmp
             if (shown != null) {
