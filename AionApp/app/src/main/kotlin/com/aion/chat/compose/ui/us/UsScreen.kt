@@ -26,6 +26,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -53,7 +55,7 @@ import java.time.ZoneId
 /** 页面②：我们（日历时光机）——整月格子 + 左右滑切月 + 点天抽屉三卡（摘要可展开）+ 纪念日专属图标。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsScreen() {
+fun UsScreen(onOpenAlbum: () -> Unit = {}) {
     val context = LocalContext.current
     var viewDate by remember { mutableStateOf(LocalDate.now().withDayOfMonth(1)) }
     var selected by remember { mutableStateOf<LocalDate?>(null) }
@@ -65,6 +67,9 @@ fun UsScreen() {
     var boardNotes by remember { mutableStateOf(listOf<HomecomingDayStore.BoardNote>()) }
     var memories by remember { mutableStateOf(listOf<HomecomingDayStore.MemorySummary>()) }
     var diaryCloudError by remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
+
+    // 视觉皮：日历下挂照片墙（相册最近的照片）
+    val albumPhotos = remember { mutableStateListOf<com.aion.chat.compose.data.HomecomingAlbumStore.AlbumPhoto>() }
 
     LaunchedEffect(reloadKey) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -83,6 +88,8 @@ fun UsScreen() {
             }
             boardNotes = HomecomingDayStore.boardNotes(context)
             memories = HomecomingDayStore.memoriesOfDay(context, ::dayKey, "")
+            albumPhotos.clear()
+            albumPhotos.addAll(com.aion.chat.compose.data.HomecomingAlbumStore.list(context).take(12))
         }
     }
 
@@ -130,7 +137,20 @@ fun UsScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("‹", fontSize = 22.sp, color = HomecomingColors.Ink, modifier = Modifier.clickable { viewDate = viewDate.minusMonths(1) })
-                    Text("${viewDate.year} 年 ${viewDate.monthValue} 月", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = HomecomingColors.Ink)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // 视觉皮：月份手写英文（衬线斜体，方案 §4）
+                        Text(
+                            MONTHS_EN[viewDate.monthValue - 1],
+                            fontSize = 12.sp,
+                            color = HomecomingColors.Accent,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
+                        Text(
+                            "${viewDate.year} 年 ${viewDate.monthValue} 月",
+                            fontSize = 16.sp, fontWeight = FontWeight.Medium, color = HomecomingColors.Ink
+                        )
+                    }
                     Text("›", fontSize = 22.sp, color = HomecomingColors.Ink, modifier = Modifier.clickable { viewDate = viewDate.plusMonths(1) })
                 }
                 Spacer(Modifier.height(10.dp))
@@ -147,11 +167,44 @@ fun UsScreen() {
                     onDayClick = { date -> selected = date; drawerAction = ""; showDrawer = true }
                 )
                 Text(
-                    "左右滑动翻月 · 有内容的日子带小圆点 · 纪念日有专属图标",
+                    "左右滑动翻月 · 有内容的日子带小爱心 · 纪念日有专属图标",
                     fontSize = 11.sp, color = HomecomingColors.InkSoft,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
+        }
+
+        // ── 视觉皮：日历下面挂照片墙（方案 §4）──
+        if (albumPhotos.isNotEmpty()) {
+            Text("照片墙", fontSize = 13.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 10.dp))
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(albumPhotos.size) { idx ->
+                    val p = albumPhotos[idx]
+                    val bmp = remember(p.id) { runCatching { decodeAlbum(p.file(context), 256) }.getOrNull() }
+                    Box(
+                        modifier = Modifier
+                            .size(84.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF0EDE6))
+                            .clickable { onOpenAlbum() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (bmp != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
         }
 
         // ── 那天（点了具体日期才出现：预览 + 在这天新建，定稿 §4） ──
@@ -219,6 +272,22 @@ fun UsScreen() {
 internal var drawerAction: String = ""
 
 // ── 日期工具 ──
+
+private val MONTHS_EN = listOf(
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+)
+
+/** 照片墙缩略图降采样解码。 */
+private fun decodeAlbum(f: java.io.File, maxEdge: Int): android.graphics.Bitmap? = runCatching {
+    if (!f.exists() || f.length() == 0L) return null
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(f.absolutePath, bounds)
+    var sample = 1
+    val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+    while (maxDim / (sample * 2) >= maxEdge) sample *= 2
+    android.graphics.BitmapFactory.decodeFile(f.absolutePath, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
 
 private val zone: ZoneId = ZoneId.systemDefault()
 
@@ -330,12 +399,12 @@ fun CalendarGrid(
                                     )
                                 }
                                 if (hasContent(year, month, day) && anniv == null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 3.dp)
-                                            .size(4.dp)
-                                            .background(HomecomingColors.Accent, CircleShape)
+                                    // 视觉皮：有内容的日子标爱心（方案 §4 爱心格子）
+                                    Text(
+                                        "♥",
+                                        fontSize = 7.sp,
+                                        color = HomecomingColors.Accent,
+                                        modifier = Modifier.align(Alignment.BottomCenter)
                                     )
                                 }
                             }

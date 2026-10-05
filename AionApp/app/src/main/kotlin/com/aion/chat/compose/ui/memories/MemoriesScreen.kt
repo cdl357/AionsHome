@@ -2,6 +2,8 @@ package com.aion.chat.compose.ui.memories
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +62,9 @@ fun MemoriesScreen(onBack: () -> Unit = {}) {
 
     val memories = remember { mutableStateListOf<com.aion.chat.homecoming.HomecomingMemoryRepository.Memory>() }
     val query = remember { mutableStateOf("") }
+    // 分类翻（定稿方案 D）：本地启发式分类——重要日子 / 我们的约定 / 关于你 / 关于我
+    val CATEGORIES = listOf("全部", "重要日子", "我们的约定", "关于你", "关于我")
+    val category = remember { mutableStateOf("全部") }
     val reloadKey = remember { mutableStateOf(0) }
 
     fun reload() {
@@ -141,7 +146,34 @@ fun MemoriesScreen(onBack: () -> Unit = {}) {
         }
         Spacer(Modifier.height(6.dp))
 
-        if (memories.isEmpty()) {
+        // ── 分类翻 ──
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            CATEGORIES.forEach { c ->
+                val picked = category.value == c
+                Text(
+                    c,
+                    fontSize = 12.sp,
+                    color = if (picked) Color.White else HomecomingColors.Ink,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (picked) HomecomingColors.Accent else Color.White.copy(alpha = 0.85f))
+                        .clickable { category.value = c }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+
+        val shown = memories.filter { m ->
+            category.value == "全部" || classifyMemory(m) == category.value
+        }
+
+        if (shown.isEmpty()) {
             Text(
                 if (query.value.isBlank()) "记忆库还是空的——和 Sean 聊聊天，他会把重要的事记下来"
                 else "没搜到记着这件事",
@@ -150,7 +182,7 @@ fun MemoriesScreen(onBack: () -> Unit = {}) {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
-        memories.forEach { m ->
+        shown.forEach { m ->
             FrostCard(onClick = { showEdit.value = m }) {
                 Text(m.content, fontSize = 14.sp, color = HomecomingColors.Ink)
                 Row(
@@ -284,5 +316,16 @@ private fun scopeDelete(context: android.content.Context, id: String, baseHash: 
             w.memories.delete("main", id, baseHash, System.currentTimeMillis())
         } catch (e: Exception) { AppCrashLog.write(context, e) }
         withContext(Dispatchers.Main) { done() }
+    }
+}
+
+/** 本地启发式分类（定稿方案 D 的四类）。 */
+private fun classifyMemory(m: com.aion.chat.homecoming.HomecomingMemoryRepository.Memory): String {
+    val text = (m.content + " " + m.keywords)
+    return when {
+        Regex("生日|纪念日|周年|每年|\\d+月\\d+日|\\d+号|领证|结婚").containsMatchIn(text) -> "重要日子"
+        Regex("约定|说好|答应|一起|陪你去|下周|周末|计划|以后要").containsMatchIn(text) -> "我们的约定"
+        Regex("Yuri|小鑫|她|你").containsMatchIn(text) -> "关于你"
+        else -> "关于我"
     }
 }
