@@ -42,11 +42,12 @@ object HeartTideStore {
     }
 
     private fun todayChatRounds(context: Context): Int = try {
-        val w = com.aion.chat.compose.data.HomecomingChatWiring(context)
+        // safeCreate：引擎组装（DB/Keystore/线路加密）任何一步失败都只返回 0，绝不在启动路径上炸
+        val w = com.aion.chat.compose.data.HomecomingChatWiring.safeCreate(context) ?: return 0
         val midnight = LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         w.listMessages(com.aion.chat.compose.data.HomecomingChatWiring.TIMELINE)
             .count { it.role == "user" && it.createdAt >= midnight }
-    } catch (e: Exception) { 0 }
+    } catch (e: Throwable) { 0 }
 
     fun bumpMoodTap(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

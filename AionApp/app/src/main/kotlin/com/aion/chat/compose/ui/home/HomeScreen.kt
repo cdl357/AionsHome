@@ -127,10 +127,12 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
         seanHeart = com.aion.chat.compose.data.HomecomingPokeStore.currentHeart(context)
     }
 
-    // 心潮：驱动桌宠动画与状态词
+    // 心潮：驱动桌宠动画与状态词（推导涉及引擎构建，放 IO 线程，别卡启动）
     var tide by remember { mutableStateOf(50) }
     LaunchedEffect(Unit) {
-        tide = com.aion.chat.compose.data.HeartTideStore.todayLevel(context)
+        tide = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.aion.chat.compose.data.HeartTideStore.todayLevel(context)
+        }
     }
 
     fun tapMood(face: String, word: String) {
