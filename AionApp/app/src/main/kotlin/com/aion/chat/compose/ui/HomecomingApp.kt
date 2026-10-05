@@ -150,25 +150,7 @@ fun HomecomingApp() {
                 }
                 composable(HomeTab.Home.route) {
                     Box(Modifier.fillMaxSize()) {
-                        HomeScreen(
-                            onOpenAlbum = { navController.navigate("album") },
-                            onOpenChat = {
-                                navController.navigate(HomeTab.Chat.route) {
-                                    popUpTo(HomeTab.Home.route) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            onOpenDiary = {
-                                navController.navigate(HomeTab.Us.route) {
-                                    popUpTo(HomeTab.Home.route) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            onOpenBoard = { navController.navigate("board") },
-                            onOpenMemories = { navController.navigate("memories") }
-                        )
+                        HomeScreen(onOpenAlbum = { navController.navigate("album") })
                     }
                 }
                 composable(HomeTab.Chat.route) {

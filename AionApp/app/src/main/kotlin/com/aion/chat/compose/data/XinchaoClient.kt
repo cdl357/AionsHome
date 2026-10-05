@@ -120,4 +120,29 @@ object XinchaoClient {
             }.filter { it.text.isNotBlank() }
         } catch (e: Exception) { emptyList() }
     }
+    /**
+         * 经服务器心潮后端的只读代理读朋友圈（/api/moments_proxy）。
+         * 用途：Supabase RLS 未放行 anon 读 moments 时的兜底——服务端密钥不出服务器，App 端无任何密钥。
+         */
+    suspend fun fetchMomentsViaXinchao(): List<SupabaseMomentsStore.RemoteMoment>? {
+        val arr = getArray("/api/moments_proxy") ?: return null
+        return try {
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val created = o.optString("created_at", "")
+                SupabaseMomentsStore.RemoteMoment(
+                    id = o.optString("id"),
+                    author = SupabaseMomentsStore.mapAuthor(o.optString("author", "")),
+                    content = o.optString("content", ""),
+                    imageUrls = jsonStringArray(o.opt("images")),
+                    createdAt = created,
+                    createdAtMs = parseSupabaseTime(created),
+                    liked = o.optBoolean("liked", false),
+                    yuriLiked = o.optBoolean("yuri_liked", false),
+                    replyStatus = o.optString("reply_status", ""),
+                    replyContent = o.optString("reply_content", "")
+                )
+            }
+        } catch (e: Exception) { null }
+    }
 }

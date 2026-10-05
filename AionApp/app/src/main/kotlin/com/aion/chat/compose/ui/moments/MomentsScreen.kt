@@ -110,16 +110,27 @@ fun MomentsScreen() {
             val res = runCatching {
                 com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
             }.getOrNull()
+            var remote: List<com.aion.chat.compose.data.SupabaseMomentsStore.RemoteMoment>? = null
+            var kind = res?.error
             if (res == null || res.error != null) {
+                // 权限/网络被挡 → 服务器心潮后端的只读代理兜底（密钥不出服务器）
+                val proxied = runCatching {
+                    com.aion.chat.compose.data.XinchaoClient.fetchMomentsViaXinchao()
+                }.getOrNull()
+                if (proxied != null) {
+                    remote = proxied
+                    kind = null
+                }
+            }
+            if (remote == null) {
                 // 网络 / 权限 / 解析失败分种提示；保留现有内容，可重试
-                val kind = res?.error ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
                 main.post {
-                    cloudError.value = kind
+                    cloudError.value = kind ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
                     isRefreshing.value = false
                 }
                 return@launch
             }
-            val remote = res.data ?: emptyList()
+            val remoteList = remote ?: emptyList()
             val local = runCatching { HomecomingMomentsStore.feed(context) }.getOrDefault(emptyList())
             // 评论是独立表：读得到就并入；读不到（权限/网络）静默降级，不影响动态主列表
             val commentsRes = runCatching {
@@ -130,7 +141,7 @@ fun MomentsScreen() {
             } else emptyMap()
             val merged = mutableListOf<Moment>()
             val remoteKeys = mutableSetOf<String>()
-            remote.forEach { rm ->
+            remoteList.forEach { rm ->
                 remoteKeys.add(rm.author + "|" + rm.content)
                 val hid = rm.id.hashCode().toLong()
                 val paired = local.firstOrNull { it.id == hid }

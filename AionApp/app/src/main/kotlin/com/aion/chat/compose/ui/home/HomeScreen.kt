@@ -103,13 +103,7 @@ private fun glassText(
 
 /** 页面①：回家（中心首页）。Haze 液态玻璃：折射 + 通透 + 边缘高光；布局严格六项，不自加卡。 */
 @Composable
-fun HomeScreen(
-    onOpenAlbum: () -> Unit = {},
-    onOpenChat: () -> Unit = {},
-    onOpenDiary: () -> Unit = {},
-    onOpenBoard: () -> Unit = {},
-    onOpenMemories: () -> Unit = {}
-) {
+fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
@@ -141,8 +135,6 @@ fun HomeScreen(
         }
     }
 
-    // 继续聊天卡显示线路 + 连接状态
-    val route = remember { com.aion.chat.compose.data.HomecomingRouteConfig.mainRoute(context) }
 
     fun tapMood(face: String, word: String) {
         if (moodBusy) return
@@ -323,41 +315,6 @@ fun HomeScreen(
                         moodAnim = com.aion.chat.compose.data.HeartTideStore.tideAnim(tide)
                     )
                 }
-            }
-
-            // 4. 继续聊天（定稿：大按钮，显示线路 + 连接状态）
-            GlassCard(hazeState = hazeState, contentPadding = 14.dp, onClick = onOpenChat) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("继续聊天", style = glassText(size = 17, weight = FontWeight.SemiBold))
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 5.dp)) {
-                            Text(
-                                "●",
-                                style = glassText(size = 9, color = if (route != null) HomecomingColors.Ok else Color.White.copy(alpha = 0.55f))
-                            )
-                            Text(
-                                (route?.optString("label")?.takeIf { it.isNotBlank() } ?: "线路未配置") +
-                                    if (route != null) " · 已接入" else " · 待接入",
-                                style = glassText(alpha = 0.85f, size = 12),
-                                modifier = Modifier.padding(start = 5.dp)
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "去聊天",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-
-            // 5. 快捷入口方块（定稿：日记/相册/留言板/记忆库，后期可加减换序）
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                QuickEntry(hazeState, Icons.Outlined.EditNote, "日记", Modifier.weight(1f), onClick = onOpenDiary)
-                QuickEntry(hazeState, Icons.Outlined.PhotoLibrary, "相册", Modifier.weight(1f), onClick = onOpenAlbum)
-                QuickEntry(hazeState, Icons.Outlined.Forum, "留言板", Modifier.weight(1f), onClick = onOpenBoard)
-                QuickEntry(hazeState, Icons.Outlined.Psychology, "记忆库", Modifier.weight(1f), onClick = onOpenMemories)
             }
 
             // 4. 一起听歌：专辑封面缩图 + 歌名 + 播放/暂停（本期 UI + 控件占位）
@@ -613,30 +570,5 @@ fun GlassAvatar(initial: String, size: Int = 56) {
         contentAlignment = Alignment.Center
     ) {
         Text(text = initial, fontSize = (size * 0.4f).sp, color = Color.White, fontFamily = FontFamily.Serif)
-    }
-}
-
-/** 快捷入口方块（定稿：与卡同材质、同描边、同圆角，可加减换序）。 */
-@Composable
-private fun QuickEntry(
-    hazeState: dev.chrisbanes.haze.HazeState,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .height(84.dp)
-            .clip(GlassShape)
-            .hazeEffect(state = hazeState, style = HazeMaterials.ultraThin())
-            .border(1.dp, GlassEdge, GlassShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
-        Text(label, style = glassText(alpha = 0.95f, size = 12), modifier = Modifier.padding(top = 6.dp))
     }
 }

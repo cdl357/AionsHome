@@ -269,6 +269,58 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}) {
 }
 
 /** 抽屉打开时的初始动作（"diary"=直接弹出写日记，"anniversary"=弹出钉纪念日，空=只看）。 */
+/** 日记全屏阅读（深色不挤，看完整正文）。 */
+@Composable
+private fun DiaryReaderDialog(
+    date: LocalDate,
+    diaries: List<DiaryEntry>,
+    onClose: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFFAF7F0))
+                .verticalScroll(rememberScrollState())
+                .padding(26.dp)
+        ) {
+            Text(
+                "那天 · " + date.monthValue + " 月 " + date.dayOfMonth + " 日",
+                fontSize = 18.sp, fontWeight = FontWeight.Medium, color = HomecomingColors.Ink
+            )
+            Spacer(Modifier.height(14.dp))
+            diaries.forEach { d ->
+                if (d.title.isNotBlank()) {
+                    Text(
+                        d.title, fontSize = 15.sp,
+                        color = HomecomingColors.Ink, fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+                Text(
+                    d.content.ifBlank { "（这篇云端没有正文，标题即全部）" },
+                    fontSize = 16.sp, lineHeight = 30.sp,
+                    color = HomecomingColors.Ink,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                )
+                Spacer(Modifier.height(18.dp))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "点这里关闭",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClose() }
+                    .padding(bottom = 30.dp)
+            )
+        }
+    }
+}
+
 internal var drawerAction: String = ""
 
 // ── 日期工具 ──
@@ -442,6 +494,7 @@ fun DayDrawer(
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
+    var showDiaryReader by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(setOf<String>()) }
     var showDiaryForm by remember { mutableStateOf(initialAction == "diary") }
     var showAnnivForm by remember { mutableStateOf(initialAction == "anniversary") }
@@ -481,9 +534,17 @@ fun DayDrawer(
                     if (d.title.isNotBlank()) {
                         Text(d.title, fontSize = 14.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
                     }
-                    Text(d.content.ifBlank { "（无正文）" }, fontSize = 13.sp, color = HomecomingColors.InkSoft)
+                    Text(
+                        d.content.ifBlank { "（这篇云端没有正文，标题即全部）" },
+                        fontSize = 14.sp, color = HomecomingColors.Ink, lineHeight = 22.sp
+                    )
                     Spacer(Modifier.height(6.dp))
                 }
+                Text(
+                    "📖 全屏阅读",
+                    fontSize = 12.sp, color = HomecomingColors.Accent,
+                    modifier = Modifier.clickable { showDiaryReader = true }
+                )
             }
         }
 
@@ -499,7 +560,7 @@ fun DayDrawer(
                 Text("去「更多 → 留言板」贴第一张便利贴吧。", fontSize = 12.sp, color = HomecomingColors.InkSoft)
             } else {
                 dayNotes.forEach { n ->
-                    Text("${authorName(n.author)}：${n.content}", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+                    Text("${authorName(n.author)}：${n.content}", fontSize = 14.sp, color = HomecomingColors.Ink, lineHeight = 21.sp)
                     Spacer(Modifier.height(4.dp))
                 }
             }
@@ -607,6 +668,15 @@ fun DayDrawer(
         }
 
         Spacer(Modifier.height(28.dp))
+    }
+
+    // 全屏阅读日记
+    if (showDiaryReader) {
+        DiaryReaderDialog(
+            date = date,
+            diaries = seanDiary,
+            onClose = { showDiaryReader = false }
+        )
     }
 }
 
