@@ -140,7 +140,7 @@ fun HomecomingApp() {
                 modifier = Modifier.fillMaxSize()
             ) {
                 composable("splash") {
-                    SplashScreen(days = com.aion.chat.compose.data.HomecomingData.daysTogether(), onDone = {
+                    SplashScreen(onFinished = {
                         current = HomeTab.Home.route
                         navController.navigate(HomeTab.Home.route) {
                             popUpTo("splash") { inclusive = true }
