@@ -110,19 +110,5 @@ fun AvatarPhoto(
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
             }
         }
-        // 可点头像右下角的小角标：提示"点我换头像"
-        if (onClick != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size((size.value * 0.32f).dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.92f))
-                    .border(1.dp, borderColor.copy(alpha = 0.7f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("📷", fontSize = (size.value * 0.16f).sp)
-            }
-        }
     }
 }
