@@ -62,7 +62,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -175,6 +177,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     val pokeSpot = remember { mutableStateOf(com.aion.chat.compose.data.HomecomingPokeStore.SPOTS.first().first) }
     // 戳一戳先上屏的回显（不等网络），回复到了就清掉
     val pokeEcho = remember { mutableStateOf("") }
+
+    // 服务器表情包库（猫猫包）：首次打开面板时拉取下载
+    val remoteStickerFiles = remember { mutableStateListOf<java.io.File>() }
+    var remoteStickerLoaded by remember { mutableStateOf(false) }
     val errorText = remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
@@ -351,6 +357,34 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     pendingImagePath.value = f.absolutePath
                     showStickerPanel.value = false
                     send()
+                }
+            }
+        }
+    }
+
+    // ── 服务器表情包库：面板首次打开时拉清单并下载（猫猫包） ──
+    LaunchedEffect(showStickerPanel.value) {
+        if (showStickerPanel.value && !remoteStickerLoaded) {
+            remoteStickerLoaded = true
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val manifest = com.aion.chat.compose.data.StickerLibraryClient.fetchManifest()
+                        ?: return@runCatching
+                    val (entries, base) = manifest
+                    val dir = java.io.File(context.filesDir, "stickers_remote").apply { mkdirs() }
+                    entries.forEach { e ->
+                        val target = java.io.File(dir, e.file)
+                        if (!target.exists() || target.length() == 0L) {
+                            com.aion.chat.compose.data.StickerLibraryClient.downloadTo(
+                                base + "/stickers/" + e.file, target
+                            )
+                        }
+                    }
+                    val files = dir.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
+                    main.post {
+                        remoteStickerFiles.clear()
+                        remoteStickerFiles.addAll(files)
+                    }
                 }
             }
         }
@@ -674,9 +708,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                 // ── 表情包面板 ──
                 if (showStickerPanel.value) {
                     val stickerFiles = remember(showStickerPanel.value, stickerVersion.value) {
-                        java.io.File(context.filesDir, "stickers").listFiles()
-                            ?.filter { it.isFile }?.sortedBy { it.name }?.take(48)
-                            ?: emptyList()
+                        (java.io.File(context.filesDir, "stickers").listFiles()?.filter { it.isFile }
+                            ?.sortedBy { it.name }?.take(48)
+                            ?: emptyList()) + remoteStickerFiles
                     }
                     Column(
                         modifier = Modifier
@@ -704,7 +738,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                         }
                         if (stickerFiles.isEmpty()) {
                             Text(
-                                "还没有表情，点「添加」从相册选几张",
+                                "表情包下载中…（也有本地导入：点「添加」）",
                                 fontSize = 11.sp, color = HomecomingColors.InkSoft,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier
