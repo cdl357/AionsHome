@@ -26,10 +26,13 @@ object SupabaseClient {
     const val URL = "https://byqqwypdfiwvalozihgs.supabase.co"
     const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NTQwODAsImV4cCI6MjA5OTIzMDA4MH0.Gacxi6TVGzL3pNn-KdUHkPTYW8dvSpt7A05FpmkZlyc"
 
-    /** VPS 中转（nginx 18443 → /supabase/，只转发本项目）。端口需在云控制台安全组放行。 */
-    const val RELAY_URL = "http://134.175.7.196:18443/supabase"
+    /** VPS 中转主线路：8783 端口（安全组已放行，外部实测 200）。 */
+    const val RELAY_URL = "http://134.175.7.196:8783/supabase"
 
-    internal val BASES = arrayOf(RELAY_URL, URL)
+    /** 备用中转：18443（个别网络环境可能放行）。 */
+    const val RELAY_URL_ALT = "http://134.175.7.196:18443/supabase"
+
+    internal val BASES = arrayOf(RELAY_URL, RELAY_URL_ALT, URL)
 
     val configured: Boolean get() = URL.isNotBlank() && ANON_KEY.isNotBlank()
 }
