@@ -45,6 +45,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VolumeUp
@@ -60,6 +62,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,6 +85,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingChatWiring
+import com.aion.chat.compose.data.MusicClient
+import com.aion.chat.compose.data.MusicPlayer
 import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.GlassAvatar
@@ -178,6 +183,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     // 戳一戳先上屏的回显（不等网络），回复到了就清掉
     val pokeEcho = remember { mutableStateOf("") }
 
+    // AI 点歌的播放卡（本地留档，聊天末尾渲染）
+    val musicCardsReload = remember { mutableStateOf(0) }
+    val musicCards = remember(musicCardsReload.value) {
+        mutableStateListOf<com.aion.chat.compose.data.MusicCardStore.Card>()
+            .apply { addAll(com.aion.chat.compose.data.MusicCardStore.list(context)) }
+    }
+
     // 服务器表情包库（猫猫包）：首次打开面板时拉取下载
     val remoteStickerFiles = remember { mutableStateListOf<java.io.File>() }
     var remoteStickerLoaded by remember { mutableStateOf(false) }
@@ -234,8 +246,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     }
 
     // ── 发送：引擎 commitUser + 完成后分条冒泡 ──
-    fun send() {
-        val text = input.value.trim()
+    fun isSongRequest(text: String): Boolean =
+        text.contains("歌") && Regex("(放|来|点|听|播|想听)").containsMatchIn(text)
+
+    fun cleanSongQuery(text: String): String =
+        text.replace(Regex("(请|帮我|给我|我想|想要|一起|陪我|现在|立刻|马上|然后|适合|一首|首歌|个|下|吧|呗|好吗|可以吗)"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+
+    fun send(forcedText: String? = null, promptPrefix: String? = null, preSong: com.aion.chat.compose.data.MusicClient.Song? = null) {
+        val text = (forcedText ?: input.value).trim()
         val image = pendingImage.value
         val imagePath = pendingImagePath.value
         if (text.isEmpty() && image.isEmpty()) return
@@ -245,20 +264,48 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
             Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
             return
         }
-        sending.value = true
-        input.value = ""
-        pendingImage.value = ""
-        pendingImagePath.value = ""
+        // ── AI 点歌（教程 §13）：说想听歌 → 搜真歌+验证 → Sean 知道结果 → 聊天里生成真实播放卡 ──
+        if (promptPrefix == null && image.isEmpty() && isSongRequest(text)) {
+            val rawText = text
+            scope.launch(Dispatchers.IO) {
+                val q = cleanSongQuery(rawText).ifBlank { rawText }
+                val (songs, _) = runCatching { MusicClient.search(q, 12) }
+                    .getOrDefault(emptyList<MusicClient.Song>() to null)
+                val verified = songs.firstOrNull { s ->
+                    runCatching { MusicClient.checkPlayable(s.id) }.getOrDefault(false)
+                }
+                main.post {
+                    if (verified == null) {
+                        // 失败不伪装：如实回应，请她补充歌手名
+                        send(
+                            forcedText = rawText,
+                            promptPrefix = "[音乐服务没有找到可播放的匹配歌曲。如实告诉 Yuri 这次没找到，请她补充歌手名或换个说法。不要假装已经播放。] "
+                        )
+                    } else {
+                        com.aion.chat.compose.data.MusicCardStore.add(context, verified)
+                        musicCardsReload.value++
+                        send(
+                            forcedText = rawText,
+                            promptPrefix = "[已为 Yuri 找到可播放的歌曲：《${verified.name}》- ${verified.artist}，播放卡已经生成在屏幕上。自然地告诉她歌已就绪，邀请她点播放卡。] ",
+                            preSong = verified
+                        )
+                    }
+                }
+            }
+            return
+        }
+
         val requestId = "req_" + System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
+                val prompt = if (promptPrefix != null) promptPrefix + "\n" + text else text
                 w.engine.send(
                     HomecomingChatEngine.ChatCommand(
                         requestId,
                         HomecomingChatWiring.TIMELINE,
                         HomecomingChatWiring.RESPONDER,
                         HomecomingChatWiring.USER,
-                        text,
+                        prompt,
                         "main",
                         modelKey,
                         image,
@@ -293,6 +340,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                                 // 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写今天的日记
                                 if (text.contains("晚安")) {
                                     runCatching { generateTonightDiary(context) }
+                                }
+                                // AI 点歌成功：播放卡落库
+                                if (preSong != null) {
+                                    com.aion.chat.compose.data.MusicCardStore.add(context, preSong)
+                                    main.post { musicCardsReload.value++ }
                                 }
                             }
                         }
@@ -682,6 +734,57 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                             UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value)
                         } else {
                             AssistantBubbles(text = msg.text, skin = skin.value)
+                        }
+                    }
+                    // AI 点歌的播放卡（真实可播，点卡片用全局唯一播放器）
+                    items(musicCards, key = { "music_" + it.createdAt }) { card ->
+                        val playerState = MusicPlayer.state.collectAsState().value
+                        val playingThis = playerState.song?.id == card.songId && playerState.playing
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(HomecomingColors.Accent.copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.MusicNote,
+                                    contentDescription = "歌曲",
+                                    tint = HomecomingColors.Accent,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
+                                Text(card.name, fontSize = 14.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium, maxLines = 1)
+                                Text(card.artist, fontSize = 11.sp, color = HomecomingColors.InkSoft, maxLines = 1)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(HomecomingColors.Accent)
+                                    .clickable {
+                                        if (playingThis) MusicPlayer.pause()
+                                        else MusicPlayer.play(
+                                            context,
+                                            com.aion.chat.compose.data.MusicClient.Song(card.songId, card.name, card.artist)
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (playingThis) Icons.Filled.Pause else Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = if (playingThis) "暂停" else "播放",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
                     }
                     // 戳一戳回显行：先上屏（教程第四步），他回话后消失

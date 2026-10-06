@@ -69,6 +69,19 @@ object MusicClient {
         return "$base/api/music/stream/$songId" + if (smooth) "?smooth=true" else ""
     }
 
+    /** 候选验证：这首歌现在拿不拿得到音源（教程 §16.4 先验证再智能）。 */
+    suspend fun checkPlayable(songId: Long): Boolean = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/check/$songId").openConnection() as HttpURLConnection
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 20_000
+            if (conn.responseCode in 200..299) {
+                JSONObject(conn.inputStream.bufferedReader().readText()).optBoolean("playable", false)
+            } else false
+        } catch (e: Exception) { false }
+    }
+
     /** 共同状态（当前歌曲/最近事件）。 */
     suspend fun getState(): JSONObject? = withContext(Dispatchers.IO) {
         for (base in bases()) {
