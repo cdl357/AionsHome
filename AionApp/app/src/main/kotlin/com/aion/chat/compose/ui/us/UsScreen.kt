@@ -519,28 +519,26 @@ fun DayDrawer(
         )
         Spacer(Modifier.height(12.dp))
 
-        // ① Sean 的日记 —— 永远显示全文（不搞展开折叠），另配全屏阅读
-        FrostCard {
-            Text("① Sean 的日记", fontSize = 12.sp, color = HomecomingColors.InkSoft)
-            Spacer(Modifier.height(6.dp))
+        // ① Sean 的日记 —— 约定：每天晚安后必写，没写 = Sean 偷懒
+        DaySummaryCard(
+            k = "diary",
+            label = "① Sean 的日记",
+            summary = if (seanDiary.isNotEmpty())
+                (seanDiary[0].title.ifBlank { seanDiary[0].content }).take(60)
+            else "Sean 偷懒了，这天的日记还没写。"
+        ) {
             if (seanDiary.isEmpty()) {
-                Text("Sean 偷懒了，这天的日记还没写。（去戳戳他把日记补上）", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+                Text("(去戳戳他把日记补上)", fontSize = 12.sp, color = HomecomingColors.InkSoft)
             } else {
                 seanDiary.forEach { d ->
                     if (d.title.isNotBlank()) {
-                        Text(
-                            d.title, fontSize = 15.sp,
-                            color = HomecomingColors.Ink, fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.height(4.dp))
+                        Text(d.title, fontSize = 14.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
                     }
                     Text(
                         d.content.ifBlank { "（这篇云端没有正文，标题即全部）" },
-                        fontSize = 15.sp, lineHeight = 26.sp,
-                        color = HomecomingColors.Ink,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                        fontSize = 14.sp, color = HomecomingColors.Ink, lineHeight = 22.sp
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
                 }
                 Text(
                     "📖 全屏阅读",
@@ -550,24 +548,20 @@ fun DayDrawer(
             }
         }
 
-        // ② 两人的留言 —— 永远显示全文
-        FrostCard {
-            Text("② 两人的留言", fontSize = 12.sp, color = HomecomingColors.InkSoft)
-            Spacer(Modifier.height(6.dp))
+        // ② 两人的留言
+        DaySummaryCard(
+            k = "notes",
+            label = "② 两人的留言",
+            summary = if (dayNotes.isNotEmpty())
+                dayNotes.joinToString("；") { n -> "${authorName(n.author)}：${n.content.take(20)}" }
+            else "这天还没有留言。"
+        ) {
             if (dayNotes.isEmpty()) {
-                Text("这天还没有留言。去「更多 → 留言板」贴第一张便利贴吧。", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+                Text("去「更多 → 留言板」贴第一张便利贴吧。", fontSize = 12.sp, color = HomecomingColors.InkSoft)
             } else {
                 dayNotes.forEach { n ->
-                    Text(
-                        authorName(n.author),
-                        fontSize = 11.sp, color = HomecomingColors.Accent, fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        n.content,
-                        fontSize = 14.sp, lineHeight = 22.sp,
-                        color = HomecomingColors.Ink
-                    )
-                    Spacer(Modifier.height(8.dp))
+                    Text("${authorName(n.author)}：${n.content}", fontSize = 14.sp, color = HomecomingColors.Ink, lineHeight = 21.sp)
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
