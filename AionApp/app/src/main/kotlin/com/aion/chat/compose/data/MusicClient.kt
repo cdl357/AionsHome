@@ -192,6 +192,70 @@ object MusicClient {
         } catch (e: Exception) { false }
     }
 
+
+    // ── 网易云扫码登录（教程 §4.2/§22.3：Cookie 只存服务器，App 端只见二维码和状态） ──
+
+    suspend fun neteaseQrStart(): Pair<String, String>? = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/netease-login/qr/start").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 25_000
+            if (conn.responseCode in 200..299) {
+                val o = JSONObject(conn.inputStream.bufferedReader().readText())
+                if (o.optBoolean("ok")) return@withContext o.optString("unikey") to o.optString("qr_base64")
+            }
+            null
+        } catch (e: Exception) { null }
+    }
+
+    data class QrCheck(val code: Int, val nickname: String)
+
+    suspend fun neteaseQrCheck(unikey: String): QrCheck? = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/netease-login/qr/check").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 15_000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(JSONObject().put("unikey", unikey).toString().toByteArray()) }
+            val o = JSONObject(conn.inputStream.bufferedReader().readText())
+            if (o.optBoolean("ok")) QrCheck(o.optInt("code"), o.optString("nickname")) else null
+        } catch (e: Exception) { null }
+    }
+
+    data class NeteaseLoginState(val loggedIn: Boolean, val nickname: String)
+
+    suspend fun neteaseLoginState(): NeteaseLoginState? = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/netease-login/state").openConnection() as HttpURLConnection
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 15_000
+            if (conn.responseCode in 200..299) {
+                val o = JSONObject(conn.inputStream.bufferedReader().readText())
+                if (o.optBoolean("ok", true)) {
+                    return@withContext NeteaseLoginState(o.optBoolean("logged_in"), o.optString("nickname"))
+                }
+            }
+            null
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun neteaseLogout(): Boolean = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/netease-login/logout").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 15_000
+            conn.responseCode in 200..299
+        } catch (e: Exception) { false }
+    }
+
     /** 共同状态（当前歌曲/最近事件）。 */
     suspend fun getState(): JSONObject? = withContext(Dispatchers.IO) {
         for (base in bases()) {
