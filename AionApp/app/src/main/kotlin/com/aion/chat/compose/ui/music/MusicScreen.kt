@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +60,13 @@ fun MusicScreen(onBack: () -> Unit = {}) {
     val searchError = remember { mutableStateOf<String?>(null) }
     val player by MusicPlayer.state.collectAsState()
 
+    // 歌单
+    val playlists = remember { mutableStateListOf<MusicClient.Playlist>() }
+    val importUrl = remember { mutableStateOf("") }
+    val importing = remember { mutableStateOf(false) }
+    val expandedPid = remember { mutableStateOf<Long?>(null) }
+    var playlistsLoaded by remember { mutableStateOf(false) }
+
     fun doSearch() {
         val q = query.value.trim()
         if (q.isEmpty() || searching.value) return
@@ -69,6 +78,40 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             results.addAll(list)
             searchError.value = err
             searching.value = false
+        }
+    }
+
+    fun loadPlaylists() {
+        scope.launch {
+            runCatching { MusicClient.listPlaylists() }.getOrNull()?.let {
+                playlists.clear()
+                playlists.addAll(it)
+            }
+        }
+    }
+    LaunchedEffect(Unit) { loadPlaylists() }
+
+    fun doImport() {
+        val raw = importUrl.value.trim()
+        if (raw.isEmpty() || importing.value) return
+        importing.value = true
+        scope.launch {
+            val (pl, err) = MusicClient.importPlaylist(raw)
+            importing.value = false
+            if (pl == null) {
+                Toast.makeText(context, err ?: "导入失败", Toast.LENGTH_SHORT).show()
+            } else {
+                importUrl.value = ""
+                loadPlaylists()
+                Toast.makeText(context, "歌单《${pl.name}》已入库（${pl.trackCount} 首）", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun doDelete(pid: Long) {
+        scope.launch {
+            runCatching { MusicClient.deletePlaylist(pid) }
+            loadPlaylists()
         }
     }
 
@@ -180,6 +223,78 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             }
             Spacer(Modifier.height(10.dp))
         }
+
+        // ── 我的歌单（导入网易云歌单，整张连播） ──
+        Text("我的歌单", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = importUrl.value,
+                onValueChange = { importUrl.value = it },
+                placeholder = { Text("贴网易云歌单链接或 ID", fontSize = 12.sp, color = HomecomingColors.InkSoft) },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (importing.value) HomecomingColors.Accent.copy(alpha = 0.4f) else HomecomingColors.Accent)
+                    .clickable(enabled = !importing.value) { doImport() }
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Text(if (importing.value) "导入中…" else "导入", fontSize = 13.sp, color = Color.White)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        playlists.forEach { pl ->
+            val expanded = expandedPid.value == pl.id
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f).clickable {
+                        expandedPid.value = if (expanded) null else pl.id
+                    }) {
+                        Text(pl.name, fontSize = 14.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium, maxLines = 1)
+                        Text("${pl.trackCount} 首", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    }
+                    Text(
+                        "▶ 播放",
+                        fontSize = 12.sp, color = HomecomingColors.Accent,
+                        modifier = Modifier
+                            .clickable { MusicPlayer.playFromList(context, pl.tracks, 0) }
+                            .padding(horizontal = 8.dp)
+                    )
+                    Text(
+                        "删除",
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                        modifier = Modifier
+                            .clickable { doDelete(pl.id) }
+                            .padding(start = 6.dp)
+                    )
+                }
+                if (expanded) {
+                    pl.tracks.take(30).forEachIndexed { idx, t ->
+                        Text(
+                            "${idx + 1}. ${t.name} — ${t.artist}",
+                            fontSize = 12.sp, color = HomecomingColors.Ink,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { MusicPlayer.playFromList(context, pl.tracks, idx) }
+                                .padding(vertical = 4.dp, horizontal = 6.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        Spacer(Modifier.height(8.dp))
 
         // ── 搜索结果 ──
         if (searching.value) {

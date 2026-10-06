@@ -82,6 +82,75 @@ object MusicClient {
         } catch (e: Exception) { false }
     }
 
+
+    // ── 歌单（教程阶段 C：导入网易云歌单 → 同一播放器队列） ──
+
+    data class Playlist(val id: Long, val name: String, val trackCount: Int, val tracks: List<Song>)
+
+    /** 导入歌单（贴分享链接或纯 ID）。返回 (歌单, 错误文案)。 */
+    suspend fun importPlaylist(urlOrId: String): Pair<Playlist?, String?> = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val body = JSONObject().put("url", urlOrId)
+            val conn = URL("$base/api/music/playlists/import").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 30_000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
+            val o = JSONObject(conn.inputStream.bufferedReader().readText())
+            if (!o.optBoolean("ok")) {
+                return@withContext null to (o.optJSONObject("error")?.optString("message") ?: "导入失败")
+            }
+            val pl = o.optJSONObject("playlist") ?: return@withContext null to "导入失败"
+            val tracks = pl.optJSONArray("tracks") ?: JSONArray()
+            val songs = (0 until tracks.length()).map { i ->
+                val t = tracks.getJSONObject(i)
+                Song(t.optLong("id"), t.optString("name"), t.optString("artist"), t.optString("album"))
+            }.filter { it.id > 0 }
+            Playlist(pl.optLong("id"), pl.optString("name"), songs.size, songs) to null
+        } catch (e: Exception) { null to "音乐服务暂时无法连接" }
+    }
+
+    /** 已导入歌单（含曲目）。null = 连不上。 */
+    suspend fun listPlaylists(): List<Playlist>? = withContext(Dispatchers.IO) {
+        for (base in bases()) {
+            try {
+                val conn = URL("$base/api/music/library/playlists").openConnection() as HttpURLConnection
+                conn.connectTimeout = 8_000
+                conn.readTimeout = 15_000
+                if (conn.responseCode in 200..299) {
+                    lastGoodBase = base
+                    val arr = JSONArray(conn.inputStream.bufferedReader().readText())
+                    return@withContext (0 until arr.length()).map { i ->
+                        val p = arr.getJSONObject(i)
+                        val tracks = p.optJSONArray("tracks") ?: JSONArray()
+                        Playlist(
+                            p.optLong("id"), p.optString("name"), p.optInt("track_count"),
+                            (0 until tracks.length()).map { j ->
+                                val t = tracks.getJSONObject(j)
+                                Song(t.optLong("id"), t.optString("name"), t.optString("artist"), t.optString("album"))
+                            }.filter { it.id > 0 }
+                        )
+                    }
+                }
+            } catch (e: Exception) { }
+        }
+        null
+    }
+
+    suspend fun deletePlaylist(id: Long): Boolean = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/library/playlists/$id").openConnection() as HttpURLConnection
+            conn.requestMethod = "DELETE"
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 15_000
+            conn.responseCode in 200..299
+        } catch (e: Exception) { false }
+    }
+
     /** 共同状态（当前歌曲/最近事件）。 */
     suspend fun getState(): JSONObject? = withContext(Dispatchers.IO) {
         for (base in bases()) {

@@ -71,8 +71,8 @@ object MusicPlayer {
         stateFlow.value = transform(stateFlow.value)
     }
 
-    /** 播放一首（直接点播）。 */
-    fun play(context: android.content.Context, song: MusicClient.Song) {
+    /** 播放一首（直接点播）。keepQueue=true 时保留外部设好的队列（歌单连播）。 */
+    fun play(context: android.content.Context, song: MusicClient.Song, keepQueue: Boolean = false) {
         init(context)
         if (current?.id == song.id && prepared && mediaPlayer?.isPlaying == true) {
             pause()
@@ -80,7 +80,7 @@ object MusicPlayer {
         }
         releasePlayer()
         val local = toSong(song)
-        setQueueFromCards(context, local.id)
+        if (!keepQueue) setQueueFromCards(context, local.id)
         current = local
         emit { PlayerState(song = current, loading = true) }
         val url = MusicClient.streamUrl(song.id) ?: run {
@@ -150,6 +150,15 @@ object MusicPlayer {
 
     fun toggle() {
         if (stateFlow.value.playing) pause() else resume()
+    }
+
+    /** 从歌单/队列的第 index 首开始连播。 */
+    fun playFromList(context: android.content.Context, songs: List<MusicClient.Song>, index: Int) {
+        if (songs.isEmpty()) return
+        val i = index.coerceIn(0, songs.size - 1)
+        val q = songs.map { toSong(it) }
+        queue = q.drop(i) + q.take(i)
+        play(context, songs[i], keepQueue = true)
     }
 
     fun skip() {
