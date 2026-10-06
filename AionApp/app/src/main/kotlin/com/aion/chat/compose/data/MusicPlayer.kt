@@ -35,8 +35,30 @@ object MusicPlayer {
     private var mediaPlayer: MediaPlayer? = null
     private var current: Song? = null
     private var prepared = false
+    // 播放队列：最近的音乐卡依时间正序，finish 后自动接下一张（教程：一条播放链路）
+    private var queue: List<Song> = emptyList()
     private var scope: CoroutineScope? = null
     private var appContext: android.content.Context? = null
+
+    /** 把最近的音乐卡设为队列（播放卡播放时调用）。 */
+    fun setQueueFromCards(context: android.content.Context, currentId: Long) {
+        val cards = MusicCardStore.list(context).sortedBy { it.createdAt }
+        queue = cards.map { Song(it.songId, it.name, it.artist) }
+        // 当前歌之前的排到队尾（循环感）
+        val idx = queue.indexOfFirst { it.id == currentId }
+        if (idx > 0) queue = queue.drop(idx) + queue.take(idx)
+    }
+
+    private fun playNext(context: android.content.Context) {
+        val cur = current ?: return
+        val idx = queue.indexOfFirst { it.id == cur.id }
+        val next = if (idx >= 0 && idx + 1 < queue.size) queue[idx + 1] else queue.firstOrNull()
+        if (next != null && next.id != cur.id) {
+            play(context, MusicClient.Song(next.id, next.name, next.artist))
+        } else {
+            emit { it.copy(playing = false) }
+        }
+    }
 
     fun init(context: android.content.Context) {
         if (appContext == null) {
@@ -58,6 +80,7 @@ object MusicPlayer {
         }
         releasePlayer()
         val local = toSong(song)
+        setQueueFromCards(context, local.id)
         current = local
         emit { PlayerState(song = current, loading = true) }
         val url = MusicClient.streamUrl(song.id) ?: run {
@@ -93,6 +116,7 @@ object MusicPlayer {
         mp.setOnErrorListener { _, what, extra ->
             prepared = false
             emit { it.copy(playing = false, loading = false, error = "播放出错（$what/$extra）——这首歌可能拿不到音源") }
+            appContext?.let { MusicNotification.cancel(it) }
             true
         }
         mp.prepareAsync()
@@ -104,6 +128,9 @@ object MusicPlayer {
                 mediaPlayer?.pause()
                 emit { it.copy(playing = false, positionSec = mediaPlayer?.currentPosition?.div(1000) ?: it.positionSec) }
                 postEvent("pause", current)
+                val ctx = appContext
+                val s = current
+                if (ctx != null && s != null) MusicNotification.show(ctx, s, false)
             }
         }
     }
@@ -114,6 +141,9 @@ object MusicPlayer {
                 mediaPlayer?.start()
                 emit { it.copy(playing = true) }
                 postEvent("resume", current)
+                val ctx = appContext
+                val s = current
+                if (ctx != null && s != null) MusicNotification.show(ctx, s, true)
             }
         }
     }
@@ -123,10 +153,12 @@ object MusicPlayer {
     }
 
     fun skip() {
+        val ctx = appContext
         val s = current
         releasePlayer()
         emit { PlayerState(song = s, playing = false) }
         postEvent("skip", s)
+        if (ctx != null && queue.isNotEmpty()) playNext(ctx)
     }
 
     fun seekTo(sec: Int) {
@@ -166,6 +198,7 @@ object MusicPlayer {
         val s = current
         releasePlayer()
         postEvent("close", s)
+        appContext?.let { MusicNotification.cancel(it) }
     }
 
     private fun releasePlayer() {

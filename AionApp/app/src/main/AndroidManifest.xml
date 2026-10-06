@@ -113,6 +113,16 @@
 
         <!-- 提醒到点接收器 -->
         <receiver
+            android:name=".compose.data.MusicNotification$MusicActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.aion.chat.music.ACTION_TOGGLE" />
+                <action android:name="com.aion.chat.music.ACTION_SKIP" />
+                <action android:name="com.aion.chat.music.ACTION_CLOSE" />
+            </intent-filter>
+        </receiver>
+
+<receiver
             android:name=".compose.rem.ReminderReceiver"
             android:exported="false" />
 
