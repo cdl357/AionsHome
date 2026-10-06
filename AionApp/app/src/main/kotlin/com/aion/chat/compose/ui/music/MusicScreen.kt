@@ -67,6 +67,23 @@ fun MusicScreen(onBack: () -> Unit = {}) {
     val expandedPid = remember { mutableStateOf<Long?>(null) }
     var playlistsLoaded by remember { mutableStateOf(false) }
 
+    // 今日私选（懒加载：切到标签才拉，教程 §19）
+    var tab by remember { mutableStateOf("search") }
+    val dailyCard = remember { mutableStateOf<MusicClient.DailyCard?>(null) }
+    val dailyLoading = remember { mutableStateOf(false) }
+    var dailyLoaded by remember { mutableStateOf(false) }
+
+    fun loadDaily(refresh: Boolean) {
+        if (dailyLoading.value) return
+        dailyLoading.value = true
+        scope.launch {
+            val (card, err) = MusicClient.dailyDiscovery(refresh)
+            dailyCard.value = card
+            if (card == null && err != null) Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+            dailyLoading.value = false
+        }
+    }
+
     fun doSearch() {
         val q = query.value.trim()
         if (q.isEmpty() || searching.value) return
@@ -224,7 +241,117 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             Spacer(Modifier.height(10.dp))
         }
 
+        // ── 标签：搜歌 | 今日私选 ──
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf("search" to "搜歌", "daily" to "今日私选").forEach { (k, label) ->
+                val picked = tab == k
+                Text(
+                    label,
+                    fontSize = 13.sp,
+                    color = if (picked) Color.White else HomecomingColors.Ink,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (picked) HomecomingColors.Accent else Color.White.copy(alpha = 0.85f))
+                        .clickable {
+                            tab = k
+                            if (k == "daily" && !dailyLoaded) {
+                                dailyLoaded = true
+                                loadDaily(false)
+                            }
+                        }
+                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // ── 今日私选 ──
+        if (tab == "daily") {
+            val card = dailyCard.value
+            when {
+                dailyLoading.value -> Text(
+                    "正在往外找歌…（要验证一堆候选，稍等）",
+                    fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), textAlign = TextAlign.Center
+                )
+                card == null -> Text(
+                    "今天的私选还没出来，点下面的按钮再试",
+                    fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), textAlign = TextAlign.Center
+                )
+                else -> {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(card.subtitle, fontSize = 12.sp, color = HomecomingColors.InkSoft)
+                            Text(card.note, fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        Text(
+                            "播放全部",
+                            fontSize = 12.sp, color = HomecomingColors.Accent,
+                            modifier = Modifier.clickable {
+                                val songs = card.songs.map { MusicClient.Song(it.id, it.name, it.artist) }
+                                MusicPlayer.playFromList(context, songs, 0)
+                            }.padding(start = 8.dp)
+                        )
+                        Text(
+                            "换一批",
+                            fontSize = 12.sp, color = HomecomingColors.Accent,
+                            modifier = Modifier.clickable { loadDaily(true) }.padding(start = 10.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    card.songs.forEachIndexed { idx, ds ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    "${idx + 1}. ${ds.name}",
+                                    fontSize = 14.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium,
+                                    maxLines = 1, modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "▶",
+                                    fontSize = 14.sp, color = HomecomingColors.Accent,
+                                    modifier = Modifier.clickable {
+                                        val songs = card.songs.map { MusicClient.Song(it.id, it.name, it.artist) }
+                                        MusicPlayer.playFromList(context, songs, idx)
+                                    }.padding(horizontal = 8.dp)
+                                )
+                            }
+                            Text("${ds.artist}", fontSize = 11.sp, color = HomecomingColors.InkSoft, maxLines = 1)
+                            Text(ds.reason, fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 2.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                                Text("[${ds.tag}]", fontSize = 10.sp, color = HomecomingColors.Accent)
+                                Spacer(Modifier.weight(1f))
+                                listOf("喜欢" to "like", "多推这种" to "more_like_this", "少推这种" to "less_like_this").forEach { (label, action) ->
+                                    Text(
+                                        label,
+                                        fontSize = 10.sp, color = HomecomingColors.InkSoft,
+                                        modifier = Modifier
+                                            .clickable {
+                                                scope.launch {
+                                                    runCatching { MusicClient.postFeedback(ds.id, action) }
+                                                    Toast.makeText(context, "记下了", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            .padding(start = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+            }
+        } else {
         // ── 我的歌单（导入网易云歌单，整张连播） ──
+        }
+
         Text("我的歌单", fontSize = 13.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

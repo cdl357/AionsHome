@@ -151,6 +151,47 @@ object MusicClient {
         } catch (e: Exception) { false }
     }
 
+
+    // ── 每日私选（教程阶段 E：程序找真歌验证，同日缓存，refresh 才重生成） ──
+
+    data class DailySong(val id: Long, val name: String, val artist: String, val reason: String, val tag: String)
+    data class DailyCard(val date: String, val note: String, val subtitle: String, val songs: List<DailySong>)
+
+    suspend fun dailyDiscovery(refresh: Boolean, limit: Int = 20): Pair<DailyCard?, String?> =
+        withContext(Dispatchers.IO) {
+            val base = lastGoodBase ?: BASES[0]
+            try {
+                val conn = URL("$base/api/music/daily-discovery?refresh=$refresh&limit=$limit").openConnection() as HttpURLConnection
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 120_000
+                if (conn.responseCode !in 200..299) return@withContext null to "私选服务暂时无法连接"
+                val o = JSONObject(conn.inputStream.bufferedReader().readText())
+                val c = o.optJSONObject("card") ?: return@withContext null to "今天的私选是空的"
+                val arr = c.optJSONArray("songs") ?: JSONArray()
+                val songs = (0 until arr.length()).map { i ->
+                    val s = arr.getJSONObject(i)
+                    DailySong(s.optLong("id"), s.optString("name"), s.optString("artist"), s.optString("reason"), s.optString("tag"))
+                }
+                DailyCard(c.optString("date"), c.optString("note"), c.optString("subtitle"), songs) to null
+            } catch (e: Exception) { null to "音乐服务暂时无法连接" }
+        }
+
+    suspend fun postFeedback(songId: Long, action: String): Boolean = withContext(Dispatchers.IO) {
+        val base = lastGoodBase ?: BASES[0]
+        try {
+            val conn = URL("$base/api/music/daily-discovery/feedback").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 15_000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use {
+                it.write(JSONObject().put("song_id", songId).put("action", action).toString().toByteArray())
+            }
+            conn.responseCode in 200..299
+        } catch (e: Exception) { false }
+    }
+
     /** 共同状态（当前歌曲/最近事件）。 */
     suspend fun getState(): JSONObject? = withContext(Dispatchers.IO) {
         for (base in bases()) {
