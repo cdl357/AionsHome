@@ -41,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -103,7 +104,7 @@ private fun glassText(
 
 /** 页面①：回家（中心首页）。Haze 液态玻璃：折射 + 通透 + 边缘高光；布局严格六项，不自加卡。 */
 @Composable
-fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
+fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
@@ -317,24 +318,39 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}) {
                 }
             }
 
-            // 4. 一起听歌：专辑封面缩图 + 歌名 + 播放/暂停（本期 UI + 控件占位）
-            GlassCard(hazeState = hazeState, contentPadding = 14.dp) {
+            // 4. 一起听歌：点开搜歌播放；卡片副标题跟随全局唯一播放器状态
+            val musicState by com.aion.chat.compose.data.MusicPlayer.state.collectAsState()
+            GlassCard(hazeState = hazeState, contentPadding = 14.dp, onClick = onOpenMusic) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(GlassShape)
-                            .background(Color.White.copy(alpha = 0.14f))
-                    )
+                            .background(Color.White.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "一起听歌",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                     Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                         Text("一起听歌", style = glassText(size = 15, weight = FontWeight.Medium))
-                        Text("歌单随后端接入", style = glassText(alpha = 0.8f, size = 12))
+                        Text(
+                            musicState.song?.let { s ->
+                                if (musicState.playing) "正在听 · " + s.name else "已暂停 · " + s.name
+                            } ?: "点开搜一首歌",
+                            style = glassText(alpha = 0.8f, size = 12),
+                            maxLines = 1
+                        )
                     }
                     Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "播放",
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "打开",
                         tint = Color.White,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
