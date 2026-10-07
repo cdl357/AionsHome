@@ -531,7 +531,7 @@ fun SettingsScreen() {
 
         // ── 版本与崩溃日志（便于反馈问题） ──
         FrostCard {
-            Text("版本 v0.3", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text("版本 v0.3.1（今日构建）", fontSize = 15.sp, color = HomecomingColors.Ink)
             Text("当前安装的回家 App 版本", fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
         }
 
