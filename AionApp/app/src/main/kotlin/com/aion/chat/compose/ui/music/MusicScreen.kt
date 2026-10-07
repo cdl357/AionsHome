@@ -218,6 +218,16 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             }
         }
         Spacer(Modifier.height(8.dp))
+        if (showQr) {
+            NeteaseQrDialog(
+                onDismiss = { showQr = false },
+                onLoggedIn = { nickname ->
+                    showQr = false
+                    loadNcState()
+                    Toast.makeText(context, "网易云已登录：" + nickname, Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
 
         // ── 正在播放卡 ──
         val cur = player.song
