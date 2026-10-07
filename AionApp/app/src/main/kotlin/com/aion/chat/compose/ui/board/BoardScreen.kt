@@ -74,8 +74,14 @@ fun BoardScreen() {
     val routeReady = wiring != null && HomecomingRouteConfig.mainRoute(context) != null
 
     fun reload() {
-        try {
-            val list = HomecomingDayStore.boardNotes(context)
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // 本地便签 + 云端旧便签（Supabase bulletin_notes，沈聿淮之前的叮嘱）合并
+            val local = HomecomingDayStore.boardNotes(context)
+            val remote = runCatching {
+                com.aion.chat.compose.data.fetchBulletinNotes().orEmpty()
+                    .filter { r -> local.none { it.createdAt / 100000 == r.createdAt / 100000 && it.content == r.content } }
+            }.getOrDefault(emptyList())
+            val list = local + remote
             val map = mutableMapOf<Long, List<HomecomingDayStore.NoteReply>>()
             list.forEach { n -> map[n.id] = HomecomingDayStore.noteReplies(context, n.id) }
             main.post {
@@ -83,7 +89,7 @@ fun BoardScreen() {
                 notes.addAll(list)
                 repliesMap.value = map
             }
-        } catch (e: Exception) { /* 安静 */ }
+        }
     }
 
     LaunchedEffect(Unit) {

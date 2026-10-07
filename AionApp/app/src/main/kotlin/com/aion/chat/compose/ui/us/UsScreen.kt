@@ -71,6 +71,9 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}) {
     // 视觉皮：日历下挂照片墙（相册最近的照片）
     val albumPhotos = remember { mutableStateListOf<com.aion.chat.compose.data.HomecomingAlbumStore.AlbumPhoto>() }
 
+    // 云端便签（Supabase bulletin_notes：沈聿淮之前的叮嘱）
+    val bulletinNotes = remember { mutableStateListOf<com.aion.chat.compose.data.HomecomingDayStore.BoardNote>() }
+
     LaunchedEffect(reloadKey) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             anniversaries = HomecomingDayStore.anniversaries(context)
@@ -90,6 +93,12 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}) {
             memories = HomecomingDayStore.memoriesOfDay(context, ::dayKey, "")
             albumPhotos.clear()
             albumPhotos.addAll(com.aion.chat.compose.data.HomecomingAlbumStore.list(context).take(12))
+            runCatching {
+                com.aion.chat.compose.data.fetchBulletinNotes()?.let { remote ->
+                    bulletinNotes.clear()
+                    bulletinNotes.addAll(remote)
+                }
+            }
         }
     }
 
@@ -259,7 +268,7 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}) {
                 date = selected!!,
                 diaries = diaries,
                 memories = memories,
-                boardNotes = boardNotes,
+                boardNotes = boardNotes + bulletinNotes,
                 anniversaries = anniversaries,
                 initialAction = drawerAction,
                 onSaved = { reloadKey++ }

@@ -414,28 +414,43 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         }
     }
 
-    // ── 服务器表情包库：面板首次打开时拉清单并下载（猫猫包） ──
+    // ── 服务器表情包库：面板首次打开时拉取（Supabase 亲亲抱抱那批放最前 + 猫猫包） ──
+    val sbStickerFiles = remember { mutableStateListOf<java.io.File>() }
     LaunchedEffect(showStickerPanel.value) {
         if (showStickerPanel.value && !remoteStickerLoaded) {
             remoteStickerLoaded = true
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
-                    val manifest = com.aion.chat.compose.data.StickerLibraryClient.fetchManifest()
-                        ?: return@runCatching
-                    val (entries, base) = manifest
-                    val dir = java.io.File(context.filesDir, "stickers_remote").apply { mkdirs() }
-                    entries.forEach { e ->
-                        val target = java.io.File(dir, e.file)
+                    // 1. Supabase stickers 表（你们自己的表情）
+                    val sb = com.aion.chat.compose.data.fetchSupabaseStickers()
+                    val sbDir = java.io.File(context.filesDir, "stickers_supabase").apply { mkdirs() }
+                    sb?.forEach { e ->
+                        val target = java.io.File(sbDir, e.name + "_" + Integer.toHexString(e.url.hashCode()) + ".jpg")
                         if (!target.exists() || target.length() == 0L) {
-                            com.aion.chat.compose.data.StickerLibraryClient.downloadTo(
-                                base + "/stickers/" + e.file, target
-                            )
+                            com.aion.chat.compose.data.downloadSticker(e.url, target)
                         }
                     }
-                    val files = dir.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
+                    val sbFiles = sbDir.listFiles()?.filter { it.isFile && it.length() > 0 }?.sortedBy { it.name } ?: emptyList()
+                    // 2. 猫猫包
+                    val manifest = com.aion.chat.compose.data.StickerLibraryClient.fetchManifest()
+                    val catDir = java.io.File(context.filesDir, "stickers_remote").apply { mkdirs() }
+                    if (manifest != null) {
+                        val (entries, base) = manifest
+                        entries.forEach { e ->
+                            val target = java.io.File(catDir, e.file)
+                            if (!target.exists() || target.length() == 0L) {
+                                com.aion.chat.compose.data.StickerLibraryClient.downloadTo(
+                                    base + "/stickers/" + e.file, target
+                                )
+                            }
+                        }
+                    }
+                    val catFiles = catDir.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
                     main.post {
+                        sbStickerFiles.clear()
+                        sbStickerFiles.addAll(sbFiles)
                         remoteStickerFiles.clear()
-                        remoteStickerFiles.addAll(files)
+                        remoteStickerFiles.addAll(catFiles)
                     }
                 }
             }
@@ -810,10 +825,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
 
                 // ── 表情包面板 ──
                 if (showStickerPanel.value) {
-                    val stickerFiles = remember(showStickerPanel.value, stickerVersion.value) {
+                    val stickerFiles = remember(showStickerPanel.value, stickerVersion.value, sbStickerFiles.size, remoteStickerFiles.size) {
                         (java.io.File(context.filesDir, "stickers").listFiles()?.filter { it.isFile }
                             ?.sortedBy { it.name }?.take(48)
-                            ?: emptyList()) + remoteStickerFiles
+                            ?: emptyList()) + sbStickerFiles + remoteStickerFiles
                     }
                     Column(
                         modifier = Modifier
@@ -841,7 +856,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                         }
                         if (stickerFiles.isEmpty()) {
                             Text(
-                                "表情包下载中…（也有本地导入：点「添加」）",
+                                "表情包加载中…（你们的亲亲抱抱 + 猫猫包 + 本地导入）",
                                 fontSize = 11.sp, color = HomecomingColors.InkSoft,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier
