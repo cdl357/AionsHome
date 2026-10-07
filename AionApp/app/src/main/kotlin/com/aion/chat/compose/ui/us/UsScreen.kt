@@ -512,7 +512,12 @@ fun DayDrawer(
         expanded = if (expanded.contains(k)) expanded - k else expanded + k
     }
 
-    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    ) {
         Text(
             "那天 · ${date.monthValue} 月 ${date.dayOfMonth} 日" + if (date == LocalDate.now()) "（今天）" else "",
             fontSize = 18.sp, color = HomecomingColors.Ink
