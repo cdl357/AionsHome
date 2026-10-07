@@ -54,7 +54,8 @@ object MusicPlayer {
         val idx = queue.indexOfFirst { it.id == cur.id }
         val next = if (idx >= 0 && idx + 1 < queue.size) queue[idx + 1] else queue.firstOrNull()
         if (next != null && next.id != cur.id) {
-            play(context, MusicClient.Song(next.id, next.name, next.artist))
+            // 队列由 playNext/playFromList 自己维护，续播不得重建队列（否则歌单连播会漂进点歌卡队列）
+            play(context, MusicClient.Song(next.id, next.name, next.artist), keepQueue = true)
         } else {
             emit { it.copy(playing = false) }
         }
