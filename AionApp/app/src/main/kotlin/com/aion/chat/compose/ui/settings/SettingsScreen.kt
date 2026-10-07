@@ -48,7 +48,7 @@ import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.theme.HomecomingThemeState
 import kotlinx.coroutines.launch
 
-/** 设置：换背景图先行；云线路 / 模型 / TTS / 主题在阶段五接入。 */
+/** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
 fun SettingsScreen() {
     val context = LocalContext.current
@@ -58,8 +58,32 @@ fun SettingsScreen() {
     val routeApiKey = remember { mutableStateOf("") }
     val routeModel = remember { mutableStateOf("") }
     val routeSaved = remember { mutableStateOf(false) }
-    val routeTest = remember { mutableStateOf("") }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val restoreLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val ok = runCatching {
+                    val text = context.contentResolver.openInputStream(uri)?.use {
+                        it.readBytes().toString(Charsets.UTF_8)
+                    }
+                    val root = org.json.JSONObject(text ?: throw IllegalStateException("空文件"))
+                    root.getJSONArray("chat")  // 校验是线路备份
+                    com.aion.chat.compose.data.HomecomingRouteConfig.save(context, root)
+                }.getOrDefault(false)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (ok) {
+                        routeSaved.value = true
+                        Toast.makeText(context, "线路已恢复，聊天页即可用", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "这不是线路备份文件", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+    val routeTest = remember { mutableStateOf("") }
 
     fun saveRoute() {
         val baseUrl = routeBaseUrl.value.trim()
@@ -74,7 +98,12 @@ fun SettingsScreen() {
         )
         if (com.aion.chat.compose.data.HomecomingRouteConfig.save(context, root)) {
             routeSaved.value = true
-            Toast.makeText(context, "云线路已保存，聊天页即可用", Toast.LENGTH_SHORT).show()
+            val where = backupRouteToDownloads(context)
+            Toast.makeText(
+                context,
+                "云线路已保存" + (where?.let { "，并备份到 $it" } ?: ""),
+                Toast.LENGTH_LONG
+            ).show()
         } else {
             Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
         }
@@ -123,7 +152,7 @@ fun SettingsScreen() {
             .padding(18.dp)
     ) {
         Text("设置", fontSize = 22.sp, color = HomecomingColors.Ink)
-        Text("先从换背景开始，其余在阶段五接入", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+        Text("背景 / 主题 / 云线路 / MCP / 备份，都在这", fontSize = 12.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(14.dp))
 
         // ── 主题（布局定稿·方案 C）：五预设 + 单主色调色盘 ──
@@ -250,6 +279,11 @@ fun SettingsScreen() {
                 }) { Text("测一下", color = HomecomingColors.InkSoft) }
                 TextButton(onClick = { saveRoute() }) { Text("保存线路", color = HomecomingColors.Accent) }
             }
+            Text(
+                "从备份恢复线路",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                modifier = Modifier.clickable { restoreLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+            )
             if (routeSaved.value) {
                 Text("已保存。回「聊天」页即可开聊。", fontSize = 11.sp, color = HomecomingColors.Ok)
             }
@@ -542,12 +576,35 @@ fun SettingsScreen() {
                 Text("把这段发给 Sean 就能定位问题", fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
             }
         }
-        FrostCard {
-            Text("云线路 · 模型 · TTS · 主题", fontSize = 15.sp, color = HomecomingColors.Ink)
-            Text("阶段五接入", fontSize = 12.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
-        }
     }
 }
+
+/** 线路配置自动备份到公共 Downloads（覆盖安装/卸载重装后可秒恢复；文件不含聊天数据）。 */
+fun backupRouteToDownloads(context: android.content.Context): String? = try {
+    val routes = HomecomingRouteConfig.file(context)
+    if (!routes.exists()) null
+    else {
+        val name = "aionshome-routes-backup.json"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+            }
+            val uri = context.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return null
+            context.contentResolver.openOutputStream(uri)?.use {
+                it.write(routes.readText().toByteArray(Charsets.UTF_8))
+            }
+            "下载/$name"
+        } else {
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            dir.mkdirs()
+            java.io.File(dir, name).writeText(routes.readText())
+            "下载/$name"
+        }
+    }
+} catch (e: Exception) { null }
+
 
 /** 云线路连通性测试：真实打一次 /chat/completions（max_tokens 极小），把成败原因说人话。 */
 private suspend fun pingRoute(baseUrl: String, apiKey: String, model: String): String =

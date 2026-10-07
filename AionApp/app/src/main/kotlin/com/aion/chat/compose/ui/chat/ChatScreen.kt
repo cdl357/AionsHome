@@ -275,6 +275,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     runCatching { MusicClient.checkPlayable(s.id) }.getOrDefault(false)
                 }
                 main.post {
+                    errorText.value = null
+                    sending.value = false   // 递归 send 自己重新置 true
                     if (verified == null) {
                         // 失败不伪装：如实回应，请她补充歌手名
                         send(
