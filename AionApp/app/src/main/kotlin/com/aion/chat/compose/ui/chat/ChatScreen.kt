@@ -264,9 +264,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
             Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
             return
         }
+        sending.value = true
+        input.value = ""
+        pendingImage.value = ""
+        pendingImagePath.value = ""
         // ── AI 点歌（教程 §13）：说想听歌 → 搜真歌+验证 → Sean 知道结果 → 聊天里生成真实播放卡 ──
         if (promptPrefix == null && image.isEmpty() && isSongRequest(text)) {
             val rawText = text
+            errorText.value = "正在找歌…"
             scope.launch(Dispatchers.IO) {
                 val q = cleanSongQuery(rawText).ifBlank { rawText }
                 val (songs, _) = runCatching { MusicClient.search(q, 12) }

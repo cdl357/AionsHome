@@ -112,6 +112,8 @@ object MusicPlayer {
             prepared = false
             emit { it.copy(playing = false) }
             postEvent("finish", local)
+            val ctx = appContext
+            if (ctx != null && queue.isNotEmpty()) playNext(ctx)   // 队列自动连播
         }
         mp.setOnErrorListener { _, what, extra ->
             prepared = false

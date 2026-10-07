@@ -74,6 +74,19 @@ fun MusicScreen(onBack: () -> Unit = {}) {
     var ncState by remember { mutableStateOf<MusicClient.NeteaseLoginState?>(null) }
     var showQr by remember { mutableStateOf(false) }
 
+    val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     fun loadNcState() {
         scope.launch {
             runCatching { MusicClient.neteaseLoginState() }.getOrNull()?.let { ncState = it }

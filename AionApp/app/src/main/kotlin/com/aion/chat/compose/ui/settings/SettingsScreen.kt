@@ -70,6 +70,22 @@ fun SettingsScreen() {
                     }
                     val root = org.json.JSONObject(text ?: throw IllegalStateException("空文件"))
                     root.getJSONArray("chat")  // 校验是线路备份
+                    // 备份不含 Key：从现存线路把 api_key 带回来（同 route_id 优先）
+                    val existing = runCatching { HomecomingRouteConfig.load(context) }.getOrNull()
+                    val chats = root.getJSONArray("chat")
+                    for (i in 0 until chats.length()) {
+                        val c = chats.getJSONObject(i)
+                        if (c.optString("api_key").isBlank() && existing != null) {
+                            val exArr = existing.optJSONArray("chat") ?: continue
+                            for (j in 0 until exArr.length()) {
+                                val ex = exArr.getJSONObject(j)
+                                if (ex.optString("route_id") == c.optString("route_id") ||
+                                    ex.optString("base_url") == c.optString("base_url")) {
+                                    c.put("api_key", ex.optString("api_key"))
+                                }
+                            }
+                        }
+                    }
                     com.aion.chat.compose.data.HomecomingRouteConfig.save(context, root)
                 }.getOrDefault(false)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -580,28 +596,53 @@ fun SettingsScreen() {
 }
 
 /** 线路配置自动备份到公共 Downloads（覆盖安装/卸载重装后可秒恢复；文件不含聊天数据）。 */
+/** 备份内容脱敏：结构保留，api_key 置空（红线：Key 不进公共 Downloads）。 */
+private fun sanitizedRoutes(context: android.content.Context): String? = try {
+    val root = org.json.JSONObject(HomecomingRouteConfig.file(context).readText())
+    val chats = root.optJSONArray("chat") ?: return null
+    for (i in 0 until chats.length()) {
+        chats.getJSONObject(i).put("api_key", "")
+    }
+    root.toString(2)
+} catch (e: Exception) { null }
+
 fun backupRouteToDownloads(context: android.content.Context): String? = try {
-    val routes = HomecomingRouteConfig.file(context)
-    if (!routes.exists()) null
-    else {
-        val name = "aionshome-routes-backup.json"
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val values = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
-                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+    val payload = sanitizedRoutes(context) ?: return null
+    val name = "aionshome-routes-backup.json"
+    // 先删旧备份，避免 (1)(2) 堆积
+    runCatching {
+        val resolver = context.contentResolver
+        resolver.query(
+            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            arrayOf(android.provider.MediaStore.Downloads._ID),
+            android.provider.MediaStore.Downloads.DISPLAY_NAME + " = ?",
+            arrayOf(name), null
+        )?.use { cur ->
+            while (cur.moveToNext()) {
+                val id = cur.getLong(0)
+                resolver.delete(
+                    android.content.ContentUris.withAppendedId(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, id),
+                    null, null
+                )
             }
-            val uri = context.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: return null
-            context.contentResolver.openOutputStream(uri)?.use {
-                it.write(routes.readText().toByteArray(Charsets.UTF_8))
-            }
-            "下载/$name"
-        } else {
-            val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-            dir.mkdirs()
-            java.io.File(dir, name).writeText(routes.readText())
-            "下载/$name"
         }
+    }
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+        }
+        val uri = context.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: return null
+        context.contentResolver.openOutputStream(uri)?.use {
+            it.write(payload.toByteArray(Charsets.UTF_8))
+        }
+        "下载/$name（不含 API Key）"
+    } else {
+        val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        dir.mkdirs()
+        java.io.File(dir, name).writeText(payload)
+        "下载/$name（不含 API Key）"
     }
 } catch (e: Exception) { null }
 
