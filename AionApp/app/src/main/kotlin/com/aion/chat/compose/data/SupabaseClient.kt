@@ -23,8 +23,9 @@ object SupabaseClient {
 
     internal const val TAG = "SupabaseClient"
 
-    const val URL = "https://byqqwypdfiwvalozihgs.supabase.co"
-    const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NTQwODAsImV4cCI6MjA5OTIzMDA4MH0.Gacxi6TVGzL3pNn-KdUHkPTYW8dvSpt7A05FpmkZlyc"
+    // 从 BuildConfig 读取，不再硬编码
+    val URL: String = BuildConfig.SUPABASE_URL
+    val ANON_KEY: String = BuildConfig.SUPABASE_ANON_KEY
 
     /** VPS 中转主线路：8783 端口（安全组已放行，外部实测 200）。 */
     const val RELAY_URL = "http://134.175.7.196:8783/supabase"
@@ -103,232 +104,109 @@ internal suspend fun supabaseRequest(
             // 权限/表结构问题是线路无关的，换线也一样
             return@withContext CloudReply(error = kind)
         } catch (e: UnknownHostException) {
-            Log.w(SupabaseClient.TAG, "[NET/DNS] $method $base/$path 域名解析失败: ${e.message}")
+            Log.w(SupabaseClient.TAG, "[DNS] $method /$path base=$base")
             lastError = CloudErrorKind.NETWORK
         } catch (e: SocketTimeoutException) {
-            Log.w(SupabaseClient.TAG, "[NET/TIMEOUT] $method $base/$path 连接或读取超时")
-            lastError = CloudErrorKind.NETWORK
-        } catch (e: javax.net.ssl.SSLException) {
-            Log.w(SupabaseClient.TAG, "[NET/TLS] $method $base/$path TLS 握手被拦: ${e.message?.take(120)}")
+            Log.w(SupabaseClient.TAG, "[TIMEOUT] $method /$path base=$base")
             lastError = CloudErrorKind.NETWORK
         } catch (e: Exception) {
-            Log.w(SupabaseClient.TAG, "[NET] $method $base/$path ${e.javaClass.simpleName}: ${e.message?.take(120)}")
+            Log.w(SupabaseClient.TAG, "[NET] $method /$path base=$base msg=${e.message}")
             lastError = CloudErrorKind.NETWORK
         }
     }
     CloudReply(error = lastError ?: CloudErrorKind.NETWORK)
 }
 
-/** 把 PostgREST 返回的 text[]（JSON 数组）安全转 List<String>；兼容 "{a,b}" 字符串形态。 */
-internal fun jsonStringArray(raw: Any?): List<String> = when (raw) {
-    is JSONArray -> (0 until raw.length()).map { raw.optString(it) }.filter { it.isNotBlank() }
-    is String -> raw.removePrefix("{").removeSuffix("}")
-        .split(",").map { it.trim().trim('"') }.filter { it.isNotBlank() }
-    else -> emptyList()
+/** 日记 + 今日情话仓库。列表只读 Yuri 自己的；新增固定 author='Yuri'。 */
+object SupabaseDiary {
+
+    suspend fun list(): CloudResult<List<DiaryEntry>> {
+        val reply = supabaseRequest(
+            "rest/v1/diary_entries?author=eq.Yuri&order=date.desc&limit=100",
+            "GET"
+        ) { conn ->
+            val json = conn.inputStream.bufferedReader().readText()
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                DiaryEntry(
+                    id = obj.optInt("id", -1),
+                    author = obj.optString("author", ""),
+                    date = obj.optString("date", ""),
+                    content = obj.optString("content", "")
+                )
+            }
+        }
+        @Suppress("UNCHECKED_CAST")
+        return CloudResult(reply.payload as? List<DiaryEntry>, reply.error)
+    }
+
+    suspend fun insert(date: String, content: String): Boolean {
+        val body = JSONObject()
+            .put("author", "Yuri")
+            .put("date", date)
+            .put("content", content)
+        val reply = supabaseRequest(
+            "rest/v1/diary_entries", "POST", body.toString().toByteArray(Charsets.UTF_8)
+        )
+        return reply.error == null
+    }
 }
 
-/** Supabase 返回的 ISO 时间（2026-10-02T15:04:05.123+00:00 / Z / 空格分隔都兼容）转毫秒；失败返回 0。 */
-fun parseSupabaseTime(iso: String): Long = try {
-    val cleaned = iso.trim().replace(Regex("\\.\\d+"), "").replace(" ", "T")
-    when {
-        cleaned.endsWith("Z") -> {
-            val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-            f.timeZone = java.util.TimeZone.getTimeZone("UTC")
-            f.parse(cleaned)?.time ?: 0L
-        }
-        Regex("[+-]\\d{2}:?\\d{2}$").containsMatchIn(cleaned) ->
-            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US)
-                .parse(cleaned)?.time ?: 0L
-        else -> {
-            val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-            f.timeZone = java.util.TimeZone.getTimeZone("UTC")
-            f.parse(cleaned)?.time ?: 0L
-        }
-    }
-} catch (e: Exception) { 0L }
+data class DiaryEntry(val id: Int, val author: String, val date: String, val content: String)
 
-/**
- * 朋友圈 + 日记 Supabase 数据层（第一阶段：只读同步 + 发布走 images 数组）。
- * - moments 真实字段：id/author/content/context_note/reply_status/liked/reply_content/
- *   replied_at/yuri_liked/created_at/reply_due_at/images(text[])。没有 image_url。
- * - 日记只读 user_id=ai_哥哥（哥哥的），不混其他人的。
- */
-object SupabaseMomentsStore {
+/** 朋友圈。列表只看 Yuri 自己的；评论是全表读（moment_id 索引）；点赞暂未实现。 */
+object SupabaseMoments {
 
-    data class RemoteMoment(
-        val id: String,
-        val author: String,
-        val content: String,
-        val imageUrls: List<String>,
-        val createdAt: String,
-        val createdAtMs: Long,
-        val liked: Boolean,          // 哥哥点过赞（旧版字段语义）
-        val yuriLiked: Boolean,      // Yuri 点过赞
-        val replyStatus: String,     // 回应状态
-        val replyContent: String     // 哥哥的回应内容（有就当 Sean 评论展示）
-    )
-
-    data class RemoteDiary(
-        val id: String,
-        val userId: String,
-        val title: String,
-        val content: String,
-        val weather: String,
-        val mood: String,
-        val tags: String,
-        val isPrivate: Boolean,
-        val createdAt: String,
-        val createdAtMs: Long
-    )
-
-    data class RemoteComment(
-        val id: String,
-        val momentId: String,
-        val author: String,
-        val content: String,
-        val createdAtMs: Long
-    )
-
-    fun mapAuthor(raw: String): String = when {
-        raw.contains("沈聿淮") || raw == "sean" || raw == "a_哥哥" || raw.contains("ai_") -> "sean"
-        raw.contains("小鑫") || raw == "yuri" || raw == "user" -> "yuri"
-        else -> raw
-    }
-
-    fun displayName(author: String): String = when (author) {
-        "sean" -> "Sean"; "yuri" -> "Yuri"; else -> author
-    }
-
-    /** 读朋友圈动态。查询列按真实表结构写死，不 select *。 */
-    suspend fun fetchMoments(): CloudResult<List<RemoteMoment>> {
+    suspend fun list(): CloudResult<List<MomentEntry>> {
         val reply = supabaseRequest(
-            "rest/v1/moments",
-            "GET",
-            parse = { conn ->
-                JSONArray(conn.inputStream.bufferedReader().readText())
-            }
-        )
-        if (reply.error != null) return CloudResult(null, reply.error)
-        val arr = reply.payload as? JSONArray
-            ?: return CloudResult(null, CloudErrorKind.PARSE)
-        if (arr.length() == 0) {
-            Log.i(SupabaseClient.TAG, "[EMPTY] moments 返回空数组（云端没数据）")
-            return CloudResult(emptyList(), null)
-        }
-        val out = mutableListOf<RemoteMoment>()
-        for (i in 0 until arr.length()) {
-            try {
-                val o = arr.getJSONObject(i)
-                val created = o.optString("created_at", "")
-                out.add(
-                    RemoteMoment(
-                        id = o.optString("id"),
-                        author = mapAuthor(o.optString("author", "")),
-                        content = o.optString("content", ""),
-                        imageUrls = jsonStringArray(o.opt("images")),
-                        createdAt = created,
-                        createdAtMs = parseSupabaseTime(created),
-                        liked = o.optBoolean("liked", false),
-                        yuriLiked = o.optBoolean("yuri_liked", false),
-                        replyStatus = o.optString("reply_status", ""),
-                        replyContent = o.optString("reply_content", "")
-                    )
+            "rest/v1/moments?author=eq.Yuri&order=created_at.desc&limit=100",
+            "GET"
+        ) { conn ->
+            val json = conn.inputStream.bufferedReader().readText()
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                val imgs = obj.optJSONArray("images")
+                val imgList = if (imgs != null) {
+                    (0 until imgs.length()).map { j -> imgs.getString(j) }
+                } else emptyList()
+                MomentEntry(
+                    id = obj.optInt("id", -1),
+                    author = obj.optString("author", ""),
+                    content = obj.optString("content", ""),
+                    createdAt = obj.optString("created_at", ""),
+                    images = imgList
                 )
-            } catch (e: Exception) {
-                Log.w(SupabaseClient.TAG, "[PARSE] moments 第 $i 行字段解析失败: ${e.message}")
             }
         }
-        return CloudResult(out, null)
+        @Suppress("UNCHECKED_CAST")
+        return CloudResult(reply.payload as? List<MomentEntry>, reply.error)
     }
 
-    /** 读哥哥的日记（user_id=eq.ai_哥哥），查询列按真实表结构写死。 */
-    suspend fun fetchSeanDiaries(): CloudResult<List<RemoteDiary>> {
+    suspend fun listComments(momentId: Int): CloudResult<List<MomentComment>> {
         val reply = supabaseRequest(
-            "rest/v1/diary_entries?user_id=" + java.net.URLEncoder.encode("eq.ai_哥哥", "UTF-8") +
-                "&select=id,user_id,title,content,weather,mood,tags,private,created_at" +
-                "&order=created_at.desc&limit=50",
-            "GET",
-            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
-        )
-        if (reply.error != null) return CloudResult(null, reply.error)
-        val arr = reply.payload as? JSONArray
-            ?: return CloudResult(null, CloudErrorKind.PARSE)
-        if (arr.length() == 0) {
-            Log.i(SupabaseClient.TAG, "[EMPTY] diary_entries(ai_哥哥) 返回空数组（云端没数据）")
-            return CloudResult(emptyList(), null)
-        }
-        val out = mutableListOf<RemoteDiary>()
-        for (i in 0 until arr.length()) {
-            try {
-                val o = arr.getJSONObject(i)
-                val created = o.optString("created_at", "")
-                out.add(
-                    RemoteDiary(
-                        id = o.optString("id"),
-                        userId = o.optString("user_id", ""),
-                        title = o.optString("title", ""),
-                        content = o.optString("content", ""),
-                        weather = o.optString("weather", ""),
-                        mood = o.optString("mood", ""),
-                        tags = jsonStringArray(o.opt("tags")).joinToString("、").ifBlank { o.optString("tags", "") },
-                        isPrivate = o.optBoolean("private", false),
-                        createdAt = created,
-                        createdAtMs = parseSupabaseTime(created)
-                    )
+            "rest/v1/moment_comments?moment_id=eq.$momentId&order=created_at.asc",
+            "GET"
+        ) { conn ->
+            val json = conn.inputStream.bufferedReader().readText()
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                MomentComment(
+                    id = obj.optInt("id", -1),
+                    momentId = obj.optInt("moment_id", -1),
+                    author = obj.optString("author", ""),
+                    content = obj.optString("content", ""),
+                    createdAt = obj.optString("created_at", "")
                 )
-            } catch (e: Exception) {
-                Log.w(SupabaseClient.TAG, "[PARSE] diary_entries 第 $i 行字段解析失败: ${e.message}")
             }
         }
-        return CloudResult(out, null)
+        @Suppress("UNCHECKED_CAST")
+        return CloudResult(reply.payload as? List<MomentComment>, reply.error)
     }
 
-    /**
-     * 读朋友圈评论（独立表 moment_comments，不假设 moments 自带）。
-     * 列结构没有交接文档，防御式解析：author 兼容 user_id 列、content 兼容 text 列。
-     * 失败时返回 CloudResult(error)——调用方对评论失败应静默降级，不影响动态主列表。
-     */
-    suspend fun fetchMomentComments(): CloudResult<List<RemoteComment>> {
-        val reply = supabaseRequest(
-            "rest/v1/moment_comments?select=*&order=created_at.asc&limit=200",
-            "GET",
-            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
-        )
-        if (reply.error != null) return CloudResult(null, reply.error)
-        val arr = reply.payload as? JSONArray
-            ?: return CloudResult(null, CloudErrorKind.PARSE)
-        if (arr.length() == 0) {
-            Log.i(SupabaseClient.TAG, "[EMPTY] moment_comments 返回空数组（云端没评论）")
-            return CloudResult(emptyList(), null)
-        }
-        val out = mutableListOf<RemoteComment>()
-        for (i in 0 until arr.length()) {
-            try {
-                val o = arr.getJSONObject(i)
-                val created = o.optString("created_at", "")
-                out.add(
-                    RemoteComment(
-                        id = o.optString("id"),
-                        momentId = o.optString("moment_id", o.optString("momentid", "")),
-                        author = mapAuthor(
-                            o.optString("author", o.optString("user_id", ""))
-                        ),
-                        content = o.optString("content", o.optString("text", "")),
-                        createdAtMs = parseSupabaseTime(created)
-                    )
-                )
-            } catch (e: Exception) {
-                Log.w(SupabaseClient.TAG, "[PARSE] moment_comments 第 $i 行字段解析失败: ${e.message}")
-            }
-        }
-        return CloudResult(out, null)
-    }
-
-    /**
-     * 发评论到 moment_comments（Yuri 自己的评论）。
-     * 列结构无文档，只发最可能的三个字段；失败（列名不符/权限）静默降级——本地一定有。
-     */
-    suspend fun postComment(momentId: String, author: String, content: String): Boolean {
+    suspend fun postComment(momentId: Int, author: String, content: String): Boolean {
         val body = JSONObject()
             .put("moment_id", momentId)
             .put("author", author)
@@ -355,6 +233,22 @@ object SupabaseMomentsStore {
         return reply.error == null
     }
 }
+
+data class MomentEntry(
+    val id: Int,
+    val author: String,
+    val content: String,
+    val createdAt: String,
+    val images: List<String>
+)
+
+data class MomentComment(
+    val id: Int,
+    val momentId: Int,
+    val author: String,
+    val content: String,
+    val createdAt: String
+)
 
 /** Supabase Storage（朋友圈配图）。桶 moments 不存在/无权限时返回 null，调用方降级为仅本地保存。 */
 object SupabaseStorage {
