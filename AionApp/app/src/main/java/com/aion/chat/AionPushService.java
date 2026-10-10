@@ -78,7 +78,7 @@ import com.aion.chat.miband.MiBandCommandInbox;
 import com.aion.chat.miband.MiBandRuntime;
 import com.aion.chat.miband.MiBandStatus;
 import com.aion.chat.miband.MiBandSyncSchedule;
-import com.aion.chat.widget.WidgetStateSyncClient;
+// import com.aion.chat.widget.WidgetStateSyncClient;  // TODO: 等 widget 数据层完善后恢复
 
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
@@ -2192,7 +2192,7 @@ public class AionPushService extends Service {
                     fetchPendingMiBandCommands();
                     syncAppSupervisionRuntimeConfig();
                     fetchPendingAppSupervisionCommands();
-                    WidgetStateSyncClient.sync(AionPushService.this);
+                    // WidgetStateSyncClient.sync(AionPushService.this);  // TODO: 等 widget 数据层完善后恢复
                 }
 
                 @Override
@@ -2573,7 +2573,7 @@ public class AionPushService extends Service {
                     break;
                 }
                 case "widget_state_changed": {
-                    WidgetStateSyncClient.sync(this);
+                    // WidgetStateSyncClient.sync(this);  // TODO: 等 widget 数据层完善后恢复
                     break;
                 }
                 case "phone_camera_capture": {
@@ -4239,3 +4239,4 @@ public class AionPushService extends Service {
         return Math.max(steps, 0);
     }
 }
+
