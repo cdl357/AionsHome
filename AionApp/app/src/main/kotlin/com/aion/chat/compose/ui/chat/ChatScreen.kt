@@ -260,10 +260,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         if (text.isEmpty() && image.isEmpty()) return
         val w = wiring ?: return
         if (sending.value) return
-        if (!connected) {
-            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
-            return
-        }
+        // if (!connected) {
+        // Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+        // return
+        // }
         sending.value = true
         input.value = ""
         pendingImage.value = ""
@@ -388,10 +388,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
 
     fun sendSticker(f: java.io.File) {
         if (sending.value) return
-        if (!connected) {
-            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
-            return
-        }
+        // if (!connected) {
+        // Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+        // return
+        // }
         scope.launch(Dispatchers.IO) {
             val dataUrl = runCatching {
                 val bytes = f.readBytes()
@@ -505,10 +505,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
             Toast.makeText(context, "他这会儿在忙，这一下先欠着", Toast.LENGTH_SHORT).show()
             return
         }
-        if (!connected) {
-            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
-            return
-        }
+        // if (!connected) {
+        // Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+        // return
+        // }
         val w = wiring ?: return
         val verb = pokeVerb.value
         val spot = pokeSpot.value
@@ -1419,3 +1419,4 @@ private suspend fun generateTonightDiary(context: android.content.Context) {
         context, "sean", "$today 日记", d, System.currentTimeMillis()
     )
 }
+
