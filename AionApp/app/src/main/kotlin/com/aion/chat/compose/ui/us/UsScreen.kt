@@ -710,16 +710,11 @@ fun DaySummaryCard(
             summary,
             fontSize = 14.sp,
             color = HomecomingColors.Ink,
-            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            maxLines = Int.MAX_VALUE,  // 默认展开显示完整内容
             overflow = TextOverflow.Ellipsis
         )
         if (expanded) body
-        Text(
-            if (expanded) "收起来" else "点开看完整内容",
-            fontSize = 11.sp, color = HomecomingColors.Accent,
-            modifier = Modifier
-                .padding(top = 6.dp)
-                .clickable { expanded = !expanded }
-        )
+        // 已默认展开，不需要展开按钮
     }
 }
+
