@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -84,9 +83,7 @@ fun MomentsScreen() {
     val feed = remember { mutableStateListOf<Moment>() }
     val reloadKey = remember { mutableStateOf(0) }
     val coverVersion = remember { mutableStateOf(0L) }
-    val cloudError = remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
-    val isRefreshing = remember { mutableStateOf(false) }
-    val viewerRef = remember { mutableStateOf<String?>(null) }
+    val cloudError = remember { mutableStateOf(false) }
 
     val routeStamp = remember { HomecomingRouteConfig.stamp(context) }
     val wiring = remember(routeStamp) { HomecomingChatWiring.safeCreate(context) }
@@ -107,69 +104,29 @@ fun MomentsScreen() {
      */
     fun reload() {
         scope.launch(Dispatchers.IO) {
-            val res = runCatching {
+            val remote = runCatching {
                 com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
             }.getOrNull()
-            var remote: List<com.aion.chat.compose.data.SupabaseMomentsStore.RemoteMoment>? = null
-            var kind = res?.error
-            if (res == null || res.error != null) {
-                // 权限/网络被挡 → 服务器心潮后端的只读代理兜底（密钥不出服务器）
-                val proxied = runCatching {
-                    com.aion.chat.compose.data.XinchaoClient.fetchMomentsViaXinchao()
-                }.getOrNull()
-                if (proxied != null) {
-                    remote = proxied
-                    kind = null
-                }
-            }
             if (remote == null) {
-                // 网络 / 权限 / 解析失败分种提示；保留现有内容，可重试
-                main.post {
-                    cloudError.value = kind ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
-                    isRefreshing.value = false
-                }
+                // 云端连不上：保留现有内容（本地缓存/本地动态），横幅提示 + 可重试
+                main.post { cloudError.value = true }
                 return@launch
             }
-            val remoteList = remote ?: emptyList()
             val local = runCatching { HomecomingMomentsStore.feed(context) }.getOrDefault(emptyList())
-            // 评论是独立表：读得到就并入；读不到（权限/网络）静默降级，不影响动态主列表
-            val commentsRes = runCatching {
-                com.aion.chat.compose.data.SupabaseMomentsStore.fetchMomentComments()
-            }.getOrNull()
-            val cloudCommentsByMoment = if (commentsRes?.error == null) {
-                (commentsRes?.data ?: emptyList()).groupBy { it.momentId }
-            } else emptyMap()
             val merged = mutableListOf<Moment>()
             val remoteKeys = mutableSetOf<String>()
-            remoteList.forEach { rm ->
+            remote.forEach { rm ->
                 remoteKeys.add(rm.author + "|" + rm.content)
                 val hid = rm.id.hashCode().toLong()
                 val paired = local.firstOrNull { it.id == hid }
-                // 旧表自带的赞（liked=哥哥 / yuri_liked=Yuri）与本地赞去重合并
-                val remoteLikes = buildList {
-                    if (rm.liked) add("sean")
-                    if (rm.yuriLiked) add("yuri")
-                }
-                // 旧表 reply_content = 哥哥当时写的回应；id 落负数空间，不和本地表自增 id 撞
-                val seanReply = if (rm.replyContent.isNotBlank()) {
-                    listOf(HomecomingMomentsStore.Comment(Long.MIN_VALUE, "sean", rm.replyContent, rm.createdAtMs))
-                } else emptyList()
-                val cloudComments = (cloudCommentsByMoment[rm.id] ?: emptyList()).map { c ->
-                    HomecomingMomentsStore.Comment(
-                        Long.MIN_VALUE + (c.id.hashCode().toLong() and 0x7FFFFFFFL),
-                        c.author, c.content, c.createdAtMs
-                    )
-                }
                 merged.add(
                     Moment(
                         id = hid, remoteId = rm.id,
                         author = rm.author, content = rm.content,
-                        attachments = rm.imageUrls + (paired?.attachments ?: emptyList()),
+                        attachments = listOfNotNull(rm.imageUrl) + (paired?.attachments ?: emptyList()),
                         createdAt = rm.createdAtMs,
-                        likes = (remoteLikes + (paired?.likes ?: emptyList())).distinct(),
-                        comments = (seanReply + cloudComments + (paired?.comments ?: emptyList()))
-                            .distinctBy { it.id }
-                            .sortedBy { it.createdAt },
+                        likes = paired?.likes ?: emptyList(),
+                        comments = paired?.comments ?: emptyList(),
                         localRowId = paired?.id
                     )
                 )
@@ -179,60 +136,31 @@ fun MomentsScreen() {
                 .map { it.copy(remoteId = null, localRowId = it.id) }
             val all = (merged + localOnly).sortedByDescending { it.createdAt }
             main.post {
-                cloudError.value = null
+                cloudError.value = false
                 feed.clear()
                 feed.addAll(all)
-                isRefreshing.value = false
             }
         }
     }
 
-    LaunchedEffect(reloadKey.value) { reload() }
-
-    // ── 影子推送：Sean 主动发朋友圈。每天最多一条；云线路就绪才生效；无线路安静跳过 ──
-    val shadowPrefs = remember {
-        context.getSharedPreferences("shadow_push", android.content.Context.MODE_PRIVATE)
+    // 每次进入页面自动刷新（像橘瓣一样）
+    LaunchedEffect(Unit) { 
+        reload()
     }
-    val shadowBusy = remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        val w = wiring ?: return@LaunchedEffect
-        if (!routeReady) return@LaunchedEffect
-        if (!shadowPrefs.getBoolean("enabled", true)) return@LaunchedEffect
-        val today = java.time.LocalDate.now().toString()
-        if (shadowPrefs.getString("sean_last", null) == today) return@LaunchedEffect
-        if (shadowBusy.value) return@LaunchedEffect
-        shadowBusy.value = true
-        scope.launch(Dispatchers.IO) {
-            try {
-                var generated: String? = null
-                w.engine.send(
-                    HomecomingChatEngine.ChatCommand(
-                        "req_shadow_" + System.currentTimeMillis(),
-                        "moments_private", "sean", "user",
-                        "今天是 $today。你是 Sean（沈聿淮），Yuri 的恋人。你主动发一条朋友圈给她：" +
-                            "一两句话的日常感想——想她、今天遇到的小事、天气、刚听的歌都行。" +
-                            "不要出现「朋友圈」三个字，不要系统腔，不要解释你在发东西，最多一个 emoji。",
-                        "main", modelKey, "", ""
-                    ),
-                    object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
-                        override fun onChunk(chunk: String) {}
-                        override fun onComplete(messageId: String, text: String) {
-                            val t = text.trim().removeSurrounding("\"").trim()
-                            if (t.isNotEmpty()) generated = t
-                        }
-                        override fun onFailure(code: String) { /* 安静 */ }
-                    }
-                )
-                var waited = 0L
-                while (generated == null && waited < 25_000L) { delay(300L); waited += 300L }
-                val content = generated?.takeIf { it.isNotBlank() } ?: return@launch
-                com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(content, "sean")
-                HomecomingMomentsStore.addMoment(context, "sean", content, emptyList())
-                shadowPrefs.edit().putString("sean_last", today).apply()
-                main.post { reload() }
-            } catch (e: Exception) { /* 影子推送不打扰人 */ } finally {
-                shadowBusy.value = false
+    
+    // 监听生命周期，从其他页面返回时也刷新
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { }
+    }
+    androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.let { lifecycle ->
+        androidx.compose.runtime.DisposableEffect(lifecycle) {
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                    reload()
+                }
             }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
         }
     }
 
@@ -304,15 +232,7 @@ fun MomentsScreen() {
         }
     }
 
-    // ── 白底 + 封面 + 动态列表（下拉刷新） ──
-    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-        isRefreshing = isRefreshing.value,
-        onRefresh = {
-            isRefreshing.value = true
-            reloadKey.value++
-        },
-        modifier = Modifier.fillMaxSize()
-    ) {
+    // ── 白底 + 封面 + 动态列表 ──
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -368,30 +288,16 @@ fun MomentsScreen() {
             ) {
                 AvatarPhoto(
                     who = "yuri", initial = "Y",
-                    size = 68.dp, strokeWidth = 3.dp
+                    size = 68.dp, strokeWidth = 3.dp,
+                    onClick = null
                 )
             }
         }
 
         Spacer(Modifier.height(40.dp)) // 给压沿头像留空间
 
-        // ── 云端失败横幅：网络/权限/解析分种提示（点一下重试） ──
-        if (cloudError.value != null) {
-            val kind = cloudError.value!!
-            val msg = when (kind) {
-                com.aion.chat.compose.data.CloudErrorKind.NETWORK ->
-                    "网络连不上云端（超时/DNS/TLS 被拦），手机里的内容先看着"
-                com.aion.chat.compose.data.CloudErrorKind.HTTP_401 ->
-                    "云端 401：moments 表没放行 anon 读取，先在 Supabase 跑 docs/supabase-rls.sql"
-                com.aion.chat.compose.data.CloudErrorKind.HTTP_403 ->
-                    "云端 403：RLS 拒绝读取 moments"
-                com.aion.chat.compose.data.CloudErrorKind.HTTP_404 ->
-                    "云端 404：找不到 moments 表"
-                com.aion.chat.compose.data.CloudErrorKind.PARSE ->
-                    "云端数据解析失败：字段和代码对不上（日志 tag=SupabaseClient）"
-                com.aion.chat.compose.data.CloudErrorKind.OTHER_HTTP ->
-                    "云端返回异常状态"
-            }
+        // ── 云端连不上横幅（区别于"真没数据"，点一下重试） ──
+        if (cloudError.value) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -403,7 +309,7 @@ fun MomentsScreen() {
                     .padding(horizontal = 12.dp, vertical = 9.dp)
             ) {
                 Text(
-                    msg,
+                    "云端读不到：网络不通或表权限未放行（详意见交接说明）",
                     fontSize = 12.sp, color = Color(0xFFB3554D),
                     modifier = Modifier.weight(1f)
                 )
@@ -414,8 +320,8 @@ fun MomentsScreen() {
         // ── 动态列表 ──
         if (feed.isEmpty()) {
             Text(
-                if (cloudError.value != null) "云端读不到，手机里也还没有动态"
-                else "云端还没有动态，发第一条吧",
+                if (cloudError.value) "云端连不上，手机里也还没有动态"
+                else "还没有动态，发第一条吧",
                 fontSize = 13.sp,
                 color = Color(0xFF999999),
                 modifier = Modifier
@@ -441,16 +347,6 @@ fun MomentsScreen() {
                     if (HomecomingMomentsStore.addComment(context, moment.id, "user", text)) {
                         commentTarget.value = null
                         reload()
-                        // 评论同步到 moment_comments（尽力而为，失败已存本地）
-                        if (moment.remoteId != null) {
-                            scope.launch(Dispatchers.IO) {
-                                runCatching {
-                                    com.aion.chat.compose.data.SupabaseMomentsStore.postComment(
-                                        moment.remoteId, "yuri", text
-                                    )
-                                }
-                            }
-                        }
                         askSeanReply(moment.id, moment.content, text)
                     }
                 },
@@ -460,12 +356,17 @@ fun MomentsScreen() {
                 },
                 onDeleteMoment = {
                     scope.launch(Dispatchers.IO) {
-                        // 第一阶段只读同步：远端删除暂不开放（不给 anon 开删表能力），只删本地展示记录
+                        if (moment.remoteId != null) {
+                            runCatching {
+                                com.aion.chat.compose.data.SupabaseClient.delete(
+                                    "moments", "id=eq." + moment.remoteId
+                                )
+                            }
+                        }
                         HomecomingMomentsStore.deleteMoment(context, moment.localRowId ?: moment.id)
                         main.post { reload() }
                     }
-                },
-                onImageTap = { ref -> viewerRef.value = ref }
+                }
             )
             // 分割线
             Box(
@@ -477,25 +378,6 @@ fun MomentsScreen() {
             )
         }
         Spacer(Modifier.height(60.dp))
-    }
-    } // PullToRefreshBox
-
-    // ── 图片全屏查看 ──
-    viewerRef.value?.let { ref ->
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { viewerRef.value = null },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.96f))
-                    .clickable { viewerRef.value = null },
-                contentAlignment = Alignment.Center
-            ) {
-                MomentImage(ref = ref, modifier = Modifier.fillMaxWidth())
-            }
-        }
     }
 
     // ── 发布弹窗 ──
@@ -535,17 +417,16 @@ fun MomentsScreen() {
                                         context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                                     }.getOrNull()
                                 }
-                                // 全部尝试传 Storage（桶没建/没权限时逐张降级为 null）
-                                val remoteUrls = bytesList.mapNotNull { bytes ->
-                                    runCatching { com.aion.chat.compose.data.SupabaseStorage.uploadMomentImage(bytes) }.getOrNull()
+                                // 第一张传 Storage（桶没建/没权限时返回 null，自动降级为仅本地）
+                                val remoteUrl = bytesList.firstOrNull()?.let {
+                                    com.aion.chat.compose.data.SupabaseStorage.uploadMomentImage(it)
                                 }
                                 // 本地留档：赞/评/配图都挂本地表，断网也有得看
                                 val localPaths = bytesList.mapNotNull { bytes ->
                                     runCatching { HomecomingMomentsStore.saveMomentImage(context, bytes) }.getOrNull()
                                 }
                                 HomecomingMomentsStore.addMoment(context, "yuri", text, localPaths)
-                                // 写云端：图片列是 images 数组（text[]），没有 image_url
-                                val posted = com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(text, "yuri", remoteUrls)
+                                val posted = com.aion.chat.compose.data.SupabaseMomentsStore.postMoment(text, "yuri", remoteUrl ?: "")
                                 main.post {
                                     composeText.value = ""
                                     composeImages.clear()
@@ -553,11 +434,7 @@ fun MomentsScreen() {
                                     reload()
                                     Toast.makeText(
                                         context,
-                                        when {
-                                            posted && remoteUrls.size == bytesList.size -> "已发布"
-                                            posted -> "已发布（${remoteUrls.size}/${bytesList.size} 张图上云）"
-                                            else -> "已存本地（云端未连上）"
-                                        },
+                                        if (posted) "已发布" else "已存本地（云端未连上）",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -581,8 +458,7 @@ fun MomentCard(
     onComment: () -> Unit,
     onSendComment: (String) -> Unit,
     onDeleteComment: (Long) -> Unit,
-    onDeleteMoment: () -> Unit,
-    onImageTap: (String) -> Unit = {}
+    onDeleteMoment: () -> Unit
 ) {
     val name = when (moment.author) { "user" -> "Yuri"; "sean" -> "Sean"; else -> moment.author }
     val avatarInitial = if (moment.author == "user") "Y" else "S"
@@ -593,12 +469,11 @@ fun MomentCard(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row {
-            // 头像（真实照片，全 App 共用；feed 里不可点，换头像去首页/封面）
+            // 头像（真实照片，全 App 共用；未设置时首字母占位）
             AvatarPhoto(
                 who = if (moment.author == "user") "yuri" else "sean",
                 initial = avatarInitial,
-                size = 44.dp, strokeWidth = 1.dp,
-                onClick = null
+                size = 44.dp, strokeWidth = 1.dp
             )
             Spacer(Modifier.width(10.dp))
             // 右列
@@ -610,41 +485,18 @@ fun MomentCard(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                // 图片九宫格（微信式：1 张满宽，2-3 单行，4+ 三列；大图降采样，远端图落盘缓存）
+                // 图片（本地路径或 http 地址都能显示；大图降采样，远端图落盘缓存）
                 if (moment.attachments.isNotEmpty()) {
-                    val refs = moment.attachments.take(9)
-                    Column(
-                        modifier = Modifier.padding(top = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (refs.size == 1) {
+                    Column(modifier = Modifier.padding(top = 8.dp)) {
+                        moment.attachments.take(3).forEach { ref ->
                             MomentImage(
-                                ref = refs[0],
-                                onClick = { onImageTap(refs[0]) },
+                                ref = ref,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(200.dp)
+                                    .height(180.dp)
                                     .clip(RoundedCornerShape(6.dp))
+                                    .padding(vertical = 2.dp)
                             )
-                        } else {
-                            refs.chunked(3).forEach { rowRefs ->
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    rowRefs.forEach { ref ->
-                                        MomentImage(
-                                            ref = ref,
-                                            onClick = { onImageTap(ref) },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .aspectRatio(1f)
-                                                .clip(RoundedCornerShape(6.dp))
-                                        )
-                                    }
-                                    repeat(3 - rowRefs.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                            }
                         }
                     }
                 }
@@ -655,8 +507,7 @@ fun MomentCard(
                 ) {
                     Text(relTime(moment.createdAt), fontSize = 12.sp, color = Color(0xFF999999))
                     Spacer(Modifier.weight(1f))
-                    // 只读阶段：远端动态不显示删除（不给 anon 开删表能力），本地独有动态可删
-                    if (moment.author == "user" && moment.remoteId == null) {
+                    if (moment.author == "user") {
                         Text(
                             "删除",
                             fontSize = 12.sp, color = Color(0xFF576B95),
@@ -701,8 +552,7 @@ fun MomentCard(
                                     fontSize = 14.sp, color = Color(0xFF333333),
                                     modifier = Modifier.weight(1f)
                                 )
-                                // 只有本地表里的评论（真实自增 id）能删；云端/合成的删不了
-                                if (c.author == "user" && c.id > 0) {
+                                if (c.author == "user") {
                                     Text(
                                         "✕", fontSize = 11.sp, color = Color(0xFF999999),
                                         modifier = Modifier.clickable { onDeleteComment(c.id) }
@@ -748,25 +598,24 @@ private fun relTime(ts: Long): String {
     }
 }
 
-/** 朋友圈配图：本地路径直接解码；http(s) 先落盘缓存再解码；加载中灰底占位；可点开全屏。 */
+/** 朋友圈配图：本地路径直接解码；http(s) 先落盘缓存再解码；加载中灰底占位。 */
 @Composable
-fun MomentImage(ref: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+fun MomentImage(ref: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bmp = remember(ref) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(ref) {
         bmp.value = withContext(Dispatchers.IO) { loadMomentBitmap(context, ref) }
     }
     val loaded = bmp.value
-    val finalModifier = if (onClick != null) modifier.clickable { onClick() } else modifier
     if (loaded != null) {
         Image(
             bitmap = loaded.asImageBitmap(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = finalModifier
+            modifier = modifier
         )
     } else {
-        Box(finalModifier.background(Color(0xFFF2F2F2)))
+        Box(modifier.background(Color(0xFFF2F2F2)))
     }
 }
 
