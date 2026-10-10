@@ -178,7 +178,7 @@ public class WebViewActivity extends AppCompatActivity
                 "AionAppSupervision");
         webView.addJavascriptInterface(new DeviceContextBridge(this), "AionDeviceContext");
         // privateMemoBridge = new PrivateMemoBridge(this, webView);  // TODO: 等 widget 数据层完善后恢复
-        webView.addJavascriptInterface(privateMemoBridge, "AionPrivateMemos");
+        // webView.addJavascriptInterface(privateMemoBridge, "AionPrivateMemos");  // TODO: 等 widget 数据层完善后恢复
         ttsAudioBridge = new TtsAudioBridge(this, webView);
         webView.addJavascriptInterface(ttsAudioBridge, "AionTtsAudio");
 
@@ -940,7 +940,7 @@ public class WebViewActivity extends AppCompatActivity
             webView.evaluateJavascript(
                     "window.onAionAppForegroundChanged?.(true)", null);
         }
-        if (privateMemoBridge != null) privateMemoBridge.sync();
+        // if (privateMemoBridge != null) privateMemoBridge.sync();  // TODO: 等 widget 数据层完善后恢复
         // WidgetStateSyncClient.sync(this);  // TODO: 等 widget 数据层完善后恢复
         maybeRefreshClientAssets(false);
     }
@@ -1152,4 +1152,5 @@ public class WebViewActivity extends AppCompatActivity
         super.onDestroy();
     }
 }
+
 
