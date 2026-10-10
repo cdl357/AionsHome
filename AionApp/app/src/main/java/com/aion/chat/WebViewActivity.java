@@ -47,8 +47,8 @@ import androidx.core.content.ContextCompat;
 import com.aion.chat.supervision.AppSupervisionBridge;
 import com.aion.chat.supervision.AppSupervisionRuntime;
 import com.aion.chat.infrared.HugPillowInfraredBridge;
-import com.aion.chat.widget.PrivateMemoBridge;
-import com.aion.chat.widget.WidgetStateSyncClient;
+// import com.aion.chat.widget.PrivateMemoBridge;  // TODO: 等 widget 数据层完善后恢复
+// import com.aion.chat.widget.WidgetStateSyncClient;
 import androidx.core.view.WindowCompat;
 
 /**
@@ -71,7 +71,7 @@ public class WebViewActivity extends AppCompatActivity
     private AionMiBandBleBridge miBandBleBridge;
     private CameraBridge cameraBridge;
     private PhoneCameraBridge phoneCameraBridge;
-    private PrivateMemoBridge privateMemoBridge;
+    // private PrivateMemoBridge privateMemoBridge;  // TODO: 等 widget 数据层完善后恢复
     private TtsAudioBridge ttsAudioBridge;
     private String targetUrl;
     private boolean initialPageLoadStarted = false;
@@ -177,7 +177,7 @@ public class WebViewActivity extends AppCompatActivity
                 new AppSupervisionBridge(this, AppSupervisionRuntime.get()),
                 "AionAppSupervision");
         webView.addJavascriptInterface(new DeviceContextBridge(this), "AionDeviceContext");
-        privateMemoBridge = new PrivateMemoBridge(this, webView);
+        // privateMemoBridge = new PrivateMemoBridge(this, webView);  // TODO: 等 widget 数据层完善后恢复
         webView.addJavascriptInterface(privateMemoBridge, "AionPrivateMemos");
         ttsAudioBridge = new TtsAudioBridge(this, webView);
         webView.addJavascriptInterface(ttsAudioBridge, "AionTtsAudio");
@@ -941,7 +941,7 @@ public class WebViewActivity extends AppCompatActivity
                     "window.onAionAppForegroundChanged?.(true)", null);
         }
         if (privateMemoBridge != null) privateMemoBridge.sync();
-        WidgetStateSyncClient.sync(this);
+        // WidgetStateSyncClient.sync(this);  // TODO: 等 widget 数据层完善后恢复
         maybeRefreshClientAssets(false);
     }
 
@@ -1152,3 +1152,4 @@ public class WebViewActivity extends AppCompatActivity
         super.onDestroy();
     }
 }
+
