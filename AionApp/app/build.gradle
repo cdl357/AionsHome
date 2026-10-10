@@ -34,6 +34,15 @@ android {
         buildConfig true
     }
 
+    // 临时排除 widget 包（等数据层完善后再启用）
+    sourceSets {
+        main {
+            java {
+                exclude '**/widget/**'
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -48,3 +57,4 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
 }
+
