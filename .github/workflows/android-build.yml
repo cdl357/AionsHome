@@ -15,6 +15,9 @@ on:
       - 'AionApp/**'
       - '.github/workflows/android-build.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -84,3 +87,20 @@ jobs:
           path: AionApp/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      # 发 Release：手机浏览器可免登录直接下载 apk
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find app/build/outputs/apk -name '*.apk' | head -1)
+          VN=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)
+          VC=$(grep -oP 'versionCode\s+\K[0-9]+' app/build.gradle)
+          OUT="AionChat-${VN}-${VC}.apk"
+          cp "$APK" "$OUT"
+          TAG="v${VN}+${VC}"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "$OUT" \
+            --title "AionChat $VN ($VC)" \
+            --notes "自动构建。versionCode $VC，固定签名。直接下载 apk 安装；首次从旧签名切换需先卸载一次。"
+          echo "download: $(gh release view "$TAG" --json assets -q '.assets[0].url')"
