@@ -55,6 +55,7 @@ jobs:
 
       - name: Build APK
         run: |
+          chmod +x ./gradlew
           BT='${{ inputs.build_type }}'
           BT="${BT:-release}"
           case "$BT" in
