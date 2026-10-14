@@ -2,6 +2,17 @@ plugins {
     id 'com.android.application'
 }
 
+// ── 固定签名 ──
+// 从 AionApp/keystore.properties 读取（该文件不入库，见 keystore.properties.example）
+// debug 与 release 共用同一 keystore，避免 Android Studio Run 与手动安装 release 包
+// 之间出现签名不一致（INSTALL_FAILED_UPDATE_INCOMPATIBLE）。
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+def hasKeystore = keystorePropsFile.exists()
+if (hasKeystore) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace 'com.aion.chat'
     compileSdk 34
@@ -10,14 +21,31 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 32
-        versionName "0.3.2"
+        versionCode 33
+        versionName "0.3.3"
+    }
+
+    signingConfigs {
+        aion {
+            if (hasKeystore) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (hasKeystore) {
+                signingConfig signingConfigs.aion
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig hasKeystore ? signingConfigs.aion : signingConfigs.debug
         }
     }
 
