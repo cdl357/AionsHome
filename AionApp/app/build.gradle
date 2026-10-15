@@ -10,8 +10,8 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 23
-        versionName "1.22"
+        versionCode 36
+        versionName "1.23"
 
         // 从 local.properties 读取敏感配置
         Properties properties = new Properties()
