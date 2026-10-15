@@ -46,13 +46,22 @@ class MainActivity : ComponentActivity() {
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             AppCrashLog.write(this, "未捕获崩溃 @ ${thread.name}: ${throwable.javaClass.name}")
             AppCrashLog.write(this, android.util.Log.getStackTraceString(throwable).take(1500))
+            // 必须同步落盘：紧接着进程就会被杀，异步写入会丢
             AppCrashLog.markCrashed(this)
             previous?.uncaughtException(thread, throwable)
         }
+
+        // 安全模式的判断要排在所有「可能失败的初始化」之前，
+        // 否则初始化本身崩掉时诊断页也没机会渲染。
+        val safeMode = AppCrashLog.crashedLastLaunch(this)
+        if (!safeMode) {
+            runCatching { HomecomingThemeState.load(this) }
+                .onFailure { AppCrashLog.write(this, "主题恢复失败：" + it.javaClass.name) }
+        }
+
         setContent {
-            HomecomingThemeState.load(this)
             HomecomingTheme {
-                if (AppCrashLog.crashedLastLaunch(this)) {
+                if (safeMode) {
                     SafeModeScreen()
                 } else {
                     HomecomingApp()
