@@ -105,6 +105,7 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(com.aion.chat.compose.ui.theme.SurfaceStyleState.overlay("us"))
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 112.dp)
     ) {
