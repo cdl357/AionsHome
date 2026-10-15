@@ -1,6 +1,7 @@
 package com.aion.chat.compose.data
 
 import android.util.Log
+import com.aion.chat.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -36,6 +37,20 @@ object SupabaseClient {
     internal val BASES = arrayOf(RELAY_URL, RELAY_URL_ALT, URL)
 
     val configured: Boolean get() = URL.isNotBlank() && ANON_KEY.isNotBlank()
+
+    /**
+     * 按 PostgREST 过滤条件删行，例如 delete("moments", "id=eq.123")。
+     * RLS 当前没给 anon 放行 DELETE（见 docs/supabase-rls.sql），
+     * 所以这里失败是预期行为：调用方只删本地，不把错误抛给界面。
+     */
+    suspend fun delete(table: String, filter: String): Boolean {
+        val reply = supabaseRequest("rest/v1/" + table + "?" + filter, "DELETE")
+        if (reply.error != null) {
+            Log.w(TAG, "[DELETE] " + table + "?" + filter + " -> " + reply.error +
+                "（云端未放行删除，仅删本地）")
+        }
+        return reply.error == null
+    }
 }
 
 /** 云端错误种类：界面据此区分「网络不通」和「权限没放行」，不再混成一句"连不上"。 */
