@@ -68,8 +68,10 @@ object AppCrashLog {
 
     fun markCrashed(context: Context) {
         runCatching {
+            // commit() 而非 apply()：崩溃回调之后进程立刻被杀，
+            // apply() 的异步落盘会来不及，标记丢了就进不了安全模式。
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putBoolean(KEY_CRASHED_LAST, true).apply()
+                .edit().putBoolean(KEY_CRASHED_LAST, true).commit()
         }
     }
 
