@@ -102,7 +102,9 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(com.aion.chat.compose.ui.theme.SurfaceStyleState.overlay("album")),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             start = 12.dp, end = 12.dp, top = 14.dp, bottom = 112.dp
         ),
