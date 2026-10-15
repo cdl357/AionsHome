@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
         if (!safeMode) {
             runCatching { HomecomingThemeState.load(this) }
                 .onFailure { AppCrashLog.write(this, "主题恢复失败：" + it.javaClass.name) }
+            runCatching { com.aion.chat.compose.ui.theme.SurfaceStyleState.load(this) }
+                .onFailure { AppCrashLog.write(this, "蒙层设置恢复失败：" + it.javaClass.name) }
         }
 
         setContent {
