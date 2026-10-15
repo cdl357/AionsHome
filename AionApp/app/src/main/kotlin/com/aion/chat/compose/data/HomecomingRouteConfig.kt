@@ -41,7 +41,9 @@ object HomecomingRouteConfig {
         val route = JSONObject()
             .put("route_id", "main")
             .put("label", label.ifBlank { "我的线路" })
-            .put("provider", "openai_compatible")
+            // 必须是 HomecomingModelGateway.build() 认得的值，否则发送时抛
+            // "unsupported provider"（旧版写的 "openai_compatible" 就是这个毛病）
+            .put("provider", "custom_openai")
             .put("base_url", baseUrl)
             .put("api_key", apiKey)
             .put("models", org.json.JSONArray().put(model))
