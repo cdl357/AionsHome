@@ -236,7 +236,7 @@ fun MomentsScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(com.aion.chat.compose.ui.theme.SurfaceStyleState.overlay("moments"))
             .verticalScroll(rememberScrollState())
     ) {
         // ── 封面头图 ──
