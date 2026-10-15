@@ -108,7 +108,10 @@ public final class HomecomingModelGateway {
             return buildGemini(route, model, request);
         }
         if ("siliconflow".equals(route.provider)
-                || "custom_openai".equals(route.provider)) {
+                || "custom_openai".equals(route.provider)
+                // 兼容设置页旧版写进 routes.json 的值；不接受的话已存的线路一发就失败
+                || "openai_compatible".equals(route.provider)
+                || "openai".equals(route.provider)) {
             return buildOpenAi(route, model, request);
         }
         throw new IllegalArgumentException("unsupported provider");
