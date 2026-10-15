@@ -6,8 +6,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +49,7 @@ import com.aion.chat.compose.data.AppCrashLog
 import com.aion.chat.compose.data.HomecomingMcpStore
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.theme.HomecomingThemeState
+import com.aion.chat.compose.ui.theme.SurfaceStyleState
 import kotlinx.coroutines.launch
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
@@ -208,6 +212,71 @@ fun SettingsScreen() {
                 "暖橙区会自动压饱和（无橘色）",
                 fontSize = 10.sp, color = HomecomingColors.InkSoft
             )
+        }
+
+        // ── 各页蒙层：底色 + 透明度逐页可调（透明度拉到 0 就直接露出背景图）──
+        FrostCard {
+            Text("各页底色与透明度", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text(
+                "透明度拉到最左 = 完全露出背景图；拉到最右 = 纯色挡住背景",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft
+            )
+            Spacer(Modifier.height(4.dp))
+            SurfaceStyleState.SCOPES.forEach { sc ->
+                val tick = remember { androidx.compose.runtime.mutableStateOf(0) }
+                // tick 只用来强制这一行重组，真实值始终从 SurfaceStyleState 读
+                @Suppress("UNUSED_EXPRESSION") tick.value
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(sc.label, fontSize = 13.sp, color = HomecomingColors.Ink)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        (SurfaceStyleState.alpha(sc.key) * 100).toInt().toString() + "%",
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "还原",
+                        fontSize = 11.sp,
+                        color = HomecomingColors.Accent,
+                        modifier = Modifier.clickable {
+                            SurfaceStyleState.reset(context, sc.key)
+                            tick.value++
+                        }
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SurfaceStyleState.SWATCHES.forEach { (_, color) ->
+                        val picked = SurfaceStyleState.baseColor(sc.key).value == color.value
+                        Box(
+                            modifier = Modifier
+                                .size(if (picked) 26.dp else 22.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(color)
+                                .border(
+                                    if (picked) 2.dp else 1.dp,
+                                    if (picked) HomecomingColors.Accent else Color.Black.copy(alpha = 0.12f),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .clickable {
+                                    SurfaceStyleState.setColor(context, sc.key, color)
+                                    tick.value++
+                                }
+                        )
+                    }
+                }
+                androidx.compose.material3.Slider(
+                    value = SurfaceStyleState.alpha(sc.key),
+                    onValueChange = { a ->
+                        SurfaceStyleState.setAlpha(context, sc.key, a)
+                        tick.value++
+                    },
+                    valueRange = 0f..1f
+                )
+            }
         }
 
         FrostCard {
