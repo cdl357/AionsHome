@@ -219,7 +219,7 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.White.copy(alpha = 0.06f))
+                    .background(com.aion.chat.compose.ui.theme.SurfaceStyleState.overlay("home"))
             )
         }
 
@@ -563,7 +563,7 @@ fun FrostCard(
     val base = modifier
         .fillMaxWidth()
         .clip(shape)
-        .background(Color.White.copy(alpha = 0.72f))
+        .background(com.aion.chat.compose.ui.theme.SurfaceStyleState.overlay("card"))
         .border(1.dp, Color.White.copy(alpha = 0.80f), shape)
         .padding(horizontal = 16.dp, vertical = 14.dp)
     Column(
