@@ -625,7 +625,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().blur(6.dp)
                 )
-                Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.12f)))
+                Box(Modifier.fillMaxSize().background(com.aion.chat.compose.ui.theme.SurfaceStyleState.overlay("chat")))
             } else {
                 Box(
                     modifier = Modifier
