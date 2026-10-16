@@ -369,7 +369,7 @@ public final class HomecomingChatRepository {
         public final long createdAt;
         public final String deliveryState;
 
-        Message(String id, String requestId, String epochId, String timelineId, String role,
+        public Message(String id, String requestId, String epochId, String timelineId, String role,
                 String senderId, String text, String attachmentKind,
                 String attachmentTranscript, long createdAt, String deliveryState) {
             this.id = id;
