@@ -637,12 +637,64 @@ fun SettingsScreen() {
                 }
             }
         }
+        // ── 恢复备份：选 zip 文件，解压到 staging，写标记，提示重启 ──
+        val restoreBackupLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            if (uri != null) {
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val ok = runCatching {
+                        val stagingDir = java.io.File(context.filesDir, "restore_staging")
+                        stagingDir.deleteRecursively()
+                        stagingDir.mkdirs()
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            java.util.zip.ZipInputStream(input.buffered()).use { zip ->
+                                var entry = zip.nextEntry
+                                while (entry != null) {
+                                    val f = java.io.File(stagingDir, entry.name)
+                                    if (!entry.isDirectory) {
+                                        f.parentFile?.mkdirs()
+                                        f.outputStream().use { zip.copyTo(it) }
+                                    }
+                                    entry = zip.nextEntry
+                                }
+                            }
+                        }
+                        java.io.File(context.filesDir, "restore_pending").writeText("true")
+                    }.isSuccess
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (ok) {
+                            android.app.AlertDialog.Builder(context)
+                                .setTitle("备份已准备就绪")
+                                .setMessage("重启 app 后数据自动恢复（聊天/记忆/日记/相册记录/头像/背景）")
+                                .setPositiveButton("立即重启") { _, _ ->
+                                    android.os.Process.killProcess(android.os.Process.myPid())
+                                }
+                                .setCancelable(false)
+                                .show()
+                        } else {
+                            Toast.makeText(context, "这不是备份 zip 文件", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        }
         FrostCard(onClick = {
             exportLauncher.launch("aionshome-backup-" + java.time.LocalDate.now() + ".zip")
         }) {
             Text("备份数据", fontSize = 15.sp, color = HomecomingColors.Ink)
             Text(
                 "聊天/记忆/日记/相册记录/梦境/头像/背景 打包成 zip 存到你选的位置；不含任何 API Key",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft
+            )
+        }
+
+        FrostCard(onClick = {
+            restoreBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+        }) {
+            Text("恢复数据", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text(
+                "选一个备份 zip 文件恢复所有数据（聊天/记忆/日记/相册记录/头像/背景）",
                 fontSize = 12.sp, color = HomecomingColors.InkSoft
             )
         }
