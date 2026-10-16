@@ -41,6 +41,9 @@ import com.aion.chat.compose.ui.theme.HomecomingThemeState
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ── 备份恢复：检查是否有待恢复的数据 ──
+        restoreFromStagingIfNeeded(this)
         // 全局崩溃捕获：写日志 + 打崩溃标记（下次启动进安全模式），设置页也可查看
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -137,5 +140,39 @@ private fun SafeModeScreen() {
             fontSize = 10.sp, color = Color(0xFF6E8A92),
             modifier = Modifier.padding(top = 8.dp)
         )
+    }
+}
+
+/** 启动时检查并执行备份恢复（从 restore_staging 复制数据回原位）。 */
+private fun restoreFromStagingIfNeeded(context: android.content.Context) {
+    val pendingFile = java.io.File(context.filesDir, "restore_pending")
+    if (!pendingFile.exists()) return
+
+    val stagingDir = java.io.File(context.filesDir, "restore_staging")
+    if (!stagingDir.exists()) {
+        pendingFile.delete()
+        return
+    }
+
+    runCatching {
+        // 复制数据库（此时数据库尚未打开）
+        java.io.File(stagingDir, "homecoming.db").takeIf { it.exists() }?.copyTo(
+            context.getDatabasePath("homecoming.db"), overwrite = true
+        )
+        java.io.File(stagingDir, "homecoming.db-wal").takeIf { it.exists() }?.copyTo(
+            java.io.File(context.filesDir.parentFile, "databases/homecoming.db-wal"), overwrite = true
+        )
+        // 复制其他文件
+        arrayOf(
+            "provisions.json", "heart_tide.json", "mcp.json",
+            "avatar_yuri.jpg", "avatar_sean.jpg", "home_bg.jpg", "chat_bg.jpg", "moments_cover.jpg"
+        ).forEach { name ->
+            java.io.File(stagingDir, name).takeIf { it.exists() }?.copyTo(
+                java.io.File(context.filesDir, name), overwrite = true
+            )
+        }
+        // 清除标记和临时文件
+        pendingFile.delete()
+        stagingDir.deleteRecursively()
     }
 }
