@@ -293,7 +293,7 @@ private fun DiaryReaderDialog(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFAF7F0))
+                .background(Color(0xFFFAF7F0).copy(alpha = 0.85f))
                 .verticalScroll(rememberScrollState())
                 .padding(26.dp)
         ) {
@@ -703,7 +703,7 @@ fun DaySummaryCard(
     summary: String,
     body: @Composable () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(true) }
     FrostCard {
         Text(label, fontSize = 12.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(4.dp))
