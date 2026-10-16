@@ -234,7 +234,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     }
 
     fun reloadNow() {
-        val w = wiring ?: return
+        val w = wiring
+        if (w == null) {
+            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+            return
+        }
         try {
             val list = w.listMessages(HomecomingChatWiring.TIMELINE)
             main.post {
@@ -258,7 +262,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         val image = pendingImage.value
         val imagePath = pendingImagePath.value
         if (text.isEmpty() && image.isEmpty()) return
-        val w = wiring ?: return
+        val w = wiring
+        if (w == null) {
+            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (sending.value) return
         // if (!connected) {
         // Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
@@ -268,6 +276,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         input.value = ""
         pendingImage.value = ""
         pendingImagePath.value = ""
+        // ── 先把用户消息显示在列表里（乐观更新） ──
+        val tempId = "tmp_" + System.currentTimeMillis()
+        messages.add(HomecomingChatRepository.Message(
+            tempId, tempId, "", HomecomingChatWiring.TIMELINE,
+            "user", HomecomingChatWiring.USER, text,
+            if (image.isNotEmpty()) "image" else "",
+            "", System.currentTimeMillis(), "sending"
+        ))
         // ── AI 点歌（教程 §13）：说想听歌 → 搜真歌+验证 → Sean 知道结果 → 聊天里生成真实播放卡 ──
         if (promptPrefix == null && image.isEmpty() && isSongRequest(text)) {
             val rawText = text
@@ -509,7 +525,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         // Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
         // return
         // }
-        val w = wiring ?: return
+        val w = wiring
+        if (w == null) {
+            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+            return
+        }
         val verb = pokeVerb.value
         val spot = pokeSpot.value
         val gain = com.aion.chat.compose.data.HomecomingPokeStore.poke(context, verb, spot)
