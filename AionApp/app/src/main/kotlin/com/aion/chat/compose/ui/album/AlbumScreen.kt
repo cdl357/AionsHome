@@ -7,11 +7,10 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -21,6 +20,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,8 +53,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,16 +65,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -95,12 +95,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * 相册三稿（Yuri 设计：奶白毛毡板，横版不铺满）。
- * - 板：浅咖木框 + 奶白毛毡（细纤维噪点），浮在壁纸上（壁纸当墙）
- * - 照片：固定 6 个槽位（拍立得 + 彩图钉 + 固定歪斜），空槽 = 虚线「待钉」占位
- * - 点照片 → 大图详情（Sean 私心话 / 日期 / 删除，逻辑不变）
- * - 挂件：左上黑猫（随风摆，点它 ↔ 整本相册网格）、右上白猫（只做装饰，点了会弹一下）
- * - 板面：9 只拼豆猫点缀在边角，中间留给照片
+ * 相册四稿（Yuri 反馈迭代）：可自由布置的毛毡板。
+ * - 板顶一排挂钉（像参考图那样挂玩偶）；黑猫/白猫挂在钉上随风摆，黑猫=入口，白猫装饰
+ * - 照片（最近 10 张）与 9 只拼豆猫默认散乱分布（不围圈），全部支持【长按拖动】自由布置，
+ *   位置持久化（album_board prefs）；装饰永远压在照片上层
+ * - 点照片 → 大图详情（不变）；点黑猫 ↔ 整本相册网格
  */
 @Composable
 fun AlbumScreen(onBack: () -> Unit = {}) {
@@ -110,14 +109,36 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
     val version = remember { mutableStateOf(0L) }
     val boardMode = remember { mutableStateOf(true) }
 
-    fun reload() {
-        val v = version.value
+    // ── 拖动布置：key -> (xf, yf)，持久化到 prefs ──
+    val boardPrefs = remember {
+        context.getSharedPreferences("album_board", android.content.Context.MODE_PRIVATE)
+    }
+    val boardPositions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+    val draggingKey = remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
         photos.clear()
         photos.addAll(HomecomingAlbumStore.list(context))
-        version.value = v + 1
+        version.value++
+        // 载入已保存的布置
+        runCatching {
+            val s = boardPrefs.getString("pos", null) ?: return@runCatching
+            val obj = org.json.JSONObject(s)
+            obj.keys().forEach { k ->
+                val arr = obj.optJSONArray(k) ?: return@forEach
+                boardPositions[k] = Pair(arr.getDouble(0).toFloat(), arr.getDouble(1).toFloat())
+            }
+        }
     }
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) { reload() }
+
+    fun persistBoard() {
+        runCatching {
+            val obj = org.json.JSONObject()
+            boardPositions.forEach { (k, v) ->
+                obj.put(k, org.json.JSONArray().put(v.first).put(v.second))
+            }
+            boardPrefs.edit().putString("pos", obj.toString()).apply()
+        }
     }
 
     val picker = rememberLauncherForActivityResult(
@@ -133,7 +154,11 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                         HomecomingAlbumStore.addPhoto(context, bytes, "", today)
                     }
                 }
-                withContext(Dispatchers.Main) { reload() }
+                withContext(Dispatchers.Main) {
+                    photos.clear()
+                    photos.addAll(HomecomingAlbumStore.list(context))
+                    version.value++
+                }
             }
         }
     }
@@ -155,7 +180,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                 Text("相册", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
                 Text(
-                    if (boardMode.value) "毛毡板 · 钉着最近的几张 · 点黑猫看整本"
+                    if (boardMode.value) "毛毡板 · 长按照片和小猫可以挪 · 点黑猫看整本"
                     else "整本相册 · 点黑猫回毛毡板",
                     fontSize = 11.sp, color = HomecomingColors.InkSoft
                 )
@@ -187,16 +212,20 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(18.dp))
                     FeltBoard(
                         photos = photos.toList(),
                         version = version.value,
+                        positions = boardPositions,
+                        draggingKey = draggingKey,
+                        onPersist = { persistBoard() },
                         onPhotoTap = { selected.value = it; showDetail.value = true },
+                        onToggleAlbum = { boardMode.value = !boardMode.value },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "钉着最新的 " + minOf(photos.size, SLOTS.size) + " 张 · 全部 " + photos.size + " 张在整本相册",
+                        "钉着最近的 " + minOf(photos.size, 10) + " 张 · 全部 " + photos.size + " 张在整本相册",
                         fontSize = 11.sp, color = HomecomingColors.InkSoft,
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
@@ -263,27 +292,6 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                     }
                 }
             }
-
-            // ── 两只毛绒挂件（挂在板沿上；黑猫=入口，白猫=装饰） ──
-            HangingPlush(
-                res = R.drawable.plush_black,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = 12.dp, y = (-14).dp)
-                    .size(width = 60.dp, height = 120.dp)
-                    .zIndex(6f)
-            ) {
-                boardMode.value = !boardMode.value
-            }
-            HangingPlush(
-                res = R.drawable.plush_white,
-                onTap = null,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 12.dp, y = (-12).dp)
-                    .size(width = 64.dp, height = 122.dp)
-                    .zIndex(6f)
-            )
         }
     }
 
@@ -342,7 +350,9 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                         scope.launch(Dispatchers.IO) {
                             HomecomingAlbumStore.update(context, photo.id, noteDraft.value.trim(), dateDraft.value.trim())
                             withContext(Dispatchers.Main) {
-                                reload()
+                                photos.clear()
+                                photos.addAll(HomecomingAlbumStore.list(context))
+                                version.value++
                                 showDetail.value = false
                                 Toast.makeText(context, "已保存", Toast.LENGTH_SHORT).show()
                             }
@@ -393,7 +403,9 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                                     } else {
                                         noteDraft.value = text
                                         HomecomingAlbumStore.update(context, photo.id, text, null)
-                                        reload()
+                                        photos.clear()
+                                        photos.addAll(HomecomingAlbumStore.list(context))
+                                        version.value++
                                         Toast.makeText(context, "Sean 写好了", Toast.LENGTH_SHORT).show()
                                     }
                                 }
@@ -403,7 +415,9 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                             scope.launch(Dispatchers.IO) {
                                 HomecomingAlbumStore.remove(context, photo.id)
                                 withContext(Dispatchers.Main) {
-                                    reload()
+                                    photos.clear()
+                                    photos.addAll(HomecomingAlbumStore.list(context))
+                                    version.value++
                                     showDetail.value = false
                                     Toast.makeText(context, "已移出相册", Toast.LENGTH_SHORT).show()
                                 }
@@ -419,7 +433,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
     }
 }
 
-// ── 奶白毛毡板 ──
+// ── 奶白毛毡板（可布置） ──
 
 private val FeltTop = Color(0xFFF8F2E4)
 private val FeltBottom = Color(0xFFEFE5CF)
@@ -430,110 +444,221 @@ private val PIN_COLORS = listOf(
     Color(0xFFD98AA8), Color(0xFF8AA8D9), Color(0xFFC98A5A)
 )
 
-/** 照片槽位：位置按板宽比例，手工调过——边角留给拼豆猫。 */
-private data class Slot(val xf: Float, val y: Int, val wf: Float, val aspect: Float, val rot: Float)
-private val SLOTS = listOf(
-    Slot(0.115f, 116, 0.225f, 1.00f, -3.5f),
-    Slot(0.365f, 190, 0.205f, 0.78f, 4.0f),
-    Slot(0.375f, 58, 0.280f, 1.35f, -2.0f),
-    Slot(0.665f, 166, 0.215f, 1.00f, 3.0f),
-    Slot(0.615f, 44, 0.180f, 0.80f, 2.5f),
-    Slot(0.790f, 246, 0.190f, 0.84f, -4.5f)
-)
+/** 稳定伪随机：同一张照片每次布局一致。 */
+private fun seedRand(id: Long, salt: Int): Float {
+    var x = id * 2654435761L + salt * 40503L
+    x = x xor (x ushr 13)
+    x *= 1274126177L
+    x = x xor (x ushr 16)
+    return ((x and 0x7fffffffL) % 10000L) / 10000f
+}
 
-private data class Deco(val res: Int, val xf: Float, val y: Int, val size: Int, val rot: Float)
+/** 拼豆猫默认散点（散乱分布，不围圈；被拖过就以保存的位置为准）。 */
+private val DECO_DEFAULT = listOf(
+    0.06f to 0.52f, 0.30f to 0.14f, 0.72f to 0.28f,
+    0.52f to 0.44f, 0.14f to 0.78f, 0.66f to 0.66f,
+    0.88f to 0.55f, 0.38f to 0.82f, 0.46f to 0.08f
+)
+private val DECO_SIZE = listOf(40, 38, 40, 42, 46, 40, 38, 36, 42)
 private val DECO_RES = listOf(
     R.drawable.deco_cat_0, R.drawable.deco_cat_1, R.drawable.deco_cat_2,
     R.drawable.deco_cat_3, R.drawable.deco_cat_4, R.drawable.deco_cat_5,
     R.drawable.deco_cat_6, R.drawable.deco_cat_7, R.drawable.deco_cat_8
 )
-private val DECO = listOf(
-    Deco(8, 0.205f, 52, 46, -5f),   // 黑睡月亮
-    Deco(1, 0.300f, 14, 40, 3f),    // 白坐蓝结
-    Deco(2, 0.545f, 8, 42, -4f),    // 黑坐星
-    Deco(3, 0.005f, 150, 44, 4f),   // 白睡云
-    Deco(4, 0.455f, 290, 52, -3f),  // 黑猫纸箱
-    Deco(5, 0.850f, 130, 44, 5f),   // 白躺蓝结
-    Deco(6, 0.665f, 302, 44, -4f),  // 黑坐月牙结
-    Deco(7, 0.245f, 296, 40, 3f),   // 白坐项圈
-    Deco(0, 0.015f, 288, 44, -2f)   // 趴黑猫
+/** 照片默认散点（10 个，可拖走）。 */
+private val PHOTO_DEFAULT = listOf(
+    0.05f to 0.06f, 0.33f to 0.09f, 0.61f to 0.06f,
+    0.05f to 0.36f, 0.35f to 0.33f, 0.63f to 0.30f,
+    0.06f to 0.64f, 0.34f to 0.61f, 0.62f to 0.56f, 0.67f to 0.72f
 )
 
 @Composable
 private fun FeltBoard(
     photos: List<HomecomingAlbumStore.AlbumPhoto>,
     version: Long,
+    positions: MutableMap<String, Pair<Float, Float>>,
+    draggingKey: MutableState<String?>,
+    onPersist: () -> Unit,
     onPhotoTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
+    onToggleAlbum: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .padding(horizontal = 12.dp)
-            .height(384.dp)
+            .height(430.dp)
             .shadow(12.dp, RoundedCornerShape(10.dp))
             .border(8.dp, Brush.verticalGradient(listOf(FrameLight, FrameDark)), RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(Brush.verticalGradient(listOf(FeltTop, FeltBottom)))
     ) {
-        // 毛毡纤维噪点
+        // 毛毡纤维 + 顶部挂钉横杆 + 一排钉子（参考图：上面一行钉子挂玩偶）
         Canvas(modifier = Modifier.fillMaxSize()) {
             val rnd = java.util.Random(20261024L)
             repeat(220) {
-                val x = rnd.nextFloat() * size.width
-                val y = rnd.nextFloat() * size.height
-                val r = 0.8f + rnd.nextFloat() * 1.8f
                 drawCircle(
                     color = if (rnd.nextBoolean()) Color(0x14B9A98C) else Color(0x1FFFFFFF),
-                    radius = r,
-                    center = Offset(x, y)
+                    radius = 0.8f + rnd.nextFloat() * 1.8f,
+                    center = Offset(rnd.nextFloat() * size.width, rnd.nextFloat() * size.height)
                 )
             }
+            // 顶部横杆
+            drawRect(
+                color = Color(0x33AE9C7E),
+                topLeft = Offset(0f, 0f),
+                size = androidx.compose.ui.geometry.Size(size.width, 12.dp.toPx())
+            )
+            // 一排挂钉
+            repeat(9) { i ->
+                val cx = size.width * (0.07f + 0.107f * i)
+                val cy = 6.dp.toPx()
+                drawCircle(Color(0xFF9A8E7E), radius = 3.4.dp.toPx(), center = Offset(cx, cy))
+                drawCircle(Color(0xFFF0E8D8), radius = 1.3.dp.toPx(), center = Offset(cx - 0.8.dp.toPx(), cy - 0.8.dp.toPx()))
+            }
         }
+
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val W = maxWidth
-            SLOTS.forEachIndexed { i, s ->
-                Box(
-                    modifier = Modifier
-                        .offset(x = W * s.xf, y = s.y.dp)
-                        .width(W * s.wf)
+            val H = maxHeight
+            // ── 照片（最近 10 张，可长按拖动；在下层） ──
+            photos.take(10).forEachIndexed { i, photo ->
+                val key = "photo_" + photo.id
+                val d = PHOTO_DEFAULT[i % PHOTO_DEFAULT.size]
+                Movable(
+                    key = key,
+                    boardW = W, boardH = H,
+                    defaultXf = d.first, defaultYf = d.second,
+                    positions = positions,
+                    draggingKey = draggingKey,
+                    baseZ = 1f,
+                    onPersist = onPersist
                 ) {
-                    val photo = photos.getOrNull(i)
-                    if (photo != null) {
-                        SlotPhoto(
-                            photo = photo,
-                            version = version,
-                            aspect = s.aspect,
-                            rot = s.rot,
-                            pinColor = PIN_COLORS[i % PIN_COLORS.size],
-                            onTap = onPhotoTap
-                        )
-                    } else {
-                        EmptySlot(aspect = s.aspect, rot = s.rot)
-                    }
+                    PinnedCard(
+                        photo = photo,
+                        version = version,
+                        width = W * (0.20f + 0.04f * seedRand(photo.id, 7)),
+                        aspect = when {
+                            seedRand(photo.id, 4) < 0.34f -> 1f
+                            seedRand(photo.id, 4) < 0.67f -> 0.8f
+                            else -> 1.22f
+                        },
+                        rot = (seedRand(photo.id, 1) - 0.5f) * 12f,
+                        pinColor = PIN_COLORS[i % PIN_COLORS.size],
+                        onTap = onPhotoTap
+                    )
                 }
             }
-            DECO.forEach { d ->
-                Image(
-                    painter = painterResource(DECO_RES[d.res]),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .offset(x = W * d.xf, y = d.y.dp)
-                        .size(d.size.dp)
-                        .graphicsLayer {
-                            rotationZ = d.rot
-                            cameraDistance = 160f * density
-                        }
+            // ── 拼豆猫装饰（散乱；压在照片上层） ──
+            DECO_RES.forEachIndexed { i, res ->
+                val d = DECO_DEFAULT[i]
+                Movable(
+                    key = "deco_$i",
+                    boardW = W, boardH = H,
+                    defaultXf = d.first, defaultYf = d.second,
+                    positions = positions,
+                    draggingKey = draggingKey,
+                    baseZ = 2f,
+                    onPersist = onPersist
+                ) {
+                    Image(
+                        painter = painterResource(res),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(DECO_SIZE[i].dp)
+                            .graphicsLayer {
+                                rotationZ = (seedRand(i.toLong(), 9) - 0.5f) * 14f
+                                cameraDistance = 160f * density
+                            }
+                    )
+                }
+            }
+            // ── 两只毛绒挂件（挂在顶部钉子上；黑猫=入口，白猫=装饰；最上层） ──
+            Movable(
+                key = "plush_black",
+                boardW = W, boardH = H,
+                defaultXf = 0.10f, defaultYf = 0.004f,
+                positions = positions,
+                draggingKey = draggingKey,
+                baseZ = 3f,
+                onPersist = onPersist
+            ) {
+                HangingPlush(
+                    res = R.drawable.plush_black,
+                    width = 46.dp,
+                    still = draggingKey.value == "plush_black",
+                    onTap = onToggleAlbum
+                )
+            }
+            Movable(
+                key = "plush_white",
+                boardW = W, boardH = H,
+                defaultXf = 0.84f, defaultYf = 0.004f,
+                positions = positions,
+                draggingKey = draggingKey,
+                baseZ = 3f,
+                onPersist = onPersist
+            ) {
+                HangingPlush(
+                    res = R.drawable.plush_white,
+                    width = 50.dp,
+                    still = draggingKey.value == "plush_white",
+                    onTap = null
                 )
             }
         }
     }
 }
 
-/** 槽位上的拍立得：白边相纸 + 彩图钉 + 固定歪斜。 */
+/** 可长按拖动的板面元素：位置存 positions（持久化），拖动中放大 + 置顶。 */
 @Composable
-private fun SlotPhoto(
+private fun Movable(
+    key: String,
+    boardW: Dp,
+    boardH: Dp,
+    defaultXf: Float,
+    defaultYf: Float,
+    positions: MutableMap<String, Pair<Float, Float>>,
+    draggingKey: MutableState<String?>,
+    baseZ: Float,
+    onPersist: () -> Unit,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
+) {
+    val pos = positions[key] ?: (defaultXf to defaultYf)
+    val dragging = draggingKey.value == key
+    Box(
+        modifier = Modifier
+            .offset(x = boardW * pos.first, y = boardH * pos.second)
+            .zIndex(if (dragging) 9f else baseZ)
+            .graphicsLayer {
+                if (dragging) {
+                    scaleX = 1.06f; scaleY = 1.06f
+                    shadowElevation = 14f
+                }
+            }
+            .pointerInput(key, boardW, boardH) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { draggingKey.value = key },
+                    onDrag = { change, amt ->
+                        change.consume()
+                        val cur = positions[key] ?: (defaultXf to defaultYf)
+                        val nx = (cur.first + amt.x / boardW.toPx()).coerceIn(-0.04f, 0.96f)
+                        val ny = (cur.second + amt.y / boardH.toPx()).coerceIn(0f, 0.9f)
+                        positions[key] = nx to ny
+                    },
+                    onDragEnd = { onPersist(); draggingKey.value = null },
+                    onDragCancel = { onPersist(); draggingKey.value = null }
+                )
+            },
+        content = content
+    )
+}
+
+/** 拍立得照片卡（可点开大图）。 */
+@Composable
+private fun PinnedCard(
     photo: HomecomingAlbumStore.AlbumPhoto,
     version: Long,
+    width: Dp,
     aspect: Float,
     rot: Float,
     pinColor: Color,
@@ -545,7 +670,7 @@ private fun SlotPhoto(
     }
     Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .width(width)
             .graphicsLayer {
                 rotationZ = rot
                 cameraDistance = 160f * density
@@ -572,8 +697,7 @@ private fun SlotPhoto(
                 )
             }
         }
-        Spacer(Modifier.height(12.dp))
-        // 图钉
+        Spacer(Modifier.height(10.dp))
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -586,50 +710,16 @@ private fun SlotPhoto(
     }
 }
 
-/** 空槽位：虚线「待钉」——预留的放照片位置。 */
-@Composable
-private fun EmptySlot(aspect: Float, rot: Float) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                rotationZ = rot
-                cameraDistance = 160f * density
-            }
-    ) {
-        Canvas(modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {
-            val inset = 1.dp.toPx()
-            drawRoundRect(
-                color = Color(0x77A99778),
-                topLeft = Offset(inset, inset),
-                size = Size(size.width - inset * 2, size.height - inset * 2),
-                cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
-                style = Stroke(
-                    width = 2.5f,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 9f))
-                )
-            )
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0x66FFFFFF))
-                .padding(horizontal = 10.dp, vertical = 4.dp)
-        ) {
-            Text("待钉", fontSize = 10.sp, color = Color(0xFF9A8A72), fontFamily = FontFamily.Serif)
-        }
-    }
-}
-
-/** 毛绒挂件：钉在板沿随风摆。onTap=null 时只做装饰（点了弹一下）。 */
+/** 挂在钉子上的毛绒挂件：随风摆；still=true（拖动中）时停稳。 */
 @Composable
 private fun HangingPlush(
     res: Int,
-    modifier: Modifier = Modifier,
+    width: Dp,
+    still: Boolean,
     onTap: (() -> Unit)? = null
 ) {
     val wind = rememberInfiniteTransition(label = "wind")
+    val damp by animateFloatAsState(if (still) 0f else 1f, tween(300), label = "damp")
     val swing by wind.animateFloat(
         -6f, 6f,
         infiniteRepeatable(tween(if (onTap != null) 3200 else 2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
@@ -640,31 +730,31 @@ private fun HangingPlush(
         infiniteRepeatable(tween(2100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "flutter"
     )
-    val scope = rememberCoroutineScope()
-    val bounce = remember { Animatable(1f) }
+    val h = width * (340f / 175f)
     Box(
-        modifier = modifier
+        modifier = Modifier
+            .size(width = width, height = h)
             .graphicsLayer {
-                rotationZ = swing + flutter * 0.4f
+                rotationZ = (swing + flutter * 0.4f) * damp
                 transformOrigin = TransformOrigin(0.5f, 0.02f)
                 cameraDistance = 240f * density
-                scaleX = bounce.value
-                scaleY = bounce.value
             }
             .clickable(
                 indication = null,
                 interactionSource = MutableInteractionSource()
             ) {
-                if (onTap != null) {
-                    onTap()
-                } else {
-                    scope.launch {
-                        bounce.snapTo(0.85f)
-                        bounce.animateTo(1f, spring(dampingRatio = 0.32f, stiffness = Spring.StiffnessMedium))
-                    }
-                }
+                if (onTap != null) onTap()
             }
     ) {
+        // 挂钉（在绳圈后面，做出钉在毛毡上的感觉）
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-2).dp)
+                .size(11.dp)
+                .shadow(1.dp, CircleShape)
+                .background(Brush.radialGradient(listOf(Color(0xFFF0E8D8), Color(0xFF9A8E7E))), CircleShape)
+        )
         Image(
             painter = painterResource(res),
             contentDescription = if (onTap != null) "小猫玩偶（点我看整本相册）" else "小猫玩偶",
