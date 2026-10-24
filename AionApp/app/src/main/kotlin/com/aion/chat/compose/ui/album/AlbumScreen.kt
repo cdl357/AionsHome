@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -223,9 +224,16 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                         onToggleAlbum = { boardMode.value = !boardMode.value },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
+                    TinBox(
+                        photos = photos.drop(10),
+                        version = version.value,
+                        onPhotoTap = { selected.value = it; showDetail.value = true },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        "钉着最近的 " + minOf(photos.size, 10) + " 张 · 全部 " + photos.size + " 张在整本相册",
+                        "钉着最近的 " + minOf(photos.size, 10) + " 张（长按可挪） · 没上墙的在下面铁盒里",
                         fontSize = 11.sp, color = HomecomingColors.InkSoft,
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
@@ -535,7 +543,7 @@ private fun FeltBoard(
                     PinnedCard(
                         photo = photo,
                         version = version,
-                        width = W * (0.20f + 0.04f * seedRand(photo.id, 7)),
+                        width = W * (0.16f + 0.035f * seedRand(photo.id, 7)),
                         aspect = when {
                             seedRand(photo.id, 4) < 0.34f -> 1f
                             seedRand(photo.id, 4) < 0.67f -> 0.8f
@@ -696,16 +704,7 @@ private fun PinnedCard(
                 )
             }
         }
-        Spacer(Modifier.height(10.dp))
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-5).dp)
-                .size(13.dp)
-                .shadow(2.dp, CircleShape)
-                .background(Brush.radialGradient(listOf(pinColor.copy(alpha = 0.85f), pinColor)), CircleShape)
-                .border(0.5.dp, Color(0x44000000), CircleShape)
-        )
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -759,6 +758,162 @@ private fun HangingPlush(
             contentDescription = if (onTap != null) "小猫玩偶（点我看整本相册）" else "小猫玩偶",
             modifier = Modifier.fillMaxSize()
         )
+    }
+}
+
+/** 铁盒子：没上墙的照片做成竖版小卡插在盒里，滑动时有拨动卡片的摆动效果。 */
+@Composable
+private fun TinBox(
+    photos: List<HomecomingAlbumStore.AlbumPhoto>,
+    version: Long,
+    onPhotoTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    BoxWithConstraints(
+        modifier
+            .padding(horizontal = 12.dp)
+            .height(150.dp)
+    ) {
+        val W = maxWidth
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .shadow(7.dp, RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFFEDEBE4), Color(0xFFC9C5BB), Color(0xFFA8A49A))
+                    )
+                )
+                .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(12.dp))
+        ) {
+            // 金属拉丝纹
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                repeat(26) { i ->
+                    val y = i * size.height / 26f
+                    drawLine(
+                        color = Color(0x12FFFFFF),
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = 1f
+                    )
+                }
+            }
+            // 开口内阴影
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .background(Brush.verticalGradient(listOf(Color(0x59000000), Color.Transparent)))
+            )
+            if (photos.isEmpty()) {
+                Text(
+                    "都在墙上呢 · 存新照片会先钉上毛毡板",
+                    fontSize = 11.sp, color = Color(0xFF7A766C),
+                    fontFamily = FontFamily.Serif,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                val scroll = rememberScrollState()
+                val cardW = 64.dp
+                val overlap = 30.dp
+                val stride = with(density) { (cardW - overlap).toPx() }
+                val startPad = with(density) { 18.dp.toPx() }
+                val viewport = with(density) { W.toPx() }
+                val cardWpx = with(density) { cardW.toPx() }
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 6.dp)
+                        .horizontalScroll(scroll)
+                ) {
+                    Spacer(Modifier.width(18.dp))
+                    photos.forEachIndexed { i, photo ->
+                        // 拨动效果：卡片中心离视口中心越远越歪，带 3D 转角
+                        val centerPx = startPad + i * stride + cardWpx / 2f - scroll.value
+                        val rel = ((centerPx - viewport / 2f) / viewport).coerceIn(-0.6f, 0.6f)
+                        Box(modifier = Modifier.width(cardW - overlap)) {
+                            TinCard(
+                                photo = photo,
+                                version = version,
+                                width = cardW,
+                                rel = rel,
+                                onTap = onPhotoTap
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(22.dp))
+                }
+            }
+            // 前壁（盖住卡片下沿 → 卡片插在盒里）
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(26.dp)
+                    .background(
+                        Brush.verticalGradient(listOf(Color(0xFFDCD8CE), Color(0xFFABA79C)))
+                    )
+            )
+            Text(
+                "TIN · 没上墙的照片都在这",
+                fontSize = 9.sp, color = Color(0xFF6E6A60),
+                fontFamily = FontFamily.Serif,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 12.dp, bottom = 6.dp)
+            )
+        }
+    }
+}
+
+/** 铁盒里的竖版小卡。 */
+@Composable
+private fun TinCard(
+    photo: HomecomingAlbumStore.AlbumPhoto,
+    version: Long,
+    width: Dp,
+    rel: Float,
+    onTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit
+) {
+    val context = LocalContext.current
+    val bmp = remember(photo.id, version) {
+        runCatching { decodeSampled(photo.file(context), 384) }.getOrNull()
+    }
+    Box(
+        modifier = Modifier
+            .width(width)
+            .graphicsLayer {
+                rotationZ = rel * 12f
+                rotationY = -rel * 18f
+                cameraDistance = 220f * density
+                shadowElevation = 6f
+            }
+            .shadow(4.dp, RoundedCornerShape(3.dp))
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color(0xFFFDFBF5))
+            .border(0.7.dp, Color(0x33000000), RoundedCornerShape(3.dp))
+            .clickable { onTap(photo) }
+            .padding(3.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.72f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFFEDE9E0))
+        ) {
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
     }
 }
 
