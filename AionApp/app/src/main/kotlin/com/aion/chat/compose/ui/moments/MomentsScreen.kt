@@ -303,13 +303,6 @@ fun MomentsScreen() {
                             input.copyTo(output)
                         }
                     }
-                    // 双写全局背景（Yuri：背景图要全局通用——朋友圈封面即全 App 背景）
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        com.aion.chat.compose.data.SettingsBg.backgroundFile(context).outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    com.aion.chat.compose.data.SettingsBg.bump()
                 }
                 main.post { coverVersion.value = System.currentTimeMillis() }
             }

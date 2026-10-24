@@ -128,22 +128,15 @@ fun SettingsScreen() {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             val ok = runCatching {
-                val mainOk = context.contentResolver.openInputStream(uri)?.use { input ->
+                context.contentResolver.openInputStream(uri)?.use { input ->
                     SettingsBg.backgroundFile(context).outputStream().use { output ->
                         input.copyTo(output)
                     }
                 } != null
-                // 双写朋友圈封面（两处任选其一，全局同步）
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    java.io.File(context.filesDir, "moments_cover.jpg").outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                mainOk
             }.getOrDefault(false)
             if (ok) {
                 SettingsBg.bump()
-                Toast.makeText(context, "背景已换好，全 App 生效", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "背景已换好，马上生效", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "没读出这张图，换一张试试", Toast.LENGTH_SHORT).show()
             }
@@ -219,7 +212,6 @@ fun SettingsScreen() {
                 OutlinedButton(
                     onClick = {
                         val f = SettingsBg.backgroundFile(context)
-                        java.io.File(context.filesDir, "moments_cover.jpg").delete()
                         if (f.exists() && f.delete()) {
                             SettingsBg.bump()
                             Toast.makeText(context, "已恢复默认背景", Toast.LENGTH_SHORT).show()

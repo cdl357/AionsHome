@@ -200,8 +200,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     }
 
     // ── 背景：聊天专属图，无则跟随全局背景图 ──
-    val bgStamp = SettingsBg.stamp
-    val bgBitmap = remember(bgStamp, chatBgVersion.value) { SettingsBg.loadChatBitmap(context)?.asImageBitmap() }
+    val bgBitmap = remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(SettingsBg.stamp, chatBgVersion.value) {
+        bgBitmap.value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            SettingsBg.loadChatBitmap(context)?.asImageBitmap()
+        }
+    }
 
     // ── 消息状态 ──
     val messages = remember { mutableStateListOf<HomecomingChatRepository.Message>() }
@@ -672,7 +676,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // 背景：聊天专属图，无则跟随全局背景图
-            val chatBg = bgBitmap
+            val chatBg = bgBitmap.value
             if (chatBg != null) {
                 Image(
                     bitmap = chatBg,

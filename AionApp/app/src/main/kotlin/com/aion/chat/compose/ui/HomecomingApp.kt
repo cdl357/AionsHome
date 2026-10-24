@@ -97,8 +97,13 @@ fun HomecomingApp() {
 
     // ── 全局背景：所有页面浮在同一张图上，设置换一次全 App 生效 ──
     val appContext = androidx.compose.ui.platform.LocalContext.current
-    val bgStamp = SettingsBg.stamp
-    val bgBitmap = remember(bgStamp) { SettingsBg.loadBitmap(appContext)?.asImageBitmap() }
+    // stamp 是 Compose 状态 + 异步解码：选完图立刻重载，不用再切页面等
+    val bgBitmap = remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(SettingsBg.stamp) {
+        bgBitmap.value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            SettingsBg.loadBitmap(appContext)?.asImageBitmap()
+        }
+    }
     // 键盘弹出时收起底部胶囊，别浮在聊天输入框上
     val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
@@ -109,9 +114,10 @@ fun HomecomingApp() {
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 背景层
-        if (bgBitmap != null) {
+        val bgBmp = bgBitmap.value
+        if (bgBmp != null) {
             Image(
-                bitmap = bgBitmap,
+                bitmap = bgBmp,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

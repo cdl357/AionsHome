@@ -163,10 +163,11 @@ object HomecomingData {
 
 /** 主页背景图：用户在设置里可随时更换（存 filesDir/home_bg.jpg），stamp 变化即触发重载。 */
 object SettingsBg {
-    var stamp: Long = 0
-        private set
+    // stamp 走 Compose 状态：换背景后所有读取处立即重组（不再要切页才生效）
+    private var stampState = androidx.compose.runtime.mutableStateOf(0L)
+    val stamp: Long get() = stampState.value
 
-    fun bump() { stamp = System.currentTimeMillis() }
+    fun bump() { stampState.value = System.currentTimeMillis() }
 
     /** 全局背景（回家页 + 其他页默认）。 */
     fun backgroundFile(context: Context): File = File(context.filesDir, "home_bg.jpg")
