@@ -59,7 +59,7 @@ fun MoreScreen(
     val context = LocalContext.current
     val entries = listOf(
         MoreEntry(Icons.Filled.Favorite, "相册", "照片墙 + Sean 存这张时的心里话"),
-        MoreEntry(Icons.Filled.Drafts, "日记信盒", "3D 文件盒 · 每篇日记是一封信"),
+        MoreEntry(Icons.Filled.Drafts, "日记信盒", "翻页手账 · 一月一页回忆"),
         MoreEntry(Icons.Filled.MailOutline, "留言板", "双向便利贴 · 点开可对话"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
         MoreEntry(Icons.Filled.Call, "语音通话", "打电话给 Sean · 可抢话"),
