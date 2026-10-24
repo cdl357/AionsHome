@@ -145,6 +145,11 @@ fun MomentsScreen() {
                 remoteKeys.add(rm.author + "|" + rm.content)
                 val hid = rm.id.hashCode().toLong()
                 val paired = local.firstOrNull { it.id == hid }
+                // 云端动态没有本地父行时，赞/评论按 id 直读旁表（修复：点赞刷新即消失）
+                val localLikes = paired?.likes
+                    ?: HomecomingMomentsStore.likesFor(context, hid)
+                val localComments = paired?.comments
+                    ?: HomecomingMomentsStore.commentsFor(context, hid)
                 // 旧表自带的赞（liked=哥哥 / yuri_liked=Yuri）与本地赞去重合并
                 val remoteLikes = buildList {
                     if (rm.liked) add("sean")
@@ -166,8 +171,8 @@ fun MomentsScreen() {
                         author = rm.author, content = rm.content,
                         attachments = rm.imageUrls + (paired?.attachments ?: emptyList()),
                         createdAt = rm.createdAtMs,
-                        likes = (remoteLikes + (paired?.likes ?: emptyList())).distinct(),
-                        comments = (seanReply + cloudComments + (paired?.comments ?: emptyList()))
+                        likes = (remoteLikes + localLikes).distinct(),
+                        comments = (seanReply + cloudComments + localComments)
                             .distinctBy { it.id }
                             .sortedBy { it.createdAt },
                         localRowId = paired?.id
@@ -431,6 +436,14 @@ fun MomentsScreen() {
                 onToggleLike = {
                     val liked = HomecomingMomentsStore.toggleLike(context, moment.id, "user")
                     reload()
+                    // 云端动态的赞同步写回 yuri_liked（best-effort，走服务器窄端点）
+                    if (liked && moment.remoteId != null) {
+                        scope.launch(Dispatchers.IO) {
+                            runCatching {
+                                com.aion.chat.compose.data.XinchaoClient.likeMomentViaXinchao(moment.remoteId)
+                            }
+                        }
+                    }
                     if (liked) askSeanReply(moment.id, moment.content, "")
                 },
                 onComment = {

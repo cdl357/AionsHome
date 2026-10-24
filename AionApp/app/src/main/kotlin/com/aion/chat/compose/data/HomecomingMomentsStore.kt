@@ -154,6 +154,35 @@ object HomecomingMomentsStore {
         db.close(); true
     } catch (e: Exception) { false }
 
+
+    /** 任意 moment id 的赞（不要求 moments_local 有父行——云端动态的赞/评论挂这里读）。 */
+    fun likesFor(context: Context, momentId: Long): List<String> = try {
+        val db = db(context); ensure(db)
+        val likes = mutableListOf<String>()
+        val cur = db.rawQuery(
+            "SELECT author FROM moment_like_local WHERE moment_id = ? ORDER BY created_at ASC",
+            arrayOf(momentId.toString())
+        )
+        while (cur.moveToNext()) likes.add(cur.getString(0))
+        cur.close(); db.close()
+        likes
+    } catch (e: Exception) { emptyList() }
+
+    /** 任意 moment id 的评论（同上）。 */
+    fun commentsFor(context: Context, momentId: Long): List<Comment> = try {
+        val db = db(context); ensure(db)
+        val out = mutableListOf<Comment>()
+        val cur = db.rawQuery(
+            "SELECT id, author, content, created_at FROM moment_comment_local WHERE moment_id = ? ORDER BY created_at ASC",
+            arrayOf(momentId.toString())
+        )
+        while (cur.moveToNext()) {
+            out.add(Comment(cur.getLong(0), cur.getString(1), cur.getString(2), cur.getLong(3)))
+        }
+        cur.close(); db.close()
+        out
+    } catch (e: Exception) { emptyList() }
+
     // ── 动态配图：存 filesDir/moments/<uuid>.jpg ──
 
     fun momentsDir(context: Context): File =
