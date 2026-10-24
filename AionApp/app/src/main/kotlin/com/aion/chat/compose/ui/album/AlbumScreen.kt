@@ -502,18 +502,32 @@ private fun FeltBoard(
                     center = Offset(rnd.nextFloat() * size.width, rnd.nextFloat() * size.height)
                 )
             }
-            // 顶部横杆
+            // 两段式：上段奶咖挂带（52dp）+ 接缝阴影；下段是奶白毛毡（背景渐变）
+            val bandH = 52.dp.toPx()
             drawRect(
-                color = Color(0x33AE9C7E),
+                brush = Brush.verticalGradient(listOf(Color(0xFFD8CCB1), Color(0xFFC7B89A))),
                 topLeft = Offset(0f, 0f),
-                size = androidx.compose.ui.geometry.Size(size.width, 12.dp.toPx())
+                size = androidx.compose.ui.geometry.Size(size.width, bandH)
             )
-            // 一排挂钉（疏排大钉，一眼可见）
-            repeat(6) { i ->
-                val cx = size.width * (0.09f + 0.164f * i)
-                val cy = 6.5.dp.toPx()
-                drawCircle(Color(0xFF9A8E7E), radius = 4.4.dp.toPx(), center = Offset(cx, cy))
-                drawCircle(Color(0xFFF0E8D8), radius = 1.7.dp.toPx(), center = Offset(cx - 1.1.dp.toPx(), cy - 1.1.dp.toPx()))
+            drawRect(
+                brush = Brush.verticalGradient(listOf(Color(0x2E7A6648), Color(0x00806A4A))),
+                topLeft = Offset(0f, bandH - 4.dp.toPx()),
+                size = androidx.compose.ui.geometry.Size(size.width, 4.dp.toPx() + 6.dp.toPx())
+            )
+            // 挂带上的大钉（4 颗疏排，一眼可见）
+            repeat(4) { i ->
+                val cx = size.width * (0.14f + 0.24f * i)
+                val cy = bandH / 2f
+                drawCircle(Color(0xFF8F8272), radius = 6.2.dp.toPx(), center = Offset(cx, cy))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFF7F0E0), Color(0xFFB7A88E)),
+                        center = Offset(cx - 1.2.dp.toPx(), cy - 1.4.dp.toPx()),
+                        radius = 5.2.dp.toPx()
+                    ),
+                    radius = 5.dp.toPx(), center = Offset(cx, cy)
+                )
+                drawCircle(Color(0xFFFFFFFF), radius = 1.3.dp.toPx(), center = Offset(cx - 1.5.dp.toPx(), cy - 1.8.dp.toPx()))
             }
         }
 
@@ -576,7 +590,7 @@ private fun FeltBoard(
             Movable(
                 key = "plush_black",
                 boardW = W, boardH = H,
-                defaultXf = 0.10f, defaultYf = 0.004f,
+                defaultXf = 0.078f, defaultYf = 0.055f,
                 positions = positions,
                 draggingKey = draggingKey,
                 baseZ = 3f,
@@ -592,7 +606,7 @@ private fun FeltBoard(
             Movable(
                 key = "plush_white",
                 boardW = W, boardH = H,
-                defaultXf = 0.895f, defaultYf = 0.004f,
+                defaultXf = 0.792f, defaultYf = 0.055f,
                 positions = positions,
                 draggingKey = draggingKey,
                 baseZ = 3f,
