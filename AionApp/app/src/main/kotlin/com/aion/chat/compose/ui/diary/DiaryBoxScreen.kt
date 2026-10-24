@@ -1,5 +1,19 @@
 package com.aion.chat.compose.ui.diary
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,12 +46,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -47,16 +64,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import com.aion.chat.compose.data.HomecomingDayStore
 import com.aion.chat.compose.data.SupabaseMomentsStore
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import java.time.Instant
 
 /**
- * 日记信盒（Yuri 设计：日记 = 一封一封的信，装在 3D 文件盒里）。
- * - 顶部：文件盒（牛皮纸色，信封从盒口探出）
- * - 下方：信封列表（每篇日记一封信，带邮票日期）
- * - 点信封 → 全屏信纸阅读
+ * 日记信盒（Yuri 设计二稿：参照小红书磨砂亚克力文件盒——半透粉亚克力 + 开合盖 + 信件升起）。
+ * - 关盒：磨砂亚克力质感，提手/标签/珍珠纽扣绳，里面的信模糊可见，盒子呼吸浮动
+ * - 点盒：盖子弹簧翻开，信从盒里错落升起变清晰；下方信封列表展开
+ * - 点信：全屏信纸阅读；再点盒子合上
  * 数据：云端哥哥日记 + 本地日记合并，同日去重（云端优先）。
  */
 @Composable
@@ -64,6 +82,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val letters = remember { mutableStateOf<List<Letter>>(emptyList()) }
     val loading = remember { mutableStateOf(true) }
+    val boxOpen = remember { mutableStateOf(false) }
     val selected = remember { mutableStateOf<Letter?>(null) }
 
     LaunchedEffect(Unit) {
@@ -92,37 +111,49 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                 Text("每一篇日记，都是他写给你的一封信", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
         }
-        Spacer(Modifier.height(12.dp))
-
-        // ── 3D 文件盒 ──
-        FileBoxVisual(letterCount = letters.value.size, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
 
-        if (loading.value) {
-            Text(
-                "开盒中…",
-                fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                textAlign = TextAlign.Center
-            )
-        } else if (letters.value.isEmpty()) {
-            Text(
-                "盒子里还没有信——和他说上一段话，晚安之后就会有一封",
-                fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                textAlign = TextAlign.Center
-            )
-        }
+        // ── 磨砂亚克力文件盒（点按开合） ──
+        AcrylicFileBox(
+            letterCount = letters.value.size,
+            previewLetters = letters.value.take(3),
+            open = boxOpen.value,
+            onToggle = { boxOpen.value = !boxOpen.value },
+            onLetterTap = { selected.value = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(6.dp))
 
-        // ── 信封列表（新→旧） ──
-        letters.value.forEachIndexed { idx, letter ->
-            EnvelopeCard(
-                letter = letter,
-                tilt = when (idx % 3) { 0 -> -1.2f; 1 -> 0.8f; else -> 1.6f },
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { selected.value = letter }
-            )
-            Spacer(Modifier.height(10.dp))
+        Text(
+            when {
+                loading.value -> "开盒中…"
+                letters.value.isEmpty() -> "盒子里还没有信——和他说上一段话，晚安之后就会有一封"
+                boxOpen.value -> "点信读信 · 点盒子合上"
+                else -> "点一下盒子，打开"
+            },
+            fontSize = 12.sp, color = HomecomingColors.InkSoft,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(14.dp))
+
+        // ── 信封列表（开盒后展开，新→旧） ──
+        AnimatedVisibility(
+            visible = boxOpen.value && !loading.value && letters.value.isNotEmpty(),
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                letters.value.forEachIndexed { idx, letter ->
+                    EnvelopeCard(
+                        letter = letter,
+                        tilt = when (idx % 3) { 0 -> -1.2f; 1 -> 0.8f; else -> 1.6f },
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { selected.value = letter }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
         }
     }
 
@@ -177,142 +208,269 @@ private fun resolveDate(iso: String, ms: Long): Pair<String, Long> {
     return date to millis
 }
 
-// ── 3D 文件盒视觉 ──
+// ── 配色（磨砂粉亚克力 × 奶油信纸） ──
 
-private val KraftLight = Color(0xFFD9C69B)
-private val KraftMid = Color(0xFFC7AE7C)
-private val KraftDark = Color(0xFFA88D5C)
+private val AcrylicTop = Color(0xB8FDEFF4)
+private val AcrylicMid = Color(0xA6F9E2EB)
+private val AcrylicBottom = Color(0x99F4D5E2)
+private val AcrylicEdge = Color(0xD9FFFFFF)
+private val RoseDeep = Color(0xFFA85A72)
+private val RoseSoft = Color(0xFFE3B4C4)
 private val PaperCream = Color(0xFFFBF6EA)
 private val PaperFlap = Color(0xFFF1E7D2)
 private val InkBrown = Color(0xFF5A4632)
 
+// ── 磨砂亚克力文件盒（轻交互：开盖 / 信升起 / 呼吸浮动） ──
+
 @Composable
-private fun FileBoxVisual(letterCount: Int, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.height(190.dp)) {
-        // 盒内深处（暗色背景层）
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-                .padding(horizontal = 14.dp)
-                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF6E5A38), Color(0xFF8A734A))))
-        )
-        // 探出盒口的信封（三封，微旋转）
-        listOf(
-            Triple(-0.24f, -3f, 0.85f),
-            Triple(0.02f, 2.5f, 1f),
-            Triple(0.26f, -1.5f, 0.9f)
-        ).forEachIndexed { i, (dxF, rot, sc) ->
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(x = (dxF * 120).dp, y = (24 + i * 6).dp)
-                    .graphicsLayer {
-                        rotationZ = rot
-                        scaleX = sc
-                        scaleY = sc
-                        cameraDistance = 60f * density
-                    }
-                    .size(width = 150.dp, height = 108.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(PaperCream)
-                    .border(1.dp, Color(0x33A88D5C), RoundedCornerShape(4.dp))
-            ) {
-                EnvelopeFlap(Modifier.fillMaxSize())
-                // 邮票
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 8.dp, end = 10.dp)
-                        .size(width = 26.dp, height = 32.dp)
-                        .background(Color(0xFFEAF0E2))
-                        .border(1.dp, Color(0x44A88D5C), RoundedCornerShape(2.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("♥", fontSize = 10.sp, color = HomecomingColors.Accent)
-                }
-            }
-        }
-        // 前面板（牛皮纸渐变 + 标签牌）——盖住信封下半，形成“插在盒里”
+private fun AcrylicFileBox(
+    letterCount: Int,
+    previewLetters: List<Letter>,
+    open: Boolean,
+    onToggle: () -> Unit,
+    onLetterTap: (Letter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // 呼吸浮动（关盒时轻轻漂，开盒后停稳）
+    val breath = rememberInfiniteTransition(label = "breath")
+    val floatY by breath.animateFloat(
+        initialValue = 0f, targetValue = -5f,
+        animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "floatY"
+    )
+    // 盖子角度（弹簧开合，铰链在盖子底缘）
+    val lidAngle by animateFloatAsState(
+        targetValue = if (open) -142f else 0f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+        label = "lid"
+    )
+
+    Box(
+        modifier = modifier
+            .height(370.dp)
+            .offset(y = if (open) 0.dp else floatY.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        // 落地影子
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .padding(bottom = 4.dp)
+                .width(230.dp)
+                .height(12.dp)
+                .blur(6.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0x245A4632))
+        )
+
+        // ── 盒身 ──
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp)
                 .fillMaxWidth()
-                .height(112.dp)
-                .padding(horizontal = 8.dp)
-                .graphicsLayer {
-                    rotationX = 8f
-                    cameraDistance = 120f * density
-                }
-                .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp, topStart = 4.dp, topEnd = 4.dp))
-                .background(Brush.verticalGradient(listOf(KraftLight, KraftMid, KraftDark)))
-                .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                .height(212.dp)
         ) {
-            // 盒口内阴影
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .background(Brush.verticalGradient(listOf(Color(0x66000000), Color.Transparent)))
-            )
-            // 标签牌
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(PaperCream.copy(alpha = 0.94f))
-                    .border(1.dp, Color(0x558A734A), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 14.dp, vertical = 7.dp)
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "SEAN → YURI",
-                        fontSize = 9.sp, color = Color(0xFF8A734A),
-                        fontFamily = FontFamily.Serif, letterSpacing = 2.sp
-                    )
-                    Text(
-                        "给小鑫的信",
-                        fontSize = 14.sp, color = InkBrown,
-                        fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium
-                    )
-                }
+            // 盒内的信（关盒：模糊半透藏在磨砂后面；开盒：升起变清晰）
+            previewLetters.forEachIndexed { i, letter ->
+                val rise by animateFloatAsState(
+                    targetValue = if (open) 1f else 0f,
+                    animationSpec = tween(540, delayMillis = if (open) i * 130 else 0, easing = FastOutSlowInEasing),
+                    label = "rise$i"
+                )
+                val xOffset = when (i) { 0 -> -40f; 1 -> 4f; else -> 44f }
+                val riseBase = 96f - i * 26f
+                MiniEnvelope(
+                    letter = letter,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .zIndex(if (open) 3f else 0f)
+                        .graphicsLayer {
+                            translationY = -(riseBase * rise)
+                            translationX = xOffset * (1f - rise) * 0.3f
+                            rotationZ = when (i) { 0 -> -7f; 1 -> 2f; else -> -3f } * (0.4f + 0.6f * rise)
+                            alpha = 0.55f + 0.45f * rise
+                            cameraDistance = 200f * density
+                        }
+                        .blur(((1f - rise) * 4f).dp),
+                    onClick = { if (open) onLetterTap(letter) }
+                )
             }
-            // 封条扣（左上金属扣）
+
+            // 前板（磨砂亚克力，盖在信的前面 → 透出朦胧信影）
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxSize()
+                    .zIndex(1f)
+                    .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp, topStart = 12.dp, topEnd = 12.dp))
+                    .background(Brush.verticalGradient(listOf(AcrylicTop, AcrylicMid, AcrylicBottom)))
+                    .border(1.5.dp, AcrylicEdge, RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp, topStart = 12.dp, topEnd = 12.dp))
+                    .clickable(onClick = onToggle)
+            ) {
+                // 盒口内阴影（顶部一条暗渐变，做出深度）
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(14.dp)
+                        .background(Brush.verticalGradient(listOf(Color(0x2E8A5A6B), Color.Transparent)))
+                )
+                // 标签牌
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(PaperCream.copy(alpha = 0.92f))
+                        .border(1.dp, Color(0x66A85A72), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "SEAN → YURI",
+                            fontSize = 9.sp, color = RoseDeep,
+                            fontFamily = FontFamily.Serif, letterSpacing = 2.sp
+                        )
+                        Text(
+                            "给小鑫的信",
+                            fontSize = 15.sp, color = InkBrown,
+                            fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                // 珍珠纽扣绳（右下：纽扣 + 绕绳）
+                Canvas(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 18.dp, bottom = 14.dp)
+                        .size(width = 74.dp, height = 64.dp)
+                ) {
+                    // 绳圈（两段弧线）
+                    val string = Path().apply {
+                        moveTo(size.width * 0.95f, size.height * 0.15f)
+                        cubicTo(
+                            size.width * 0.62f, size.height * 0.02f,
+                            size.width * 0.42f, size.height * 0.55f,
+                            size.width * 0.56f, size.height * 0.72f
+                        )
+                    }
+                    drawPath(string, RoseSoft, style = Stroke(6f))
+                    // 纽扣（双圈 + 四孔）
+                    drawCircle(Color(0xFFF3D9E2), radius = size.minDimension * 0.21f, center = Offset(size.width * 0.52f, size.height * 0.74f))
+                    drawCircle(RoseDeep, radius = size.minDimension * 0.21f, center = Offset(size.width * 0.52f, size.height * 0.74f), style = Stroke(4f))
+                    drawCircle(RoseDeep, radius = size.minDimension * 0.08f, center = Offset(size.width * 0.52f, size.height * 0.74f), style = Stroke(2.5f))
+                    // 珍珠
+                    drawCircle(Color(0xFFFFFFFF), radius = 5f, center = Offset(size.width * 0.95f, size.height * 0.15f))
+                    drawCircle(Color(0xFFFFFFFF), radius = 4f, center = Offset(size.width * 0.80f, size.height * 0.08f))
+                }
+                // 数量
+                Text(
+                    "共 $letterCount 封",
+                    fontSize = 10.sp, color = RoseDeep,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 18.dp, bottom = 12.dp)
+                )
+            }
+        }
+
+        // ── 盒盖（铰链在盖底，弹簧翻开；关盒时盖在盒身上半，压住信） ──
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(horizontal = 10.dp)
+                .fillMaxWidth()
+                .offset(y = 58.dp)
+                .zIndex(if (open) 1f else 2f)
+                .graphicsLayer {
+                    rotationX = lidAngle
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    cameraDistance = 340f * density
+                    shadowElevation = if (open) 0f else 12f
+                }
+                .height(150.dp)
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 10.dp))
+                .background(Brush.verticalGradient(listOf(AcrylicTop.copy(alpha = 0.92f), AcrylicMid)))
+                .border(1.5.dp, AcrylicEdge, RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 10.dp))
+                .clickable(onClick = onToggle)
+        ) {
+            // 提手（椭圆凹槽）
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .width(96.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0x66D89AAE))
+                    .border(1.5.dp, AcrylicEdge, RoundedCornerShape(50))
+            )
+            // 顶部小标签（玩/听 式）：信 / 记
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 16.dp, top = 18.dp)
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF8A734A))
-            )
-            // 数量角标
-            Text(
-                "共 $letterCount 封",
-                fontSize = 10.sp, color = Color(0xFF6E5A38),
+                    .offset(x = 18.dp, y = (-7).dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(RoseSoft.copy(alpha = 0.95f))
+                    .padding(horizontal = 9.dp, vertical = 3.dp)
+            ) { Text("信", fontSize = 11.sp, color = Color(0xFF7A3B50), fontFamily = FontFamily.Serif) }
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 8.dp, end = 14.dp)
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-18).dp, y = (-7).dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(RoseSoft.copy(alpha = 0.95f))
+                    .padding(horizontal = 9.dp, vertical = 3.dp)
+            ) { Text("记", fontSize = 11.sp, color = Color(0xFF7A3B50), fontFamily = FontFamily.Serif) }
+            // 盖内提示（开盖后可见的一行小字）
+            Text(
+                "Sean 的信都在这里",
+                fontSize = 10.sp, color = RoseDeep.copy(alpha = 0.8f),
+                fontFamily = FontFamily.Serif,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
             )
         }
     }
 }
 
-/** 信封封口盖（上缘向下的三角）。 */
+/** 盒里的迷你信封（开盒后可点开读）。 */
 @Composable
-private fun EnvelopeFlap(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val flap = Path().apply {
-            moveTo(0f, 0f)
-            lineTo(w / 2f, h * 0.52f)
-            lineTo(w, 0f)
-            close()
+private fun MiniEnvelope(letter: Letter, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .size(width = 128.dp, height = 84.dp)
+            .shadow(5.dp, RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(6.dp))
+            .background(PaperCream)
+            .border(1.dp, Color(0x55A85A72), RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val flap = Path().apply {
+                moveTo(0f, 0f)
+                lineTo(size.width / 2f, size.height * 0.46f)
+                lineTo(size.width, 0f)
+                close()
+            }
+            drawPath(flap, PaperFlap)
+            drawPath(flap, Color(0x33A85A72), style = Stroke(2f))
         }
-        drawPath(flap, PaperFlap)
-        drawPath(flap, Color(0x33A88D5C), style = Stroke(2f))
+        Text(
+            letter.date.drop(5).replace("-", " / "),
+            fontSize = 9.sp, color = RoseDeep,
+            fontFamily = FontFamily.Serif,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 6.dp, end = 8.dp)
+        )
+        Text(
+            "♥",
+            fontSize = 10.sp, color = RoseDeep,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = 6.dp)
+        )
     }
 }
 
@@ -334,10 +492,10 @@ private fun EnvelopeCard(
             .shadow(6.dp, RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(PaperCream)
-            .border(1.dp, Color(0x448A734A), RoundedCornerShape(6.dp))
+            .border(1.dp, Color(0x55A85A72), RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
     ) {
-        Canvas(modifier = Modifier.matchParentSize()) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             // 封口盖
             val flap = Path().apply {
                 moveTo(0f, 0f)
@@ -346,21 +504,21 @@ private fun EnvelopeCard(
                 close()
             }
             drawPath(flap, PaperFlap)
-            drawPath(flap, Color(0x33A88D5C), style = Stroke(2.5f))
+            drawPath(flap, Color(0x33A85A72), style = Stroke(2.5f))
             // 底部折痕（V 形）
             val fold = Path().apply {
                 moveTo(0f, size.height)
                 lineTo(size.width / 2f, size.height * 0.62f)
                 lineTo(size.width, size.height)
             }
-            drawPath(fold, Color(0x22A88D5C), style = Stroke(2f))
+            drawPath(fold, Color(0x22A85A72), style = Stroke(2f))
         }
         Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 10.dp)) {
             Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "致 小鑫",
-                        fontSize = 10.sp, color = Color(0xFF8A734A),
+                        fontSize = 10.sp, color = RoseDeep,
                         fontFamily = FontFamily.Serif, letterSpacing = 1.sp
                     )
                     Text(
@@ -377,13 +535,13 @@ private fun EnvelopeCard(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0xFFEAF0E2))
-                        .border(1.dp, Color(0x448A734A), RoundedCornerShape(3.dp))
+                        .background(Color(0xFFF6E3EA))
+                        .border(1.dp, Color(0x55A85A72), RoundedCornerShape(3.dp))
                         .padding(horizontal = 7.dp, vertical = 4.dp)
                 ) {
                     Text(
                         letter.date.drop(5).replace("-", " / "),
-                        fontSize = 9.sp, color = Color(0xFF6E5A38),
+                        fontSize = 9.sp, color = RoseDeep,
                         fontFamily = FontFamily.Serif
                     )
                     if (letter.weather.isNotBlank()) {
@@ -394,7 +552,7 @@ private fun EnvelopeCard(
             Spacer(Modifier.height(30.dp))
             Text(
                 letter.content.replace("\n", " ").take(56) + if (letter.content.length > 56) "…" else "",
-                fontSize = 12.sp, color = Color(0xFF6E5A38),
+                fontSize = 12.sp, color = Color(0xFF6E5A4A),
                 maxLines = 2,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
@@ -406,7 +564,7 @@ private fun EnvelopeCard(
                 Spacer(Modifier.weight(1f))
                 Text(
                     "点开读信  →",
-                    fontSize = 11.sp, color = HomecomingColors.Accent
+                    fontSize = 11.sp, color = RoseDeep
                 )
             }
             Spacer(Modifier.height(10.dp))
@@ -435,7 +593,7 @@ private fun LetterReaderDialog(letter: Letter, onClose: () -> Unit) {
         ) {
             Text(
                 letter.date,
-                fontSize = 12.sp, color = Color(0xFF8A734A),
+                fontSize = 12.sp, color = RoseDeep,
                 fontFamily = FontFamily.Serif, letterSpacing = 2.sp
             )
             if (letter.title.isNotBlank()) {
@@ -460,7 +618,7 @@ private fun LetterReaderDialog(letter: Letter, onClose: () -> Unit) {
                     .fillMaxWidth()
                     .padding(top = 12.dp, bottom = 16.dp)
                     .height(1.dp)
-                    .background(Color(0x338A734A))
+                    .background(Color(0x33A85A72))
             )
             Text(
                 letter.content,
@@ -479,7 +637,7 @@ private fun LetterReaderDialog(letter: Letter, onClose: () -> Unit) {
             Spacer(Modifier.height(40.dp))
             Text(
                 "点任意处合上信纸",
-                fontSize = 10.sp, color = Color(0xFF9A8A6E),
+                fontSize = 10.sp, color = Color(0xFFB99AA6),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 30.dp)
             )
         }
