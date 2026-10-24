@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -30,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,8 +43,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -66,10 +67,11 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 /**
- * 日记手账·层次版（Yuri：参考的是「翻动」，内容做成自己的——要层次感）。
- * - 一月一页：页上是【层叠的信纸条】——每封信一张小纸条，错位叠放、胶带贴口、压着排
- * - 上下都有纸层：上面是翻过去的页（3 层卡边），下面压着没翻到的页（2 层露边）
- * - 翻页：卡片绕顶边翻走（rotationX + 渐隐），露出下一页；「上一封 →」在当月信里轮换最上面那张
+ * 日记手账（Yuri 反馈迭代）：
+ * - 一月一页，页上 4 张层叠信纸条（每张都能点着读），铺满整页
+ * - 页底「全部日期」胶囊条：当月每一天一颗圆签，点哪天读哪封——所有信都看得到
+ * - 顶部翻页堆圈进预留区（不再顶到标题）；底部露边塞到卡片底下（无缝隙，层层叠叠）
+ * - 翻页：上滑翻走 / 下滑倒翻
  */
 @Composable
 fun DiaryBoxScreen(onBack: () -> Unit = {}) {
@@ -107,10 +109,10 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
             )
             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                 Text("日记手账", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
-                Text("一月一页 · 层层叠叠的信 · 往上翻", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                Text("一月一页 · 点信纸或日期读那天的信", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(6.dp))
 
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (loading.value) {
@@ -177,7 +179,6 @@ private fun FlipCalendar(
     val page = remember { mutableStateOf(0) }
     val flip = remember { Animatable(0f) }
     val animating = remember { mutableStateOf(false) }
-    val slipBase = remember(page.value) { mutableStateOf(0) }
     var dragAcc by remember { mutableStateOf(0f) }
 
     fun goNext() {
@@ -201,17 +202,21 @@ private fun FlipCalendar(
         }
     }
 
+    val topReserve = 30.dp
+    val bottomReserve = 22.dp
+    val cardTop = 24.dp // 卡顶塞进翻页堆下面 6dp，有被压住的感觉
+
     Column(modifier = modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth().height(cardHeight + 26.dp)) {
-            // ── 上面：已翻过去的页（3 层纸背，层层错位） ──
+        Box(modifier = Modifier.fillMaxWidth().height(cardHeight + topReserve + bottomReserve)) {
+            // ── 上面：已翻过去的页（3 层卡边，圈在预留区里，不顶标题） ──
             val past = minOf(3, page.value)
             repeat(past) { k ->
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset(y = (-(12 * (k + 1))).dp)
-                        .fillMaxWidth(0.95f - k * 0.02f)
-                        .height(30.dp)
+                        .offset(y = (k * 7).dp)
+                        .fillMaxWidth(0.91f - k * 0.02f)
+                        .height(22.dp)
                         .zIndex(3f)
                         .shadow(3.dp, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
                         .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
@@ -224,7 +229,7 @@ private fun FlipCalendar(
                         )
                 )
             }
-            // ── 下面：没翻到的页（2 层露边，透出下一月的月名） ──
+            // ── 下面：没翻到的页（塞到卡片底下，无缝隙；透出下一月月名） ──
             val future = minOf(2, monthKeys.size - 1 - page.value)
             repeat(future) { k ->
                 val nextKey = monthKeys.getOrNull(page.value + 1 + k)
@@ -232,9 +237,9 @@ private fun FlipCalendar(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = (17 * (k + 1)).dp)
-                        .fillMaxWidth(0.93f - k * 0.025f)
-                        .height(if (k == 0) 40.dp else 26.dp)
+                        .offset(y = (k * 8).dp)
+                        .fillMaxWidth(0.91f - k * 0.02f)
+                        .height(30.dp)
                         .zIndex(0f)
                         .shadow(3.dp, RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
                         .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
@@ -250,14 +255,14 @@ private fun FlipCalendar(
                         ) {
                             Text(
                                 MONTH_NAMES[nextMonthIdx],
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 color = MONTH_COLORS[nextMonthIdx % 12].copy(alpha = 0.45f),
                                 fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic
                             )
                             Spacer(Modifier.weight(1f))
                             Box(
                                 modifier = Modifier
-                                    .size(width = 40.dp, height = 11.dp)
+                                    .size(width = 38.dp, height = 10.dp)
                                     .graphicsLayer { rotationZ = -4f }
                                     .background(TAPE_COLORS[nextMonthIdx % TAPE_COLORS.size])
                             )
@@ -265,12 +270,13 @@ private fun FlipCalendar(
                     }
                 }
             }
-            // ── 下一页（整页压在当前页正下方，翻走时露出） ──
+            // ── 下一页整页（垫在当前页下，翻走时露出） ──
             val nextIdx = page.value + 1
             if (nextIdx < monthKeys.size) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
+                        .offset(y = cardTop + 6.dp)
                         .fillMaxWidth(0.95f)
                         .height(cardHeight - 8.dp)
                         .zIndex(0f)
@@ -296,10 +302,10 @@ private fun FlipCalendar(
             MonthPage(
                 letters = months[monthKeys[page.value]].orEmpty(),
                 monthKey = monthKeys[page.value],
-                slipBase = slipBase,
                 onLetterTap = onLetterTap,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .offset(y = cardTop)
                     .fillMaxWidth(0.95f)
                     .height(cardHeight)
                     .zIndex(1f)
@@ -327,7 +333,7 @@ private fun FlipCalendar(
             )
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         // ── 月份导航 ──
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             val canPrev = page.value > 0 && !animating.value
@@ -355,22 +361,17 @@ private fun FlipCalendar(
     }
 }
 
-/** 一个月的手账页：月份纸签 + 层叠信纸条（胶带贴口，压着排）+ 换一封。 */
+/** 一个月的手账页：月份纸签 + 4 张层叠信纸条 + 全部日期胶囊条。 */
 @Composable
 private fun MonthPage(
     letters: List<Letter>,
     monthKey: String,
-    slipBase: MutableState<Int>,
     onLetterTap: (Letter) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val year = monthKey.take(4)
     val monthIdx = (monthKey.takeLast(2).toIntOrNull() ?: 1) - 1
     val monthColor = MONTH_COLORS[monthIdx % MONTH_COLORS.size]
-
-    // 轮换顺序：最上面那张从 slipBase 开始
-    val ordered = if (letters.isEmpty()) emptyList()
-    else List(letters.size) { i -> letters[(slipBase.value + i).mod(letters.size)] }
 
     Box(
         modifier = modifier
@@ -389,7 +390,7 @@ private fun MonthPage(
             }
         }
         Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
-            // ── 月份纸签（贴胶带，斜贴在页顶） ──
+            // ── 月份纸签 ──
             Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
@@ -415,7 +416,6 @@ private fun MonthPage(
                             modifier = Modifier.padding(bottom = 3.dp)
                         )
                     }
-                    // 纸签上的胶带
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -432,11 +432,11 @@ private fun MonthPage(
                     fontFamily = FontFamily.Serif
                 )
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
 
-            // ── 层叠信纸条：大张、逐张下压，铺满整页（点最上面那张读信） ──
+            // ── 层叠信纸条（4 张，逐张下压铺满；每张露出的上沿都能点） ──
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                if (ordered.isEmpty()) {
+                if (letters.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -455,48 +455,64 @@ private fun MonthPage(
                         )
                     }
                 }
-                // 步长按可用高度算：三张条铺满整页而不是堆在顶上
-                val step = ((maxHeight - 212.dp) / 2).coerceIn(104.dp, 152.dp)
-                val visible = minOf(3, ordered.size)
-                for (i in visible - 1 downTo 0) {
-                    val letter = ordered[i]
+                val visible = letters.take(4)
+                // 步长按可用高度算：条与条压排着铺满整页
+                val step = ((maxHeight - 132.dp) / (visible.size - 1).coerceAtLeast(1))
+                    .coerceIn(58.dp, 96.dp)
+                for (i in visible.indices.reversed()) {
+                    val letter = visible[i]
                     LetterSlip(
                         letter = letter,
                         tapeColor = TAPE_COLORS[(monthIdx + i) % TAPE_COLORS.size],
-                        rot = when (i) { 0 -> -1.2f; 1 -> 1.8f; else -> -0.6f },
+                        rot = when (i) { 0 -> -1.2f; 1 -> 1.6f; 2 -> -0.8f; else -> 1.2f },
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset(y = step * i, x = when (i) { 0 -> 0.dp; 1 -> 7.dp; else -> (-7).dp })
-                            .fillMaxWidth(1f - i * 0.045f)
+                            .offset(y = step * i, x = when (i) { 0 -> 0.dp; 1 -> 7.dp; 2 -> (-6).dp; else -> 5.dp })
+                            .fillMaxWidth(1f - i * 0.035f)
                             .zIndex(i.toFloat())
-                            .let { m ->
-                                if (i == 0) m.clickable(
-                                    indication = null,
-                                    interactionSource = MutableInteractionSource()
-                                ) { onLetterTap(letter) } else m
-                            }
+                            .clickable(
+                                indication = null,
+                                interactionSource = MutableInteractionSource()
+                            ) { onLetterTap(letter) }
                     )
                 }
             }
 
             Spacer(Modifier.height(8.dp))
-            // ── 换一封（轮换最上面的信纸） ──
-            if (letters.size > 1) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "最上面是最新的那封",
-                        fontSize = 10.sp, color = Color(0xFF9A9080),
-                        fontFamily = FontFamily.Serif
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "换一封 →",
-                        fontSize = 12.sp, color = HomecomingColors.Accent,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .clickable { slipBase.value = (slipBase.value + 1).mod(letters.size) }
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
+            // ── 全部日期胶囊条：当月每一天一颗圆签，点哪天读哪封 ──
+            if (letters.isNotEmpty()) {
+                Text(
+                    "全部日期 · 点哪天读哪封",
+                    fontSize = 10.sp, color = Color(0xFF9A9080),
+                    fontFamily = FontFamily.Serif,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    letters.sortedBy { it.date }.forEach { letter ->
+                        val day = letter.date.takeLast(2).toIntOrNull() ?: 0
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(monthColor.copy(alpha = 0.14f))
+                                .border(1.2.dp, monthColor.copy(alpha = 0.55f), CircleShape)
+                                .clickable { onLetterTap(letter) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                day.toString(),
+                                fontSize = 11.sp, color = monthColor,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Serif
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -519,7 +535,7 @@ private fun LetterSlip(
             .background(SlipPaper)
             .border(0.7.dp, Color(0x2E8A8070), RoundedCornerShape(8.dp))
     ) {
-        Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 16.dp, bottom = 12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 15.dp, bottom = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "♥ " + letter.date,
@@ -541,12 +557,12 @@ private fun LetterSlip(
                 )
             }
             Text(
-                letter.content.replace("\n", " ").trim().take(150) + if (letter.content.length > 150) "…" else "",
-                fontSize = 14.sp, color = Color(0xFF3A3020),
-                lineHeight = 24.sp,
+                letter.content.replace("\n", " ").trim().take(96) + if (letter.content.length > 96) "…" else "",
+                fontSize = 13.sp, color = Color(0xFF3A3020),
+                lineHeight = 20.sp,
                 fontFamily = FontFamily.Serif,
-                maxLines = 6, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp)
+                maxLines = 4, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 5.dp)
             )
         }
         // 胶带（压在纸条上口）
