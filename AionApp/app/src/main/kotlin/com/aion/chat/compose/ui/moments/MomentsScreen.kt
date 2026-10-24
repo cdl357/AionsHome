@@ -48,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -75,6 +76,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 页面④：朋友圈。微信流式——封面 + Yuri 头像压沿 + 动态列表 + 发布。双向、配图、赞/评。 */
+/** 服务器老数据里混着字面量 "null"，一律当没写。 */
+private fun cloudText(v: String): String =
+    if (v.isBlank() || v.equals("null", ignoreCase = true)) "" else v
+
 @Composable
 fun MomentsScreen() {
     val context = LocalContext.current
@@ -156,13 +161,15 @@ fun MomentsScreen() {
                     if (rm.yuriLiked) add("yuri")
                 }
                 // 旧表 reply_content = 哥哥当时写的回应；id 落负数空间，不和本地表自增 id 撞
-                val seanReply = if (rm.replyContent.isNotBlank()) {
-                    listOf(HomecomingMomentsStore.Comment(Long.MIN_VALUE, "sean", rm.replyContent, rm.createdAtMs))
+                // 字面量 "null" 一律当没写（老后端序列化残留）
+                val replyClean = cloudText(rm.replyContent)
+                val seanReply = if (replyClean.isNotBlank()) {
+                    listOf(HomecomingMomentsStore.Comment(Long.MIN_VALUE, "sean", replyClean, rm.createdAtMs))
                 } else emptyList()
                 val cloudComments = (cloudCommentsByMoment[rm.id] ?: emptyList()).map { c ->
                     HomecomingMomentsStore.Comment(
                         Long.MIN_VALUE + (c.id.hashCode().toLong() and 0x7FFFFFFFL),
-                        c.author, c.content, c.createdAtMs
+                        cloudText(c.author), cloudText(c.content), c.createdAtMs
                     )
                 }
                 merged.add(
@@ -318,7 +325,35 @@ fun MomentsScreen() {
         },
         modifier = Modifier.fillMaxSize()
     ) {
-    // 全局背景透出（不再盖白底——Yuri：背景要全局通用）
+    // 磨砂底：全局背景高斯模糊 + 白纱——背景还在，但文字看得清（Yuri 反馈）
+    val bgBmp = remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(com.aion.chat.compose.data.SettingsBg.stamp) {
+        bgBmp.value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.aion.chat.compose.data.SettingsBg.loadBitmap(context)?.asImageBitmap()
+        }
+    }
+    bgBmp.value?.let { bmp ->
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().blur(18.dp)
+        )
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.46f),
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.50f)
+                    )
+                )
+            )
+    )
+    // 页面内容浮在磨砂底上
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -690,7 +725,9 @@ fun MomentCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 6.dp)
-                            .background(Color(0xFFF7F7F7))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.55f))
+                            .border(0.8.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
                             .padding(8.dp)
                     ) {
                         if (moment.likes.isNotEmpty()) {
