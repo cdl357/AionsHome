@@ -121,6 +121,29 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
         photos.clear()
         photos.addAll(HomecomingAlbumStore.list(context))
         version.value++
+        // ── 云端相册导入（album_photos）：没导过的行 → 解码 → 存本地相册；幂等 ──
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val imported = boardPrefs.getStringSet("cloud_imported", emptySet()).orEmpty().toMutableSet()
+                val res = com.aion.chat.compose.data.SupabaseMomentsStore.fetchAlbumPhotos()
+                val rows = res.data.orEmpty()
+                var added = 0
+                rows.forEach { cp ->
+                    if (cp.id in imported) return@forEach
+                    val bytes = decodeCloudImage(cp.image) ?: return@forEach
+                    val date = cp.date.take(10).ifBlank { java.time.LocalDate.now().toString() }
+                    HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
+                    imported.add(cp.id)
+                    added++
+                }
+                if (added > 0) {
+                    boardPrefs.edit().putStringSet("cloud_imported", imported).apply()
+                }
+            }
+        }
+        photos.clear()
+        photos.addAll(HomecomingAlbumStore.list(context))
+        version.value++
         // 载入已保存的布置
         runCatching {
             val s = boardPrefs.getString("pos", null) ?: return@runCatching
@@ -916,6 +939,18 @@ private fun TinCard(
         }
     }
 }
+
+/** 云端图片字段 → 字节：支持 dataURL / 纯 base64 / http 链接；解不出返回 null。 */
+private fun decodeCloudImage(v: String): ByteArray? = runCatching {
+    when {
+        v.startsWith("data:") -> android.util.Base64.decode(
+            v.substringAfter("base64,"), android.util.Base64.DEFAULT
+        )
+        v.startsWith("http") -> java.net.URL(v).readBytes()
+        v.length > 100 && v.none { it.isWhitespace() } -> android.util.Base64.decode(v, android.util.Base64.DEFAULT)
+        else -> null
+    }
+}.getOrNull()
 
 /** 缩略图/大图通用降采样解码：长边压到 maxEdge 附近，防 OOM。 */
 private fun decodeSampled(f: File, maxEdge: Int): Bitmap? {

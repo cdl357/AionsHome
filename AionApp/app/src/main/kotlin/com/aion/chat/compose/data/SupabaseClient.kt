@@ -283,6 +283,45 @@ object SupabaseMomentsStore {
         return CloudResult(out, null)
     }
 
+    /** 读相册表（album_photos）：老表列名没交接，select=* + 多候选列名防御式解析。 */
+    suspend fun fetchAlbumPhotos(): CloudResult<List<CloudAlbumPhoto>> {
+        val reply = supabaseRequest(
+            "rest/v1/album_photos?select=*&order=created_at.asc&limit=300",
+            "GET",
+            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
+        )
+        if (reply.error != null) return CloudResult(null, reply.error)
+        val arr = reply.payload as? JSONArray
+            ?: return CloudResult(null, CloudErrorKind.PARSE)
+        val out = mutableListOf<CloudAlbumPhoto>()
+        for (i in 0 until arr.length()) {
+            try {
+                val o = arr.getJSONObject(i)
+                val id = o.optString("id", "row_" + i)
+                val image = listOf("image", "image_data", "base64", "data", "image_url", "url", "photo", "content")
+                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() } } ?: ""
+                val note = listOf("note", "caption", "memo", "title", "desc", "description")
+                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() } } ?: ""
+                val date = listOf("created_at", "date", "taken_on", "taken_at", "shot_at")
+                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() } } ?: ""
+                if (image.isNotBlank()) {
+                    out.add(CloudAlbumPhoto(id, image, note, date))
+                }
+            } catch (e: Exception) {
+                Log.w(SupabaseClient.TAG, "[PARSE] album_photos 第 $i 行字段解析失败: ${e.message}")
+            }
+        }
+        return CloudResult(out, null)
+    }
+
+    /** 云端相册行（image 可能是 base64 / dataURL / http 链接，导入时统一解码）。 */
+    data class CloudAlbumPhoto(
+        val id: String,
+        val image: String,
+        val note: String,
+        val date: String
+    )
+
     /**
      * 读朋友圈评论（独立表 moment_comments，不假设 moments 自带）。
      * 列结构没有交接文档，防御式解析：author 兼容 user_id 列、content 兼容 text 列。
