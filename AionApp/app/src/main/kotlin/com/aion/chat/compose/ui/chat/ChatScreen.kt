@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontWeight
@@ -124,6 +125,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
     }
     val skin = remember { mutableStateOf(prefs.getInt("bubble_skin", 0)) }
+    // 气泡不透明度（0.3~1.0，默认 1.0=现状；皮肤弹窗里调，所有气泡统一乘算）
+    val bubbleAlpha = remember { mutableStateOf(prefs.getFloat("bubble_alpha", 1f)) }
     val showSkinDialog = remember { mutableStateOf(false) }
 
     // ── 语音朗读（语音通话第一块）：开关 + 手机自带 TTS 读 Sean 的回复 ──
@@ -745,9 +748,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                                     com.aion.chat.compose.data.HomecomingChatImageStore.pathFor(context, msg.id)
                                 } else null
                             }
-                            UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value)
+                            UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value, alpha = bubbleAlpha.value)
                         } else {
-                            AssistantBubbles(text = msg.text, skin = skin.value)
+                            AssistantBubbles(text = msg.text, skin = skin.value, alpha = bubbleAlpha.value)
                         }
                     }
                     // AI 点歌的播放卡（真实可播，点卡片用全局唯一播放器）
@@ -817,7 +820,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     }
                     pendingSegments.forEachIndexed { index, seg ->
                         item(key = "pending_$index") {
-                            AssistantBubbleSingle(text = seg, skin = skin.value)
+                            AssistantBubbleSingle(text = seg, skin = skin.value, alpha = bubbleAlpha.value)
                         }
                     }
                 }
@@ -1177,6 +1180,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                         }
                     }
                 }
+                Text("气泡不透明度", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Slider(
+                        value = bubbleAlpha.value,
+                        onValueChange = { bubbleAlpha.value = it },
+                        onValueChangeFinished = {
+                            prefs.edit().putFloat("bubble_alpha", bubbleAlpha.value).apply()
+                        },
+                        valueRange = 0.3f..1f,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        (bubbleAlpha.value * 100).toInt().toString() + "%",
+                        fontSize = 12.sp, color = HomecomingColors.Ink,
+                        modifier = Modifier.width(42.dp)
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = { showSkinDialog.value = false }) {
@@ -1222,15 +1242,15 @@ private val BUBBLE_SKINS = listOf(
 
 private data class UserStyle(val fill: Color, val textColor: Color, val shape: RoundedCornerShape)
 
-private fun userStyle(skin: Int): UserStyle = when (skin) {
-    1 -> UserStyle(Color.White.copy(alpha = 0.25f), HomecomingColors.Ink, RoundedCornerShape(22.dp))
-    2 -> UserStyle(Color(0xFF2C4A5A), Color.White, RoundedCornerShape(16.dp))
-    else -> UserStyle(HomecomingColors.IceBlueDeep, Color(0xFF17323A), RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
+private fun userStyle(skin: Int, alpha: Float): UserStyle = when (skin) {
+    1 -> UserStyle(Color.White.copy(alpha = (0.25f * alpha).coerceIn(0.12f, 1f)), HomecomingColors.Ink, RoundedCornerShape(22.dp))
+    2 -> UserStyle(Color(0xFF2C4A5A).copy(alpha = alpha), Color.White, RoundedCornerShape(16.dp))
+    else -> UserStyle(HomecomingColors.IceBlueDeep.copy(alpha = alpha), Color(0xFF17323A), RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
 }
 
 /** 用户气泡组（一条消息渲染为多条小气泡）。 */
 @Composable
-fun UserBubbles(text: String, imagePath: String?, skin: Int) {
+fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f) {
     val segments = splitBubbles(text)
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1274,7 +1294,7 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int) {
             }
         }
         segments.forEach { seg ->
-            val style = userStyle(skin)
+            val style = userStyle(skin, alpha)
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                 CopyOnLongPress(text = seg) {
                     Box(
@@ -1283,7 +1303,7 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int) {
                             .clip(style.shape)
                             .background(style.fill)
                             .let { m ->
-                                if (skin == 1) m.border(1.dp, Color.White.copy(alpha = 0.6f), style.shape) else m
+                                if (skin == 1) m.border(1.dp, Color.White.copy(alpha = (0.6f * alpha).coerceIn(0.15f, 1f)), style.shape) else m
                             }
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
@@ -1298,10 +1318,10 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int) {
 
 /** Sean 气泡组（一条消息渲染为多条小气泡）。 */
 @Composable
-fun AssistantBubbles(text: String, skin: Int) {
+fun AssistantBubbles(text: String, skin: Int, alpha: Float = 1f) {
     val segments = splitBubbles(text)
     Column(modifier = Modifier.fillMaxWidth()) {
-        segments.forEach { seg -> AssistantBubbleSingle(text = seg, skin = skin) }
+        segments.forEach { seg -> AssistantBubbleSingle(text = seg, skin = skin, alpha = alpha) }
     }
 }
 
@@ -1326,15 +1346,15 @@ private fun CopyOnLongPress(text: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun AssistantBubbleSingle(text: String, skin: Int) {
+private fun AssistantBubbleSingle(text: String, skin: Int, alpha: Float = 1f) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         CopyOnLongPress(text = text) {
             Box(
                 modifier = Modifier
                     .widthIn(max = 300.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = 0.92f))
-                    .border(1.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(18.dp))
+                    .background(Color.White.copy(alpha = (0.92f * alpha).coerceIn(0.15f, 1f)))
+                    .border(1.dp, Color.White.copy(alpha = (0.85f * alpha).coerceIn(0.2f, 1f)), RoundedCornerShape(18.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(text, fontSize = 15.sp, color = HomecomingColors.Ink)
