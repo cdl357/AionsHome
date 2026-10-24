@@ -514,21 +514,6 @@ private fun FeltBoard(
                 topLeft = Offset(0f, bandH - 4.dp.toPx()),
                 size = androidx.compose.ui.geometry.Size(size.width, 4.dp.toPx() + 6.dp.toPx())
             )
-            // 挂带上的大钉（4 颗疏排，一眼可见）
-            repeat(4) { i ->
-                val cx = size.width * (0.14f + 0.24f * i)
-                val cy = bandH / 2f
-                drawCircle(Color(0xFF8F8272), radius = 6.2.dp.toPx(), center = Offset(cx, cy))
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFFF7F0E0), Color(0xFFB7A88E)),
-                        center = Offset(cx - 1.2.dp.toPx(), cy - 1.4.dp.toPx()),
-                        radius = 5.2.dp.toPx()
-                    ),
-                    radius = 5.dp.toPx(), center = Offset(cx, cy)
-                )
-                drawCircle(Color(0xFFFFFFFF), radius = 1.3.dp.toPx(), center = Offset(cx - 1.5.dp.toPx(), cy - 1.8.dp.toPx()))
-            }
         }
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
