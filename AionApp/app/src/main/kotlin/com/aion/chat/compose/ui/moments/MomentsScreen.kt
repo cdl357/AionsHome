@@ -318,10 +318,10 @@ fun MomentsScreen() {
         },
         modifier = Modifier.fillMaxSize()
     ) {
+    // 全局背景透出（不再盖白底——Yuri：背景要全局通用）
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
             .verticalScroll(rememberScrollState())
     ) {
         // ── 封面头图 ──

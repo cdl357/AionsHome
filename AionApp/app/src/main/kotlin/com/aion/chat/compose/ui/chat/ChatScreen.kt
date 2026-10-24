@@ -613,7 +613,6 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(HomecomingColors.IceBlueLight)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // 背景：聊天专属图，无则跟随全局背景图
@@ -626,15 +625,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                     modifier = Modifier.fillMaxSize().blur(6.dp)
                 )
                 Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.12f)))
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(listOf(HomecomingColors.IceBlueLight, Color.White))
-                        )
-                )
             }
+            // 无专属图时不画任何底：透出 HomecomingApp 的全局背景层
 
             Column(Modifier.fillMaxSize()) {
                 // ── 顶栏：头像+名字+连接状态 | 气泡皮肤 | 语音通话 ──
