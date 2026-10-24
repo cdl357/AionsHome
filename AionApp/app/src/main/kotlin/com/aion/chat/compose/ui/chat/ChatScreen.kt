@@ -62,6 +62,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
@@ -125,9 +139,31 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
     }
     val skin = remember { mutableStateOf(prefs.getInt("bubble_skin", 0)) }
-    // 气泡不透明度（0.3~1.0，默认 1.0=现状；皮肤弹窗里调，所有气泡统一乘算）
+    // 气泡不透明度（0.3~1.0，默认 1.0=现状；聊天设置抽屉里调，所有气泡统一乘算）
     val bubbleAlpha = remember { mutableStateOf(prefs.getFloat("bubble_alpha", 1f)) }
     val showSkinDialog = remember { mutableStateOf(false) }
+    // 聊天设置抽屉（左缘右滑 / 左上角滑杆图标呼出）
+    val showChatDrawer = remember { mutableStateOf(false) }
+    // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
+    val chatBgVersion = remember { mutableStateOf(0L) }
+    val chatDrawerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            val ok = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    SettingsBg.chatFile(context).outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } != null
+            }.getOrDefault(false)
+            if (ok) {
+                SettingsBg.bump()
+                chatBgVersion.value = System.currentTimeMillis()
+                Toast.makeText(context, "聊天背景已换好", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "没读出这张图，换一张试试", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // ── 语音朗读（语音通话第一块）：开关 + 手机自带 TTS 读 Sean 的回复 ──
     val voiceOn = remember { mutableStateOf(prefs.getBoolean("voice_read", false)) }
@@ -165,7 +201,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
 
     // ── 背景：聊天专属图，无则跟随全局背景图 ──
     val bgStamp = SettingsBg.stamp
-    val bgBitmap = remember(bgStamp) { SettingsBg.loadChatBitmap(context)?.asImageBitmap() }
+    val bgBitmap = remember(bgStamp, chatBgVersion.value) { SettingsBg.loadChatBitmap(context)?.asImageBitmap() }
 
     // ── 消息状态 ──
     val messages = remember { mutableStateListOf<HomecomingChatRepository.Message>() }
@@ -616,6 +652,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // 左缘右滑：从左边缘向右拖出聊天设置抽屉（只观察不消费，不影响列表滚动）
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    val startX = down.position.x
+                    var opened = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.changes.all { !it.pressed }) break
+                        val drag = event.changes.first().position.x - startX
+                        if (!opened && startX < 60f && drag > 110f) {
+                            showChatDrawer.value = true
+                            opened = true
+                        }
+                    }
+                }
+            }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // 背景：聊天专属图，无则跟随全局背景图
@@ -639,6 +692,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = "聊天设置",
+                        tint = HomecomingColors.Ink,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable { showChatDrawer.value = true }
+                    )
+                    Spacer(Modifier.width(12.dp))
                     AvatarPhoto(who = "sean", initial = "S", size = 42.dp)
                     Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                         Text("Sean", fontSize = 16.sp, color = HomecomingColors.Ink)
@@ -1149,6 +1211,92 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
         )
     }
 
+    // ── 聊天设置抽屉：气泡不透明度 + 聊天背景（从主设置搬来） ──
+    AnimatedVisibility(
+        visible = showChatDrawer.value,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.30f))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { showChatDrawer.value = false }
+        )
+    }
+    AnimatedVisibility(
+        visible = showChatDrawer.value,
+        enter = slideInHorizontally(initialOffsetX = { -it }),
+        exit = slideOutHorizontally(targetOffsetX = { -it }),
+        modifier = Modifier.fillMaxHeight()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(300.dp)
+                .shadow(10.dp)
+                .background(Color.White.copy(alpha = 0.95f))
+                .padding(22.dp)
+        ) {
+            Text("聊天设置", fontSize = 18.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
+            Text("只影响聊天页这一页", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+            Spacer(Modifier.height(18.dp))
+
+            Text("气泡不透明度", fontSize = 14.sp, color = HomecomingColors.Ink)
+            Text("调低透出背景，调高更清晰", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Slider(
+                    value = bubbleAlpha.value,
+                    onValueChange = { bubbleAlpha.value = it },
+                    onValueChangeFinished = {
+                        prefs.edit().putFloat("bubble_alpha", bubbleAlpha.value).apply()
+                    },
+                    valueRange = 0.3f..1f,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    (bubbleAlpha.value * 100).toInt().toString() + "%",
+                    fontSize = 12.sp, color = HomecomingColors.Ink,
+                    modifier = Modifier.width(42.dp)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+
+            Text("聊天背景图", fontSize = 14.sp, color = HomecomingColors.Ink)
+            Text("只给聊天页换一张；不选则跟随全局背景", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        chatDrawerPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("选一张照片") }
+                OutlinedButton(
+                    onClick = {
+                        val f = SettingsBg.chatFile(context)
+                        if (f.exists() && f.delete()) {
+                            SettingsBg.bump()
+                            chatBgVersion.value = System.currentTimeMillis()
+                            Toast.makeText(context, "聊天页已跟随全局背景", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "聊天页现在用的就是全局背景", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("跟随全局") }
+            }
+            Spacer(Modifier.weight(1f))
+            Text("提示：从屏幕左边缘向右滑也能打开这里", fontSize = 10.sp, color = HomecomingColors.InkSoft)
+        }
+    }
+
     // ── 气泡皮肤选择 ──
     if (showSkinDialog.value) {
         AlertDialog(
@@ -1179,23 +1327,6 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                             )
                         }
                     }
-                }
-                Text("气泡不透明度", fontSize = 12.sp, color = HomecomingColors.InkSoft)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Slider(
-                        value = bubbleAlpha.value,
-                        onValueChange = { bubbleAlpha.value = it },
-                        onValueChangeFinished = {
-                            prefs.edit().putFloat("bubble_alpha", bubbleAlpha.value).apply()
-                        },
-                        valueRange = 0.3f..1f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        (bubbleAlpha.value * 100).toInt().toString() + "%",
-                        fontSize = 12.sp, color = HomecomingColors.Ink,
-                        modifier = Modifier.width(42.dp)
-                    )
                 }
             },
             confirmButton = {

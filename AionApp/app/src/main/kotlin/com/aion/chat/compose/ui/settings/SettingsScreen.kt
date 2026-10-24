@@ -125,24 +125,6 @@ fun SettingsScreen() {
         }
     }
 
-    val chatPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) {
-            val ok = runCatching {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    SettingsBg.chatFile(context).outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                } != null
-            }.getOrDefault(false)
-            if (ok) {
-                SettingsBg.bump()
-                Toast.makeText(context, "聊天背景已换好", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "没读出这张图，换一张试试", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             val ok = runCatching {
@@ -468,38 +450,6 @@ fun SettingsScreen() {
                     }
                 }
             )
-        }
-
-        FrostCard {
-            Text("聊天背景图（可选覆盖）", fontSize = 15.sp, color = HomecomingColors.Ink)
-            Text(
-                "只给聊天页换一张；不选则跟随上面的全局背景",
-                fontSize = 12.sp,
-                color = HomecomingColors.InkSoft
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        chatPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("选一张照片") }
-                OutlinedButton(
-                    onClick = {
-                        val f = SettingsBg.chatFile(context)
-                        if (f.exists() && f.delete()) {
-                            SettingsBg.bump()
-                            Toast.makeText(context, "聊天页已跟随全局背景", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "聊天页现在用的就是全局背景", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("跟随全局") }
-            }
         }
 
         // ── 影子推送：Sean 主动发朋友圈（每天最多一条，云线路就绪才生效） ──
