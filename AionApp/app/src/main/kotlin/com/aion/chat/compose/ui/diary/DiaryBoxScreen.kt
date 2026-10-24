@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -223,20 +224,46 @@ private fun FlipCalendar(
                         )
                 )
             }
-            // ── 下面：没翻到的页（2 层露边，垫在卡片底下） ──
+            // ── 下面：没翻到的页（2 层露边，透出下一月的月名） ──
             val future = minOf(2, monthKeys.size - 1 - page.value)
             repeat(future) { k ->
+                val nextKey = monthKeys.getOrNull(page.value + 1 + k)
+                val nextMonthIdx = (nextKey?.takeLast(2)?.toIntOrNull() ?: 1) - 1
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = (14 * (k + 1)).dp)
-                        .fillMaxWidth(0.93f - k * 0.02f)
-                        .height(26.dp)
+                        .offset(y = (17 * (k + 1)).dp)
+                        .fillMaxWidth(0.93f - k * 0.025f)
+                        .height(if (k == 0) 40.dp else 26.dp)
                         .zIndex(0f)
                         .shadow(3.dp, RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
                         .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
-                        .background(if (k == 0) PagePaperMid else PagePaperDark.copy(alpha = 0.85f))
-                )
+                        .background(
+                            if (k == 0) Brush.verticalGradient(listOf(PagePaper, PagePaperMid))
+                            else SolidColor(PagePaperDark.copy(alpha = 0.9f))
+                        )
+                ) {
+                    if (k == 0 && nextKey != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        ) {
+                            Text(
+                                MONTH_NAMES[nextMonthIdx],
+                                fontSize = 15.sp,
+                                color = MONTH_COLORS[nextMonthIdx % 12].copy(alpha = 0.45f),
+                                fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 40.dp, height = 11.dp)
+                                    .graphicsLayer { rotationZ = -4f }
+                                    .background(TAPE_COLORS[nextMonthIdx % TAPE_COLORS.size])
+                            )
+                        }
+                    }
+                }
             }
             // ── 下一页（整页压在当前页正下方，翻走时露出） ──
             val nextIdx = page.value + 1
@@ -407,8 +434,8 @@ private fun MonthPage(
             }
             Spacer(Modifier.height(14.dp))
 
-            // ── 层叠信纸条（最多 3 张，错位压排；点最上面那张读信） ──
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            // ── 层叠信纸条：大张、逐张下压，铺满整页（点最上面那张读信） ──
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 if (ordered.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -428,18 +455,19 @@ private fun MonthPage(
                         )
                     }
                 }
-                // 从最底往最上画：下面两张只露纸头
+                // 步长按可用高度算：三张条铺满整页而不是堆在顶上
+                val step = ((maxHeight - 212.dp) / 2).coerceIn(104.dp, 152.dp)
                 val visible = minOf(3, ordered.size)
                 for (i in visible - 1 downTo 0) {
                     val letter = ordered[i]
                     LetterSlip(
                         letter = letter,
                         tapeColor = TAPE_COLORS[(monthIdx + i) % TAPE_COLORS.size],
-                        rot = when (i) { 0 -> -1.6f; 1 -> 2.2f; else -> -0.8f },
+                        rot = when (i) { 0 -> -1.2f; 1 -> 1.8f; else -> -0.6f },
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = (i * 52).dp)
-                            .fillMaxWidth(1f - i * 0.055f)
+                            .offset(y = step * i, x = when (i) { 0 -> 0.dp; 1 -> 7.dp; else -> (-7).dp })
+                            .fillMaxWidth(1f - i * 0.045f)
                             .zIndex(i.toFloat())
                             .let { m ->
                                 if (i == 0) m.clickable(
@@ -513,11 +541,11 @@ private fun LetterSlip(
                 )
             }
             Text(
-                letter.content.replace("\n", " ").trim().take(72) + if (letter.content.length > 72) "…" else "",
-                fontSize = 13.sp, color = Color(0xFF3A3020),
-                lineHeight = 21.sp,
+                letter.content.replace("\n", " ").trim().take(150) + if (letter.content.length > 150) "…" else "",
+                fontSize = 14.sp, color = Color(0xFF3A3020),
+                lineHeight = 24.sp,
                 fontFamily = FontFamily.Serif,
-                maxLines = 3, overflow = TextOverflow.Ellipsis,
+                maxLines = 6, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 6.dp)
             )
         }

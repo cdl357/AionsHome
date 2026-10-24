@@ -508,12 +508,12 @@ private fun FeltBoard(
                 topLeft = Offset(0f, 0f),
                 size = androidx.compose.ui.geometry.Size(size.width, 12.dp.toPx())
             )
-            // 一排挂钉
-            repeat(9) { i ->
-                val cx = size.width * (0.07f + 0.107f * i)
-                val cy = 6.dp.toPx()
-                drawCircle(Color(0xFF9A8E7E), radius = 3.4.dp.toPx(), center = Offset(cx, cy))
-                drawCircle(Color(0xFFF0E8D8), radius = 1.3.dp.toPx(), center = Offset(cx - 0.8.dp.toPx(), cy - 0.8.dp.toPx()))
+            // 一排挂钉（疏排大钉，一眼可见）
+            repeat(6) { i ->
+                val cx = size.width * (0.09f + 0.164f * i)
+                val cy = 6.5.dp.toPx()
+                drawCircle(Color(0xFF9A8E7E), radius = 4.4.dp.toPx(), center = Offset(cx, cy))
+                drawCircle(Color(0xFFF0E8D8), radius = 1.7.dp.toPx(), center = Offset(cx - 1.1.dp.toPx(), cy - 1.1.dp.toPx()))
             }
         }
 
@@ -592,7 +592,7 @@ private fun FeltBoard(
             Movable(
                 key = "plush_white",
                 boardW = W, boardH = H,
-                defaultXf = 0.84f, defaultYf = 0.004f,
+                defaultXf = 0.895f, defaultYf = 0.004f,
                 positions = positions,
                 draggingKey = draggingKey,
                 baseZ = 3f,

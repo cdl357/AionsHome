@@ -47,7 +47,6 @@ private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.Image
 @Composable
 fun MoreScreen(
     onOpenSettings: () -> Unit = {},
-    onOpenAlbum: () -> Unit = {},
     onOpenDiaryBox: () -> Unit = {},
     onOpenMemories: () -> Unit = {},
     onOpenReading: () -> Unit = {},
@@ -58,7 +57,6 @@ fun MoreScreen(
 ) {
     val context = LocalContext.current
     val entries = listOf(
-        MoreEntry(Icons.Filled.Favorite, "相册", "照片墙 + Sean 存这张时的心里话"),
         MoreEntry(Icons.Filled.Drafts, "日记信盒", "翻页手账 · 一月一页回忆"),
         MoreEntry(Icons.Filled.MailOutline, "留言板", "双向便利贴 · 点开可对话"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
@@ -80,7 +78,6 @@ fun MoreScreen(
         entries.forEach { entry ->
             FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
                 when (entry.name) {
-                    "相册" -> onOpenAlbum()
                     "日记信盒" -> onOpenDiaryBox()
                     "记忆库" -> onOpenMemories()
                     "陪伴阅读" -> onOpenReading()

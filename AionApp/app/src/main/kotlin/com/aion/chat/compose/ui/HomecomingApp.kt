@@ -189,7 +189,6 @@ fun HomecomingApp() {
                     Box(Modifier.fillMaxSize()) {
                         MoreScreen(
                             onOpenSettings = { navController.navigate("settings") },
-                            onOpenAlbum = { navController.navigate("album") },
                             onOpenDiaryBox = { navController.navigate("diarybox") },
                             onOpenMemories = { navController.navigate("memories") },
                             onOpenReading = { navController.navigate("reading") },
