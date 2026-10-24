@@ -9,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,10 +65,10 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 /**
- * 日记手账（Yuri 参考视频：翻页月历手账）。
- * - 一个月一页卡：英文月份名（彩色手写感）+ 回忆清单（＊条目，点开读信）+ 小日历（有日记的日期圈出来）+ 当月最新一封信
- * - 翻页：卡片绕顶边向上翻走（rotationX + 淡出），露出下一页；下滑/「上一个月」翻回来
- * - 数据：云端哥哥日记 + 本地日记合并，同日去重（云端优先），按月分组
+ * 日记手账·层次版（Yuri：参考的是「翻动」，内容做成自己的——要层次感）。
+ * - 一月一页：页上是【层叠的信纸条】——每封信一张小纸条，错位叠放、胶带贴口、压着排
+ * - 上下都有纸层：上面是翻过去的页（3 层卡边），下面压着没翻到的页（2 层露边）
+ * - 翻页：卡片绕顶边翻走（rotationX + 渐隐），露出下一页；「上一封 →」在当月信里轮换最上面那张
  */
 @Composable
 fun DiaryBoxScreen(onBack: () -> Unit = {}) {
@@ -107,10 +106,10 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
             )
             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                 Text("日记手账", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
-                Text("一月一页回忆 · 往上翻看下一个月", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                Text("一月一页 · 层层叠叠的信 · 往上翻", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(14.dp))
 
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (loading.value) {
@@ -128,7 +127,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-                val cardH = (maxHeight - 46.dp).coerceIn(470.dp, 660.dp)
+                val cardH = (maxHeight - 58.dp).coerceIn(470.dp, 660.dp)
                 FlipCalendar(
                     monthKeys = monthKeys,
                     months = months,
@@ -146,7 +145,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     }
 }
 
-// ── 翻页月历 ──
+// ── 翻页手账 ──
 
 private val MONTH_NAMES = listOf(
     "January", "February", "March", "April", "May", "June",
@@ -157,9 +156,13 @@ private val MONTH_COLORS = listOf(
     Color(0xFF7FA8D9), Color(0xFFB98AC9), Color(0xFF6FA8A8), Color(0xFFC98A5A),
     Color(0xFF8A9BD9), Color(0xFFC97B8A), Color(0xFF8AA87F), Color(0xFFA87FB0)
 )
-private val CardPaper = Color(0xFFF7F3E8)
-private val CardPaperDark = Color(0xFFEDE7D6)
-private val InkSoft2 = Color(0xFF8A8070)
+private val PagePaper = Color(0xFFF7F3E8)
+private val PagePaperMid = Color(0xFFEFE9D8)
+private val PagePaperDark = Color(0xFFE4DCC6)
+private val SlipPaper = Color(0xFFFDFBF3)
+private val TAPE_COLORS = listOf(
+    Color(0x80E8C9D8), Color(0x80BFD8E8), Color(0x80D8E8C0), Color(0x80E8E0B8)
+)
 
 @Composable
 private fun FlipCalendar(
@@ -173,6 +176,7 @@ private fun FlipCalendar(
     val page = remember { mutableStateOf(0) }
     val flip = remember { Animatable(0f) }
     val animating = remember { mutableStateOf(false) }
+    val slipBase = remember(page.value) { mutableStateOf(0) }
     var dragAcc by remember { mutableStateOf(0f) }
 
     fun goNext() {
@@ -197,50 +201,79 @@ private fun FlipCalendar(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth().height(cardHeight)) {
-            // 已翻过去的页：顶部露出的卡边
-            val peek = minOf(2, page.value)
-            repeat(peek) { k ->
+        Box(modifier = Modifier.fillMaxWidth().height(cardHeight + 26.dp)) {
+            // ── 上面：已翻过去的页（3 层纸背，层层错位） ──
+            val past = minOf(3, page.value)
+            repeat(past) { k ->
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset(y = (-(10 * (k + 1))).dp)
-                        .fillMaxWidth(0.94f - k * 0.015f)
-                        .height(22.dp)
-                        .zIndex(2f)
+                        .offset(y = (-(12 * (k + 1))).dp)
+                        .fillMaxWidth(0.95f - k * 0.02f)
+                        .height(30.dp)
+                        .zIndex(3f)
+                        .shadow(3.dp, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
                         .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                        .background(if (k == 0) CardPaperDark else CardPaperDark.copy(alpha = 0.8f))
+                        .background(
+                            when (k) {
+                                0 -> PagePaperMid
+                                1 -> PagePaperDark
+                                else -> PagePaperDark.copy(alpha = 0.85f)
+                            }
+                        )
                 )
             }
-            // 下一页（压在当前页下面，翻走后露出）
+            // ── 下面：没翻到的页（2 层露边，垫在卡片底下） ──
+            val future = minOf(2, monthKeys.size - 1 - page.value)
+            repeat(future) { k ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = (14 * (k + 1)).dp)
+                        .fillMaxWidth(0.93f - k * 0.02f)
+                        .height(26.dp)
+                        .zIndex(0f)
+                        .shadow(3.dp, RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                        .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                        .background(if (k == 0) PagePaperMid else PagePaperDark.copy(alpha = 0.85f))
+                )
+            }
+            // ── 下一页（整页压在当前页正下方，翻走时露出） ──
             val nextIdx = page.value + 1
             if (nextIdx < monthKeys.size) {
-                MonthCard(
-                    letters = months[monthKeys[nextIdx]].orEmpty(),
-                    monthKey = monthKeys[nextIdx],
-                    compact = true,
-                    onLetterTap = onLetterTap,
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .fillMaxWidth(0.94f)
-                        .height(cardHeight - 14.dp)
+                        .fillMaxWidth(0.95f)
+                        .height(cardHeight - 8.dp)
                         .zIndex(0f)
-                        .graphicsLayer {
-                            scaleX = 0.97f; scaleY = 0.97f
-                            alpha = 0.92f
-                            cameraDistance = 300f * density
-                        }
-                )
+                        .shadow(8.dp, RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Brush.verticalGradient(listOf(PagePaper, PagePaperDark))),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Text(
+                        MONTH_NAMES.getOrNull(
+                            (monthKeys[nextIdx].takeLast(2).toIntOrNull() ?: 1) - 1
+                        ).orEmpty(),
+                        fontSize = 22.sp,
+                        color = MONTH_COLORS[
+                            ((monthKeys[nextIdx].takeLast(2).toIntOrNull() ?: 1) - 1).mod(12)
+                        ].copy(alpha = 0.5f),
+                        fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
             }
-            // 当前页（可翻走）
-            MonthCard(
+            // ── 当前页（可翻走） ──
+            MonthPage(
                 letters = months[monthKeys[page.value]].orEmpty(),
                 monthKey = monthKeys[page.value],
-                compact = false,
+                slipBase = slipBase,
                 onLetterTap = onLetterTap,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .fillMaxWidth(0.94f)
+                    .fillMaxWidth(0.95f)
                     .height(cardHeight)
                     .zIndex(1f)
                     .graphicsLayer {
@@ -249,7 +282,7 @@ private fun FlipCalendar(
                         alpha = 1f - 0.5f * flip.value
                         translationY = -30f * flip.value * density
                         cameraDistance = 420f * density
-                        shadowElevation = 8f * (1f - flip.value)
+                        shadowElevation = 10f * (1f - flip.value)
                     }
                     .pointerInput(monthKeys.size, page.value) {
                         detectVerticalDragGestures(
@@ -267,20 +300,15 @@ private fun FlipCalendar(
             )
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         // ── 月份导航 ──
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             val canPrev = page.value > 0 && !animating.value
             Text(
-                "‹ 上一个月",
+                "‹ 上一月",
                 fontSize = 13.sp,
                 color = if (canPrev) HomecomingColors.Accent else HomecomingColors.InkSoft.copy(alpha = 0.4f),
-                modifier = Modifier
-                    .clickable(enabled = canPrev) { goPrev() }
-                    .padding(6.dp)
+                modifier = Modifier.clickable(enabled = canPrev) { goPrev() }.padding(6.dp)
             )
             Text(
                 monthKeys.getOrNull(page.value)?.replace("-", " / ") ?: "",
@@ -291,23 +319,21 @@ private fun FlipCalendar(
             )
             val canNext = page.value < monthKeys.lastIndex && !animating.value
             Text(
-                "下一个月 ›",
+                "下一月 ›",
                 fontSize = 13.sp,
                 color = if (canNext) HomecomingColors.Accent else HomecomingColors.InkSoft.copy(alpha = 0.4f),
-                modifier = Modifier
-                    .clickable(enabled = canNext) { goNext() }
-                    .padding(6.dp)
+                modifier = Modifier.clickable(enabled = canNext) { goNext() }.padding(6.dp)
             )
         }
     }
 }
 
-/** 一个月的手账卡。 */
+/** 一个月的手账页：月份纸签 + 层叠信纸条（胶带贴口，压着排）+ 换一封。 */
 @Composable
-private fun MonthCard(
+private fun MonthPage(
     letters: List<Letter>,
     monthKey: String,
-    compact: Boolean,
+    slipBase: MutableState<Int>,
     onLetterTap: (Letter) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -315,13 +341,16 @@ private fun MonthCard(
     val monthIdx = (monthKey.takeLast(2).toIntOrNull() ?: 1) - 1
     val monthColor = MONTH_COLORS[monthIdx % MONTH_COLORS.size]
 
+    // 轮换顺序：最上面那张从 slipBase 开始
+    val ordered = if (letters.isEmpty()) emptyList()
+    else List(letters.size) { i -> letters[(slipBase.value + i).mod(letters.size)] }
+
     Box(
         modifier = modifier
             .shadow(10.dp, RoundedCornerShape(14.dp))
             .clip(RoundedCornerShape(14.dp))
-            .background(Brush.verticalGradient(listOf(CardPaper, CardPaperDark)))
+            .background(Brush.verticalGradient(listOf(PagePaper, PagePaperMid)))
     ) {
-        // 纸面细点
         Canvas(modifier = Modifier.fillMaxSize()) {
             val rnd = java.util.Random(monthKey.hashCode().toLong())
             repeat(90) {
@@ -332,152 +361,175 @@ private fun MonthCard(
                 )
             }
         }
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            // ── 月份名 ──
+        Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
+            // ── 月份纸签（贴胶带，斜贴在页顶） ──
             Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    MONTH_NAMES[monthIdx],
-                    fontSize = 26.sp, color = monthColor,
-                    fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    year,
-                    fontSize = 12.sp, color = InkSoft2,
-                    fontFamily = FontFamily.Serif,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-
-            // ── 回忆清单（点一条读一封） ──
-            val shown = if (compact) letters.take(3) else letters.take(5)
-            shown.forEach { letter ->
-                Text(
-                    "＊ " + letter.content.replace("\n", " ").trim().take(16),
-                    fontSize = 13.sp, color = Color(0xFF4A4034),
-                    lineHeight = 20.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            indication = null,
-                            interactionSource = MutableInteractionSource()
-                        ) { onLetterTap(letter) }
-                        .padding(vertical = 3.dp)
-                )
-            }
-            if (letters.size > shown.size) {
-                Text(
-                    "＊ …还有 " + (letters.size - shown.size) + " 条都在小日历里",
-                    fontSize = 12.sp, color = InkSoft2,
-                    modifier = Modifier.padding(vertical = 3.dp)
-                )
-            }
-            if (letters.isEmpty()) {
-                Text(
-                    "＊ 这个月还没有写日记",
-                    fontSize = 13.sp, color = InkSoft2,
-                    modifier = Modifier.padding(vertical = 3.dp)
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-
-            // ── 小日历（有信的日子圈出来） ──
-            MiniCalendar(monthKey = monthKey, marked = letters.map { it.date.take(10).takeLast(2).toIntOrNull() ?: 0 }.toSet(), accent = monthColor)
-            Spacer(Modifier.height(6.dp))
-
-            // ── 当月最新一封信（信纸小卡） ──
-            letters.firstOrNull()?.let { latest ->
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFFDFBF3))
-                        .border(1.dp, Color(0x33A85A72), RoundedCornerShape(10.dp))
-                        .clickable { onLetterTap(latest) }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .graphicsLayer { rotationZ = -2.5f }
+                        .shadow(3.dp, RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFFDF9EE))
+                        .border(0.7.dp, Color(0x33A89A78), RoundedCornerShape(4.dp))
+                        .padding(start = 14.dp, end = 18.dp, top = 5.dp, bottom = 5.dp)
                 ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "♥ " + latest.date,
-                                fontSize = 10.sp, color = Color(0xFFA85A72),
-                                fontFamily = FontFamily.Serif
-                            )
-                            Spacer(Modifier.weight(1f))
-                            if (letters.size > 1) {
-                                Text(
-                                    "本月 " + letters.size + " 封",
-                                    fontSize = 10.sp, color = InkSoft2
-                                )
-                            }
-                        }
+                    Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            latest.content.replace("\n", " ").take(64) + if (latest.content.length > 64) "…" else "",
-                            fontSize = 12.sp, color = Color(0xFF3A3020),
-                            lineHeight = 18.sp,
-                            maxLines = if (compact) 2 else 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp)
+                            MONTH_NAMES[monthIdx],
+                            fontSize = 22.sp, color = monthColor,
+                            fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            year,
+                            fontSize = 11.sp, color = Color(0xFF8A8070),
+                            fontFamily = FontFamily.Serif,
+                            modifier = Modifier.padding(bottom = 3.dp)
                         )
                     }
+                    // 纸签上的胶带
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = (-7).dp)
+                            .size(width = 46.dp, height = 13.dp)
+                            .graphicsLayer { rotationZ = -6f }
+                            .background(TAPE_COLORS[monthIdx % TAPE_COLORS.size])
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "共 " + letters.size + " 封",
+                    fontSize = 11.sp, color = Color(0xFF8A8070),
+                    fontFamily = FontFamily.Serif
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+
+            // ── 层叠信纸条（最多 3 张，错位压排；点最上面那张读信） ──
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                if (ordered.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SlipPaper)
+                            .border(0.7.dp, Color(0x33A89A78), RoundedCornerShape(8.dp))
+                            .padding(18.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "这个月还没有写信——\n晚安之后就会有一张",
+                            fontSize = 12.sp, color = Color(0xFF8A8070),
+                            lineHeight = 20.sp, textAlign = TextAlign.Center,
+                            fontFamily = FontFamily.Serif
+                        )
+                    }
+                }
+                // 从最底往最上画：下面两张只露纸头
+                val visible = minOf(3, ordered.size)
+                for (i in visible - 1 downTo 0) {
+                    val letter = ordered[i]
+                    LetterSlip(
+                        letter = letter,
+                        tapeColor = TAPE_COLORS[(monthIdx + i) % TAPE_COLORS.size],
+                        rot = when (i) { 0 -> -1.6f; 1 -> 2.2f; else -> -0.8f },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = (i * 52).dp)
+                            .fillMaxWidth(1f - i * 0.055f)
+                            .zIndex(i.toFloat())
+                            .let { m ->
+                                if (i == 0) m.clickable(
+                                    indication = null,
+                                    interactionSource = MutableInteractionSource()
+                                ) { onLetterTap(letter) } else m
+                            }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            // ── 换一封（轮换最上面的信纸） ──
+            if (letters.size > 1) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "最上面是最新的那封",
+                        fontSize = 10.sp, color = Color(0xFF9A9080),
+                        fontFamily = FontFamily.Serif
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "换一封 →",
+                        fontSize = 12.sp, color = HomecomingColors.Accent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { slipBase.value = (slipBase.value + 1).mod(letters.size) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
                 }
             }
         }
     }
 }
 
-/** 小月历：日 一 二 三 四 五 六；有信的日期圈出来。 */
+/** 一张信纸条：胶带贴口 + 日期 + 信文摘录。 */
 @Composable
-private fun MiniCalendar(monthKey: String, marked: Set<Int>, accent: Color) {
-    val ym = runCatching { java.time.YearMonth.parse(monthKey) }.getOrNull() ?: return
-    val firstDow = ym.atDay(1).dayOfWeek.value % 7 // 周日=0
-    val days = ym.lengthOfMonth()
-    Column(Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            listOf("日", "一", "二", "三", "四", "五", "六").forEach { w ->
+private fun LetterSlip(
+    letter: Letter,
+    tapeColor: Color,
+    rot: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .graphicsLayer { rotationZ = rot; cameraDistance = 160f * density }
+            .shadow(5.dp, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .background(SlipPaper)
+            .border(0.7.dp, Color(0x2E8A8070), RoundedCornerShape(8.dp))
+    ) {
+        Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 16.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    w, fontSize = 9.sp, color = InkSoft2,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f)
+                    "♥ " + letter.date,
+                    fontSize = 10.sp, color = Color(0xFFA85A72),
+                    fontFamily = FontFamily.Serif
+                )
+                if (letter.weather.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(letter.weather, fontSize = 10.sp)
+                }
+                if (letter.mood.isNotBlank()) {
+                    Spacer(Modifier.width(4.dp))
+                    Text(letter.mood, fontSize = 10.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "读这封 →",
+                    fontSize = 10.sp, color = HomecomingColors.Accent
                 )
             }
+            Text(
+                letter.content.replace("\n", " ").trim().take(72) + if (letter.content.length > 72) "…" else "",
+                fontSize = 13.sp, color = Color(0xFF3A3020),
+                lineHeight = 21.sp,
+                fontFamily = FontFamily.Serif,
+                maxLines = 3, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp)
+            )
         }
-        var cell = 1 - firstDow
-        while (cell <= days) {
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
-                repeat(7) {
-                    val d = cell; cell++
-                    Box(
-                        modifier = Modifier.weight(1f).height(20.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (d in 1..days) {
-                            val markedDay = d in marked
-                            Box(
-                                modifier = Modifier
-                                    .size(17.dp)
-                                    .let { m ->
-                                        if (markedDay) m.border(1.4.dp, accent, CircleShape) else m
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    d.toString(),
-                                    fontSize = 9.sp,
-                                    color = if (markedDay) accent else Color(0xFF7A7264),
-                                    fontWeight = if (markedDay) FontWeight.Bold else FontWeight.Normal,
-                                    fontFamily = FontFamily.Serif
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // 胶带（压在纸条上口）
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-8).dp)
+                .size(width = 58.dp, height = 15.dp)
+                .graphicsLayer { rotationZ = if (letter.createdAt % 2 == 0L) 5f else -5f }
+                .background(tapeColor)
+        )
     }
 }
 
@@ -493,7 +545,6 @@ data class Letter(
 )
 
 private suspend fun loadLetters(context: android.content.Context): List<Letter> {
-    // 云端（Supabase 哥哥的日记，历史全量；失败静默降级为空）
     val remote = runCatching { SupabaseMomentsStore.fetchSeanDiaries() }
         .getOrNull()
         ?.takeIf { it.error == null }
@@ -503,20 +554,17 @@ private suspend fun loadLetters(context: android.content.Context): List<Letter> 
             val (date, ms) = resolveDate(d.createdAt, d.createdAtMs)
             Letter(date, d.title, d.content, d.weather, d.mood, ms)
         }
-    // 本地（App 内晚安自动写的）
     val local = HomecomingDayStore.diaries(context)
         .filter { it.author == "sean" }
         .map { d ->
             val (date, _) = resolveDate("", d.createdAt)
             Letter(date, d.title, d.content, "", "", d.createdAt)
         }
-    // 同日去重：云端优先（历史正本），本地只保留云端没有的日期
     val remoteDates = remote.map { it.date }.toSet()
     val localOnly = local.filter { it.date !in remoteDates }
     return (remote + localOnly).sortedByDescending { it.createdAt }
 }
 
-/** 云端 ISO 时间 / 本地毫秒 →（本地日期字符串，毫秒）。 */
 private fun resolveDate(iso: String, ms: Long): Pair<String, Long> {
     val millis = if (ms > 0) ms
     else runCatching { Instant.parse(iso).toEpochMilli() }.getOrElse { 0L }
