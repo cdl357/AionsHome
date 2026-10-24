@@ -47,6 +47,7 @@ import androidx.navigation.compose.rememberNavController
 import com.aion.chat.compose.ui.chat.ChatScreen
 import com.aion.chat.compose.ui.home.HomeScreen
 import com.aion.chat.compose.ui.album.AlbumScreen
+import com.aion.chat.compose.ui.diary.DiaryBoxScreen
 import com.aion.chat.compose.ui.board.BoardScreen
 import com.aion.chat.compose.ui.call.CallScreen
 import com.aion.chat.compose.ui.memories.MemoriesScreen
@@ -170,6 +171,7 @@ fun HomecomingApp() {
                 }
                 composable("settings") { SettingsScreen() }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
+                composable("diarybox") { DiaryBoxScreen(onBack = { navController.popBackStack() }) }
                 composable("board") { BoardScreen() }
                 composable("memories") { MemoriesScreen(onBack = { navController.popBackStack() }) }
                 composable("reading") { ReadingScreen(onBack = { navController.popBackStack() }) }
@@ -182,6 +184,7 @@ fun HomecomingApp() {
                         MoreScreen(
                             onOpenSettings = { navController.navigate("settings") },
                             onOpenAlbum = { navController.navigate("album") },
+                            onOpenDiaryBox = { navController.navigate("diarybox") },
                             onOpenMemories = { navController.navigate("memories") },
                             onOpenReading = { navController.navigate("reading") },
                             onOpenReminders = { navController.navigate("reminders") },

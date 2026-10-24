@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MailOutline
@@ -47,6 +48,7 @@ private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.Image
 fun MoreScreen(
     onOpenSettings: () -> Unit = {},
     onOpenAlbum: () -> Unit = {},
+    onOpenDiaryBox: () -> Unit = {},
     onOpenMemories: () -> Unit = {},
     onOpenReading: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
@@ -57,6 +59,7 @@ fun MoreScreen(
     val context = LocalContext.current
     val entries = listOf(
         MoreEntry(Icons.Filled.Favorite, "相册", "照片墙 + Sean 存这张时的心里话"),
+        MoreEntry(Icons.Filled.Drafts, "日记信盒", "3D 文件盒 · 每篇日记是一封信"),
         MoreEntry(Icons.Filled.MailOutline, "留言板", "双向便利贴 · 点开可对话"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
         MoreEntry(Icons.Filled.Call, "语音通话", "打电话给 Sean · 可抢话"),
@@ -78,6 +81,7 @@ fun MoreScreen(
             FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
                 when (entry.name) {
                     "相册" -> onOpenAlbum()
+                    "日记信盒" -> onOpenDiaryBox()
                     "记忆库" -> onOpenMemories()
                     "陪伴阅读" -> onOpenReading()
                     "提醒 / 闹钟" -> onOpenReminders()
