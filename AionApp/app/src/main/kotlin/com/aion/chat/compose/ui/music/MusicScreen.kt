@@ -74,9 +74,6 @@ fun MusicScreen(onBack: () -> Unit = {}) {
     var playlistsLoaded by remember { mutableStateOf(false) }
 
     // 网易云账号（扫码登录，Cookie 只存服务器）
-    var ncState by remember { mutableStateOf<MusicClient.NeteaseLoginState?>(null) }
-    var showQr by remember { mutableStateOf(false) }
-    var showTogether by remember { mutableStateOf(false) }
 
     val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
@@ -91,12 +88,6 @@ fun MusicScreen(onBack: () -> Unit = {}) {
         }
     }
 
-    fun loadNcState() {
-        scope.launch {
-            runCatching { MusicClient.neteaseLoginState() }.getOrNull()?.let { ncState = it }
-        }
-    }
-    LaunchedEffect(Unit) { loadNcState() }
 
     // 今日私选（懒加载：切到标签才拉，教程 §19）
     var tab by remember { mutableStateOf("search") }
@@ -207,71 +198,6 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             }
         }
         Spacer(Modifier.height(10.dp))
-
-        // ── 一起听（和 Sean 的听歌房） ──
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.55f))
-                .clickable { showTogether = true }
-                .border(0.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
-                .padding(horizontal = 16.dp, vertical = 13.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.Headphones,
-                    contentDescription = null,
-                    tint = HomecomingColors.Accent,
-                    modifier = Modifier.size(22.dp)
-                )
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("一起听", fontSize = 15.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                    Text("和 Sean 听同一首歌", fontSize = 11.sp, color = HomecomingColors.InkSoft)
-                }
-                Text("进入 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-
-        // ── 网易云账号（扫码登录：Cookie 只存服务器；登录后 VIP/高音质概率更高） ──
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "网易云账号：" + (ncState?.let { if (it.loggedIn && it.nickname.isNotBlank()) "已登录 · ${it.nickname}" else "未登录" } ?: "…"),
-                fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                modifier = Modifier.weight(1f)
-            )
-            if (ncState?.loggedIn == true) {
-                Text(
-                    "退出登录",
-                    fontSize = 12.sp, color = HomecomingColors.Danger,
-                    modifier = Modifier.clickable {
-                        scope.launch {
-                            runCatching { MusicClient.neteaseLogout() }
-                            loadNcState()
-                            Toast.makeText(context, "已退出网易云登录", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-            } else {
-                Text(
-                    "扫码登录",
-                    fontSize = 12.sp, color = HomecomingColors.Accent,
-                    modifier = Modifier.clickable { showQr = true }
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        if (showQr) {
-            NeteaseQrDialog(
-                onDismiss = { showQr = false },
-                onLoggedIn = { nickname ->
-                    showQr = false
-                    loadNcState()
-                    Toast.makeText(context, "网易云已登录：" + nickname, Toast.LENGTH_SHORT).show()
-                }
-            )
-        }
 
         // ── 正在播放卡 ──
         val cur = player.song
@@ -560,95 +486,7 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             }
         }
     }
-    if (showTogether) {
-        ListenTogetherScreen(onExit = { showTogether = false })
-    }
     }
 }
 
 private fun fmt(sec: Int): String = "%d:%02d".format(sec / 60, sec % 60)
-
-
-/** 网易云扫码登录弹窗：二维码 + 轮询状态（等待扫码/确认/成功/过期），Cookie 只留服务器。 */
-@Composable
-private fun NeteaseQrDialog(onDismiss: () -> Unit, onLoggedIn: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var qrBase64 by remember { mutableStateOf<String?>(null) }
-    var unikey by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("生成二维码…") }
-    var done by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        val start = MusicClient.neteaseQrStart()
-        if (start == null) {
-            status = "登录服务暂时连不上"
-            return@LaunchedEffect
-        }
-        unikey = start.first
-        qrBase64 = start.second
-        status = "用网易云音乐 App 扫一扫"
-        while (!done) {
-            delay(2500)
-            val check = MusicClient.neteaseQrCheck(unikey) ?: continue
-            when (check.code) {
-                803 -> {
-                    status = "登录成功！"
-                    done = true
-                    onLoggedIn(check.nickname)
-                }
-                802 -> status = "手机上确认一下…"
-                800 -> {
-                    status = "二维码过期了，关掉重开一次"
-                    done = true
-                }
-                else -> status = "等待扫码…"
-            }
-        }
-    }
-
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF101B1F))
-                .clickable { onDismiss() }
-                .padding(30.dp)
-        ) {
-            Spacer(Modifier.height(30.dp))
-            Text("登录网易云音乐", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Medium)
-            Text(status, fontSize = 14.sp, color = Color(0xFF8FE34A), modifier = Modifier.padding(top = 10.dp))
-            Spacer(Modifier.height(20.dp))
-            val qrB64 = qrBase64
-            if (qrB64 != null) {
-                val bmp = remember(qrB64) {
-                    runCatching {
-                        val bytes = android.util.Base64.decode(qrB64, android.util.Base64.DEFAULT)
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }.getOrNull()
-                }
-                if (bmp != null) {
-                    androidx.compose.foundation.Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = "登录二维码",
-                        modifier = Modifier.size(240.dp)
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier.size(240.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("…", color = Color.White) }
-            }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Cookie 只会保存在你的服务器上，不会进手机缓存或聊天记录",
-                fontSize = 10.sp, color = Color(0xFF6E8A92),
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}

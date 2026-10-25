@@ -175,6 +175,9 @@ object SettingsBg {
     /** 聊天页专属背景（覆盖全局；不存在时回落全局）。 */
     fun chatFile(context: Context): File = File(context.filesDir, "chat_bg.jpg")
 
+    /** 「爱」页专属壁纸（覆盖全局；不存在时回落全局）。 */
+    fun loveFile(context: Context): File = File(context.filesDir, "love_bg.jpg")
+
     private fun decode(f: File): android.graphics.Bitmap? {
         if (!f.exists()) return null
         return runCatching {
@@ -192,4 +195,6 @@ object SettingsBg {
     fun loadBitmap(context: Context): android.graphics.Bitmap? = decode(backgroundFile(context))
 
     fun loadChatBitmap(context: Context): android.graphics.Bitmap? = decode(chatFile(context)) ?: decode(backgroundFile(context))
+
+    fun loadLoveBitmap(context: Context): android.graphics.Bitmap? = decode(loveFile(context))
 }
