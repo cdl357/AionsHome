@@ -298,12 +298,13 @@ object SupabaseMomentsStore {
             try {
                 val o = arr.getJSONObject(i)
                 val id = o.optString("id", "row_" + i)
-                val image = listOf("image", "image_data", "base64", "data", "image_url", "url", "photo", "content")
-                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() } } ?: ""
-                val note = listOf("note", "caption", "memo", "title", "desc", "description")
-                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() } } ?: ""
-                val date = listOf("created_at", "date", "taken_on", "taken_at", "shot_at")
-                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() } } ?: ""
+                // 真实列：storage_name = Storage 对象路径；caption/impression = Sean 的话；taken_at = 拍摄时间
+                val image = listOf("storage_name", "storage_url", "image", "image_url", "url")
+                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() && it != "null" } } ?: ""
+                val note = listOf("caption", "impression", "description", "note", "memo")
+                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() && it != "null" } } ?: ""
+                val date = listOf("taken_at", "created_at", "date")
+                    .firstNotNullOfOrNull { c -> o.optString(c, "").takeIf { it.isNotBlank() && it != "null" } } ?: ""
                 if (image.isNotBlank()) {
                     out.add(CloudAlbumPhoto(id, image, note, date))
                 }

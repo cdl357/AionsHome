@@ -135,7 +135,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                 var added = 0
                 rows.forEach { cp ->
                     if (cp.id in imported) return@forEach
-                    val bytes = decodeCloudImage(cp.image) ?: return@forEach
+                    val bytes = decodeCloudImage(context, cp.image) ?: return@forEach
                     val date = cp.date.take(10).ifBlank { java.time.LocalDate.now().toString() }
                     HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
                     imported.add(cp.id)
@@ -912,13 +912,43 @@ private fun TinCard(
     }
 }
 
-/** 云端图片字段 → 字节：支持 dataURL / 纯 base64 / http 链接；解不出返回 null。 */
-private fun decodeCloudImage(v: String): ByteArray? = runCatching {
+private val STORAGE_BUCKET_CANDIDATES = listOf(
+    "album", "album_photos", "photos", "card", "cards", "card_photos", "image", "images",
+    "media", "files", "storage", "backup", "sync", "photo", "gallery", "attachments",
+    "user_files", "app_data", "data", "photos_sync", "album_images", "talkphotos"
+)
+
+/** 云端图片字段 → 字节：dataURL / 纯 base64 / http 链接 / Storage 对象路径（桶名自动探测并记忆）。 */
+private fun decodeCloudImage(context: android.content.Context, v: String): ByteArray? = runCatching {
     when {
         v.startsWith("data:") -> android.util.Base64.decode(
             v.substringAfter("base64,"), android.util.Base64.DEFAULT
         )
         v.startsWith("http") -> java.net.URL(v).readBytes()
+        v.contains('/') -> {
+            // Storage 对象路径：逐个候选桶试，命中即记住
+            val prefs = context.getSharedPreferences("album_board", android.content.Context.MODE_PRIVATE)
+            val known = prefs.getString("cloud_bucket", null)
+            val candidates = listOfNotNull(known) +
+                STORAGE_BUCKET_CANDIDATES.filter { it != known }
+            for (b in candidates) {
+                val bytes = runCatching {
+                    val conn = java.net.URL(
+                        com.aion.chat.compose.data.SupabaseClient.RELAY_URL +
+                            "/storage/v1/object/" + b + "/" + v
+                    ).openConnection() as java.net.HttpURLConnection
+                    conn.setRequestProperty("apikey", com.aion.chat.compose.data.SupabaseClient.ANON_KEY)
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 12000
+                    if (conn.responseCode == 200) conn.inputStream.readBytes() else null
+                }.getOrNull()
+                if (bytes != null) {
+                    prefs.edit().putString("cloud_bucket", b).apply()
+                    return@runCatching bytes
+                }
+            }
+            null
+        }
         v.length > 100 && v.none { it.isWhitespace() } -> android.util.Base64.decode(v, android.util.Base64.DEFAULT)
         else -> null
     }
