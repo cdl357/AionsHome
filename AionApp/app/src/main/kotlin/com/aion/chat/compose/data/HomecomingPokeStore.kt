@@ -33,7 +33,9 @@ object HomecomingPokeStore {
         "脸蛋" to 12,
         "耳朵" to 15,
         "颈窝" to 18,
-        "肩" to 5
+        "肩" to 5,
+        "腰" to 20,
+        "下巴" to 12
     )
 
     fun gain(verb: String, spot: String): Int {
@@ -71,7 +73,8 @@ object HomecomingPokeStore {
         return (BASE + decayedAbove).toFloat().coerceAtMost(MAX)
     }
 
-    /** 旁白（教程第一步：只陈述发生了什么，不写该有什么反应）。 */
-    fun narration(verb: String, spot: String): String =
-        "（Yuri 隔着屏幕${verb}你的${spot}）"
+    /** 旁白（教程第一步：只陈述发生了什么，不写该有什么反应）。asleep 时补一句事实，让他带着困意接话。 */
+    fun narration(verb: String, spot: String, asleep: Boolean = false): String =
+        if (asleep) "（Yuri 隔着屏幕${verb}你的${spot}；你本来睡着，被这一下捞回半截意识）"
+        else "（Yuri 隔着屏幕${verb}你的${spot}）"
 }

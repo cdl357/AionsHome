@@ -311,13 +311,19 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
             }
             var pokeShot by remember { mutableStateOf<String?>(null) }
             var pokeBubble by remember { mutableStateOf<String?>(null) }
-            fun pokePet() {
-                val verb = com.aion.chat.compose.data.HomecomingPokeStore.VERBS.random().first
-                val spot = com.aion.chat.compose.data.HomecomingPokeStore.SPOTS.random().first
+            // 戳一戳选择面板（Yuri：像之前对话页那样自己挑动作和落点）
+            var showPokePanel by remember { mutableStateOf(false) }
+            var pokeVerb by remember { mutableStateOf(com.aion.chat.compose.data.HomecomingPokeStore.VERBS.first().first) }
+            var pokeSpot by remember { mutableStateOf(com.aion.chat.compose.data.HomecomingPokeStore.SPOTS.first().first) }
+            fun pokePet(verb: String, spot: String) {
                 val gain = com.aion.chat.compose.data.HomecomingPokeStore.poke(context, verb, spot)
                 seanHeart = com.aion.chat.compose.data.HomecomingPokeStore.currentHeart(context)
-                pokeShot = com.aion.chat.compose.ui.pet.PetMind.pokeAction(mind.intentKey)
-                pokeBubble = "你${verb}了他的${spot} · ♥ +$gain"
+                pokeShot = com.aion.chat.compose.ui.pet.PetMind.pokeAction(mind.intentKey, spot, verb)
+                // 他睡着/犯困也要有反应：气泡带困意，旁白补一句事实，他的回话自然带睡意
+                val sleepy = com.aion.chat.compose.ui.pet.PetMind.isSleepy(mind)
+                pokeBubble =
+                    if (sleepy) "他睡得迷迷糊糊，被你${verb}了${spot} · ♥ +$gain"
+                    else "你${verb}他的${spot} · ♥ +$gain"
                 scope.launch {
                     kotlinx.coroutines.delay(8000L)
                     pokeBubble = null
@@ -333,7 +339,7 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                                 com.aion.chat.compose.data.HomecomingChatWiring.TIMELINE,
                                 com.aion.chat.compose.data.HomecomingChatWiring.RESPONDER,
                                 com.aion.chat.compose.data.HomecomingChatWiring.USER,
-                                com.aion.chat.compose.data.HomecomingPokeStore.narration(verb, spot),
+                                com.aion.chat.compose.data.HomecomingPokeStore.narration(verb, spot, sleepy),
                                 "main", w.mainModelKey(), "", ""
                             ),
                             object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
@@ -366,6 +372,16 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (showPokePanel) {
+                        PokePickPanel(
+                            verb = pokeVerb,
+                            spot = pokeSpot,
+                            onVerb = { pokeVerb = it },
+                            onSpot = { pokeSpot = it },
+                            onPoke = { showPokePanel = false; pokePet(pokeVerb, pokeSpot) },
+                            onDismiss = { showPokePanel = false }
+                        )
+                    }
                     pokeBubble?.let { text ->
                         Text(
                             text,
@@ -378,7 +394,8 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                         )
                     }
                     Text(
-                        "他的心潮 · " + com.aion.chat.compose.data.HeartTideStore.tideWord(tide) + " · " + mind.intentKey,
+                        "他的心潮 · " + com.aion.chat.compose.data.HeartTideStore.tideWord(tide) + " · " +
+                            com.aion.chat.compose.ui.pet.PetMind.label(mind),
                         style = glassText(alpha = 0.7f, size = 10)
                     )
                     com.aion.chat.compose.ui.pet.PetSprite(
@@ -387,7 +404,7 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                         frozen = mind.frozen,
                         oneShot = pokeShot,
                         onOneShotDone = { pokeShot = null },
-                        onTap = { pokePet() }
+                        onTap = { showPokePanel = !showPokePanel }
                     )
                 }
             }
@@ -660,5 +677,93 @@ fun GlassAvatar(initial: String, size: Int = 56) {
         contentAlignment = Alignment.Center
     ) {
         Text(text = initial, fontSize = (size * 0.4f).sp, color = Color.White, fontFamily = FontFamily.Serif)
+    }
+}
+
+/**
+ * 戳一戳选择面板（Yuri：像之前对话页那样自己挑「动作 × 落点」，选完他才反应）。
+ * 部位联动动作见 PetMind.pokeAction；旁白和回应都进 main_private 对话流。
+ */
+@Composable
+private fun PokePickPanel(
+    verb: String,
+    spot: String,
+    onVerb: (String) -> Unit,
+    onSpot: (String) -> Unit,
+    onPoke: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val ink = Color(0xFF4E3B2E)
+    val soft = Color(0xFF8A7462)
+    Column(
+        modifier = Modifier
+            .padding(bottom = 8.dp)
+            .width(280.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.72f))
+            .border(1.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "戳一戳他", fontSize = 13.sp, color = ink,
+                fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
+            )
+            Text(
+                "收起", fontSize = 11.sp, color = soft,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+        Text(
+            "动作和落点你挑，他会先心跳，再去对话里接话", fontSize = 9.sp, color = soft,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Spacer(Modifier.height(7.dp))
+        PokeChips(
+            com.aion.chat.compose.data.HomecomingPokeStore.VERBS.map { it.first },
+            perRow = 3, selected = verb, ink = ink, onPick = onVerb
+        )
+        Spacer(Modifier.height(6.dp))
+        PokeChips(
+            com.aion.chat.compose.data.HomecomingPokeStore.SPOTS.map { it.first },
+            perRow = 4, selected = spot, ink = ink, onPick = onSpot
+        )
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF6E4E32).copy(alpha = 0.88f))
+                .clickable(onClick = onPoke)
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("戳下去", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun PokeChips(options: List<String>, perRow: Int, selected: String, ink: Color, onPick: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        options.chunked(perRow).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                row.forEach { opt ->
+                    val sel = opt == selected
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (sel) Color(0xFF6E4E32) else Color.White.copy(alpha = 0.55f))
+                            .clickable { onPick(opt) }
+                            .padding(horizontal = 11.dp, vertical = 4.dp)
+                    ) {
+                        Text(opt, fontSize = 11.sp, color = if (sel) Color.White else ink)
+                    }
+                }
+            }
+        }
     }
 }
