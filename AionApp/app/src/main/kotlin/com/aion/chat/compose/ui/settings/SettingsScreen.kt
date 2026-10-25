@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingData
@@ -100,6 +102,10 @@ fun SettingsScreen() {
         }
     }
     val routeTest = remember { mutableStateOf("") }
+    // 模型列表：填好 URL+Key 拉一次，自己挑（不用猜模型名）
+    val routeModels = remember { mutableStateListOf<String>() }
+    val showModelsDialog = remember { mutableStateOf(false) }
+    val modelsFetching = remember { mutableStateOf(false) }
 
     fun saveRoute() {
         val baseUrl = routeBaseUrl.value.trim()
@@ -252,9 +258,48 @@ fun SettingsScreen() {
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = routeModel.value, onValueChange = { routeModel.value = it },
-                label = { Text("模型（如 gpt-4o-mini）") },
+                label = { Text("模型（可点下方「拉取模型」自己选）") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true
             )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+            ) {
+                TextButton(
+                    enabled = !modelsFetching.value,
+                    onClick = {
+                        val base = routeBaseUrl.value.trim()
+                        val key = routeApiKey.value.trim()
+                        if (base.isBlank() || key.isBlank()) {
+                            Toast.makeText(context, "先填 Base URL 和 API Key", Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        modelsFetching.value = true
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val res = fetchModels(base, key)
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                modelsFetching.value = false
+                                if (res.fixedBase != null && res.fixedBase != routeBaseUrl.value.trim()) {
+                                    // 用户少写了 /v1：自动补上，聊天接口才能通
+                                    routeBaseUrl.value = res.fixedBase
+                                    Toast.makeText(context, "Base URL 少了 /v1，已自动补上", Toast.LENGTH_SHORT).show()
+                                }
+                                if (res.ids.isNotEmpty()) {
+                                    routeModels.clear()
+                                    routeModels.addAll(res.ids)
+                                    showModelsDialog.value = true
+                                } else {
+                                    Toast.makeText(context, res.msg, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                ) { Text(if (modelsFetching.value) "拉取中…" else "拉取模型", color = HomecomingColors.Accent) }
+                Text(
+                    "填好 URL 和 Key 点这里，能用的模型拉下来自己选",
+                    fontSize = 11.sp, color = HomecomingColors.InkSoft
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.End
@@ -288,6 +333,43 @@ fun SettingsScreen() {
             if (routeTest.value.isNotBlank()) {
                 Text(routeTest.value, fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
+        }
+
+        // 模型选择弹窗：拉下来的可用模型挑一个
+        if (showModelsDialog.value) {
+            AlertDialog(
+                onDismissRequest = { showModelsDialog.value = false },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showModelsDialog.value = false }) {
+                        Text("取消", color = HomecomingColors.InkSoft)
+                    }
+                },
+                title = { Text("选一个模型（共 ${routeModels.size} 个）") },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 380.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        routeModels.forEach { id ->
+                            Text(
+                                id,
+                                fontSize = 14.sp,
+                                color = if (id == routeModel.value) HomecomingColors.Accent else HomecomingColors.Ink,
+                                fontWeight = if (id == routeModel.value) FontWeight.Medium else FontWeight.Normal,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        routeModel.value = id
+                                        showModelsDialog.value = false
+                                    }
+                                    .padding(vertical = 9.dp)
+                            )
+                        }
+                    }
+                }
+            )
         }
 
         // ── MCP 服务器管理：先把配置攒好，聊天引擎的工具接线下一阶段开放 ──
@@ -647,4 +729,66 @@ private suspend fun pingRoute(baseUrl: String, apiKey: String, model: String): S
         } catch (e: Exception) {
             "${e.javaClass.simpleName}: ${e.message?.take(120)}"
         }
+    }
+
+/** 拉模型列表的结果：ids 为空看 msg；fixedBase 非空 = 用户少写了 /v1，已探明正确写法。 */
+private class ModelsFetchResult(val ids: List<String>, val msg: String, val fixedBase: String? = null)
+
+/**
+ * 用填好的 Base URL + Key 拉可用模型列表（OpenAI 兼容 GET {base}/models）。
+ * 用户没写 /v1 时先试补上 /v1 的地址（并回报 fixedBase 让界面自动改正），再试原样。
+ */
+private suspend fun fetchModels(baseUrl: String, apiKey: String): ModelsFetchResult =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val base = baseUrl.trimEnd('/')
+        val hasV1 = base.substringAfterLast('/').startsWith("v1") || base.contains("/v1/")
+        val candidates = if (hasV1) listOf(base) else listOf("$base/v1", base)
+        var lastCode = 0
+        var lastErr = ""
+        for (b in candidates) {
+            try {
+                val conn = java.net.URL("$b/models").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+                conn.connectTimeout = 8_000
+                conn.readTimeout = 20_000
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    val text = conn.inputStream.bufferedReader().readText()
+                    val ids = mutableListOf<String>()
+                    val dataArr = runCatching { org.json.JSONObject(text).optJSONArray("data") }.getOrNull()
+                        ?: runCatching { org.json.JSONArray(text) }.getOrNull()
+                    if (dataArr != null) {
+                        for (i in 0 until dataArr.length()) {
+                            val id = dataArr.optJSONObject(i)?.optString("id")
+                            if (!id.isNullOrBlank() && id !in ids) ids.add(id)
+                        }
+                    }
+                    if (ids.isNotEmpty()) {
+                        return@withContext ModelsFetchResult(
+                            ids.sortedWith(String.CASE_INSENSITIVE_ORDER),
+                            "",
+                            if (b != base) b else null
+                        )
+                    }
+                    lastCode = code
+                    lastErr = "接口通了但没解析出模型列表（可能不是 OpenAI 兼容接口）"
+                } else {
+                    lastCode = code
+                    lastErr = runCatching {
+                        conn.errorStream?.bufferedReader()?.readText()?.take(120)
+                    }.getOrNull().orEmpty()
+                }
+            } catch (e: Exception) {
+                lastErr = e.message?.take(120) ?: "网络错误"
+            }
+        }
+        val msg = when (lastCode) {
+            401 -> "HTTP 401：API Key 不对"
+            403 -> "HTTP 403：这个 Key 没权限看模型列表"
+            404 -> "HTTP 404：Base URL 不对（检查是不是少了 /v1）"
+            0 -> "连不上：$lastErr"
+            else -> "HTTP $lastCode：$lastErr"
+        }
+        ModelsFetchResult(emptyList(), msg)
     }
