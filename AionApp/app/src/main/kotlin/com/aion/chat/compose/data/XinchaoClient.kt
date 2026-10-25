@@ -19,7 +19,7 @@ object XinchaoClient {
         "http://134.175.7.196:8080"
     )
 
-    data class Drive(val zh: String, val v: Float)
+    data class Drive(val key: String, val zh: String, val v: Float)
 
     data class RemoteState(
         val consciousness: String,
@@ -81,7 +81,7 @@ object XinchaoClient {
             val drivesJson = o.optJSONObject("drives") ?: JSONObject()
             val drives = drivesJson.keys().asSequence().map { key ->
                 val d = drivesJson.optJSONObject(key) ?: JSONObject()
-                Drive(d.optString("z", key), d.optDouble("v", 0.0).toFloat())
+                Drive(key, d.optString("z", key), d.optDouble("v", 0.0).toFloat())
             }.sortedByDescending { it.v }.toList()
             RemoteState(
                 consciousness = o.optString("consciousness", "unknown"),
@@ -125,6 +125,21 @@ object XinchaoClient {
          * 用途：Supabase RLS 未放行 anon 读 moments 时的兜底——服务端密钥不出服务器，App 端无任何密钥。
          */
     /** Yuri 点赞写回（只置 yuri_liked=true，窄端点）。best-effort，失败不阻塞本地点赞。 */
+    /** 相册图片窄代理（服务器持 key 读 storage album 桶，App 不碰 key）。 */
+    fun proxyAlbumPhoto(name: String): ByteArray? {
+        for (base in BASES) {
+            try {
+                val conn = URL("$base/api/album_photo?name=" + java.net.URLEncoder.encode(name, "UTF-8"))
+                    .openConnection() as HttpURLConnection
+                conn.connectTimeout = 8_000
+                conn.readTimeout = 30_000
+                if (conn.responseCode == 200) return conn.inputStream.readBytes()
+                if (conn.responseCode in 400..499) return null
+            } catch (e: Exception) { }
+        }
+        return null
+    }
+
     suspend fun likeMomentViaXinchao(momentId: String, on: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         for (base in BASES) {
             try {

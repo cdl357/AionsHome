@@ -912,42 +912,32 @@ private fun TinCard(
     }
 }
 
-private val STORAGE_BUCKET_CANDIDATES = listOf(
-    "album", "album_photos", "photos", "card", "cards", "card_photos", "image", "images",
-    "media", "files", "storage", "backup", "sync", "photo", "gallery", "attachments",
-    "user_files", "app_data", "data", "photos_sync", "album_images", "talkphotos"
-)
+private fun httpGetBytes(url: String, apikey: String? = null): ByteArray? = runCatching {
+    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    if (apikey != null) conn.setRequestProperty("apikey", apikey)
+    conn.connectTimeout = 8000
+    conn.readTimeout = 20000
+    if (conn.responseCode == 200) conn.inputStream.readBytes() else null
+}.getOrNull()
 
-/** 云端图片字段 → 字节：dataURL / 纯 base64 / http 链接 / Storage 对象路径（桶名自动探测并记忆）。 */
+/** 云端图片字段 → 字节：dataURL / 纯 base64 / http 链接 / Storage 对象名（album 桶：公开直连→服务器窄代理）。 */
 private fun decodeCloudImage(context: android.content.Context, v: String): ByteArray? = runCatching {
     when {
         v.startsWith("data:") -> android.util.Base64.decode(
             v.substringAfter("base64,"), android.util.Base64.DEFAULT
         )
-        v.startsWith("http") -> java.net.URL(v).readBytes()
-        v.contains('/') -> {
-            // Storage 对象路径：逐个候选桶试，命中即记住
-            val prefs = context.getSharedPreferences("album_board", android.content.Context.MODE_PRIVATE)
-            val known = prefs.getString("cloud_bucket", null)
-            val candidates = listOfNotNull(known) +
-                STORAGE_BUCKET_CANDIDATES.filter { it != known }
-            for (b in candidates) {
-                val bytes = runCatching {
-                    val conn = java.net.URL(
-                        com.aion.chat.compose.data.SupabaseClient.RELAY_URL +
-                            "/storage/v1/object/" + b + "/" + v
-                    ).openConnection() as java.net.HttpURLConnection
-                    conn.setRequestProperty("apikey", com.aion.chat.compose.data.SupabaseClient.ANON_KEY)
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 12000
-                    if (conn.responseCode == 200) conn.inputStream.readBytes() else null
-                }.getOrNull()
-                if (bytes != null) {
-                    prefs.edit().putString("cloud_bucket", b).apply()
-                    return@runCatching bytes
-                }
-            }
-            null
+        v.startsWith("http") -> httpGetBytes(v)
+        v.contains('/') || (v.length in 10..220 && v.endsWith(".jpg", true) || v.endsWith(".png", true) || v.endsWith(".webp", true)) -> {
+            val name = v.substringAfterLast('/')
+            // ① 桶若公开：匿名直连就能拿
+            val direct = httpGetBytes(
+                com.aion.chat.compose.data.SupabaseClient.RELAY_URL +
+                    "/storage/v1/object/public/album/" + name,
+                com.aion.chat.compose.data.SupabaseClient.ANON_KEY
+            )
+            if (direct != null) return@runCatching direct
+            // ② 私有桶：走服务器窄代理（key 只在服务器）
+            com.aion.chat.compose.data.XinchaoClient.proxyAlbumPhoto(name)
         }
         v.length > 100 && v.none { it.isWhitespace() } -> android.util.Base64.decode(v, android.util.Base64.DEFAULT)
         else -> null

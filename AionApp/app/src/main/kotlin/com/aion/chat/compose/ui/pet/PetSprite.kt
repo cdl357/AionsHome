@@ -4,19 +4,17 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
@@ -28,10 +26,11 @@ import kotlinx.coroutines.delay
 import org.json.JSONObject
 
 /**
- * AionPet 桌宠精灵（布局定稿 §12 近期项）：逐帧播 192×208 横向精灵条。
- * 帧时长读 manifest.json 的 frameDurationsMs；锚点 bottom-center。
- * 先做「会动的小摆件」：idle 为常态，点一下随机切一个小动作，播完回 idle。
- * 中期：动作由心潮情绪驱动。
+ * 桌宠精灵（Q 版沈聿淮）：逐帧播 192×208 横向精灵条，锚点 bottom-center。
+ * - baseAnim：心潮（PetMind）决定的常态动作，循环
+ * - frozen：consciousness=frozen 时停在第 1 帧
+ * - oneShot：戳一戳动作，播完一轮回调 onOneShotDone，回到 baseAnim
+ * - 素材缺失（missing/love 未到位）回退 idle 显示，绝不回退机械小人
  */
 data class PetAnim(
     val name: String,
@@ -66,9 +65,9 @@ private fun loadManifest(context: android.content.Context): Map<String, PetAnim>
     return out
 }
 
-private val stripCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
+private val stripCache = mutableMapOf<String, ImageBitmap?>()
 
-private fun loadStrip(context: android.content.Context, src: String): androidx.compose.ui.graphics.ImageBitmap? =
+private fun loadStrip(context: android.content.Context, src: String): ImageBitmap? =
     stripCache.getOrPut(src) {
         runCatching {
             BitmapFactory.decodeStream(context.assets.open("pet/$src"))?.asImageBitmap()
@@ -79,67 +78,54 @@ private fun loadStrip(context: android.content.Context, src: String): androidx.c
 fun PetSprite(
     modifier: Modifier = Modifier,
     displayHeight: Dp = 104.dp,
-    moodAnim: String? = null,
+    baseAnim: String = "idle",
+    frozen: Boolean = false,
+    oneShot: String? = null,
+    onOneShotDone: () -> Unit = {},
     onTap: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val manifest = remember { loadManifest(context) }
-    var currentAnim by remember { mutableIntStateOf(manifest.keys.indexOf("idle").coerceAtLeast(0)) }
+    val idleAnim = remember { manifest["idle"] }
     var frameIndex by remember { mutableIntStateOf(0) }
-    val animNames = remember { manifest.keys.filter { manifest[it]?.loop == true } }
 
-    val anim = manifest[manifest.keys.elementAtOrNull(currentAnim) ?: "idle"]
+    // 目标动作：oneShot 优先；素材缺失（missing/love 未到位）回退 idle 播
+    val wanted = oneShot?.takeIf { it.isNotBlank() } ?: baseAnim.takeIf { it.isNotBlank() } ?: "idle"
+    val resolved = remember(wanted) {
+        val a = manifest[wanted]
+        if (a != null && loadStrip(context, a.src) != null) a else idleAnim
+    }
+    val anim = resolved ?: idleAnim
 
-    // 心潮联动：外部指定动画（happy/jumping/tsundere…），变化时切换；空则回 idle
-    LaunchedEffect(moodAnim) {
-        val target = moodAnim?.takeIf { it.isNotBlank() && manifest.containsKey(it) } ?: "idle"
-        if (manifest.keys.elementAtOrNull(currentAnim) != target) {
-            currentAnim = manifest.keys.indexOf(target).coerceAtLeast(0)
-            frameIndex = 0
-        }
+    // 切换动作：等价于换目标即换动画（等当前循环播完的节奏由帧推进自然衔接，不硬清帧）
+    LaunchedEffect(wanted) {
+        val idx = manifest.keys.indexOfFirst { it == (anim?.name ?: "idle") }
+        if (idx >= 0) frameIndex = 0
     }
 
-    // 帧推进：按 manifest 帧时长；非循环动画播完回 idle
-    // 心潮指定了动画时，该动画被"钉住"持续循环，不被弹回 idle
-    LaunchedEffect(currentAnim, moodAnim) {
+    // 帧推进：frozen 定在第 1 帧；oneShot 播完一轮回调；baseAnim 循环
+    LaunchedEffect(anim?.name, oneShot, frozen) {
         val a = anim ?: return@LaunchedEffect
-        val pinned = !moodAnim.isNullOrBlank() && a.name == moodAnim
         while (true) {
             val d = a.durationsMs.getOrElse(frameIndex) { 140L }
             delay(d)
+            if (frozen) { frameIndex = 0; continue }
             val next = frameIndex + 1
             if (next >= a.frameCount) {
-                if (a.name != "idle" && !pinned) {
-                    // 小动作播完回 idle
-                    currentAnim = manifest.keys.indexOf("idle").coerceAtLeast(0)
-                    frameIndex = 0
+                if (oneShot != null && a.name == oneShot) {
+                    onOneShotDone()
                     return@LaunchedEffect
                 }
-                if (!a.loop) { frameIndex = 0 } else frameIndex = next % a.frameCount
+                frameIndex = 0
             } else {
                 frameIndex = next
             }
         }
     }
 
-    // 常态随机小动作：每 9 秒掷一次，30% 概率切 waving/happy/waiting/review
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(9000L)
-            if (manifest.keys.elementAtOrNull(currentAnim) == "idle" &&
-                (0..2).random() == 0
-            ) {
-                val pick = listOf("waving", "happy", "waiting", "review").random()
-                currentAnim = manifest.keys.indexOf(pick).coerceAtLeast(0)
-                frameIndex = 0
-            }
-        }
-    }
-
-    val strip = anim?.let { loadStrip(context, it.src) }
+    val strip = anim?.let { loadStrip(context, it.src) } ?: idleAnim?.let { loadStrip(context, it.src) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val drawH = with(density) { displayHeight.toPx() }
-    val drawW = drawH * ((anim?.frameWidth ?: 192) / (anim?.frameHeight ?: 208).toFloat())
 
     Canvas(
         modifier = modifier
@@ -150,16 +136,12 @@ fun PetSprite(
         val bmp = strip ?: return@Canvas
         val fw = a.frameWidth.toFloat()
         val fh = a.frameHeight.toFloat()
-        val srcRect = Rect(
-            left = frameIndex * fw, top = 0f,
-            right = (frameIndex + 1) * fw, bottom = fh
-        )
         // 锚点 bottom-center：整体按显示高度缩放，绘制区底部对齐
         val drawScale = drawH / fh
         scale(drawScale, drawScale, pivot = Offset(size.width / 2f, size.height)) {
             drawImage(
                 image = bmp,
-                srcOffset = IntOffset((frameIndex * a.frameWidth), 0),
+                srcOffset = IntOffset(frameIndex * a.frameWidth, 0),
                 srcSize = IntSize(a.frameWidth, a.frameHeight),
                 dstOffset = IntOffset(
                     ((size.width - fw) / 2).toInt(),

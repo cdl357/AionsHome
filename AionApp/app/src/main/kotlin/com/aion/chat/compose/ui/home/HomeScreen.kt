@@ -301,19 +301,93 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                 )
             }
 
-            // 桌宠 AionPet（定稿 §12）：会动的小人 + 心潮联动（越雀跃动画越欢）
+            // 桌宠（Q版沈聿淮）：动作由心潮驱力决定（PetMind，60s 轮询）；点他 = 戳一戳
+            val mind by com.aion.chat.compose.ui.pet.PetMind.state.collectAsState()
+            LaunchedEffect(Unit) {
+                while (true) {
+                    runCatching { com.aion.chat.compose.ui.pet.PetMind.refresh() }
+                    kotlinx.coroutines.delay(60_000L)
+                }
+            }
+            var pokeShot by remember { mutableStateOf<String?>(null) }
+            var pokeBubble by remember { mutableStateOf<String?>(null) }
+            fun pokePet() {
+                val verb = com.aion.chat.compose.data.HomecomingPokeStore.VERBS.random().first
+                val spot = com.aion.chat.compose.data.HomecomingPokeStore.SPOTS.random().first
+                val gain = com.aion.chat.compose.data.HomecomingPokeStore.poke(context, verb, spot)
+                seanHeart = com.aion.chat.compose.data.HomecomingPokeStore.currentHeart(context)
+                pokeShot = com.aion.chat.compose.ui.pet.PetMind.pokeAction(mind.intentKey)
+                pokeBubble = "你${verb}了他的${spot} · ♥ +$gain"
+                scope.launch {
+                    kotlinx.coroutines.delay(8000L)
+                    pokeBubble = null
+                }
+                val w = com.aion.chat.compose.data.HomecomingChatWiring.safeCreate(context)
+                if (w == null || !w.hasRoute()) return
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    var reply: String? = null
+                    try {
+                        w.engine.send(
+                            com.aion.chat.homecoming.HomecomingChatEngine.ChatCommand(
+                                "req_poke_" + System.currentTimeMillis(),
+                                com.aion.chat.compose.data.HomecomingChatWiring.TIMELINE,
+                                com.aion.chat.compose.data.HomecomingChatWiring.RESPONDER,
+                                com.aion.chat.compose.data.HomecomingChatWiring.USER,
+                                com.aion.chat.compose.data.HomecomingPokeStore.narration(verb, spot),
+                                "main", w.mainModelKey(), "", ""
+                            ),
+                            object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
+                                override fun onChunk(chunk: String) {}
+                                override fun onComplete(messageId: String, text: String) {
+                                    reply = text.trim().ifBlank { null }
+                                }
+                                override fun onFailure(code: String) {}
+                            }
+                        )
+                        var waited = 0L
+                        while (reply == null && waited < 20_000L) {
+                            kotlinx.coroutines.delay(300L); waited += 300L
+                        }
+                    } catch (e: Exception) { /* 安静：心跳已经在涨 */ }
+                    val r = reply
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (!r.isNullOrBlank()) {
+                            pokeBubble = r
+                            scope.launch {
+                                kotlinx.coroutines.delay(8000L)
+                                pokeBubble = null
+                            }
+                        }
+                    }
+                }
+            }
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    pokeBubble?.let { text ->
+                        Text(
+                            text,
+                            style = glassText(alpha = 0.9f, size = 11),
+                            modifier = Modifier
+                                .padding(bottom = 6.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White.copy(alpha = 0.55f))
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
                     Text(
-                        "他的心潮 · " + com.aion.chat.compose.data.HeartTideStore.tideWord(tide),
+                        "他的心潮 · " + com.aion.chat.compose.data.HeartTideStore.tideWord(tide) + " · " + mind.intentKey,
                         style = glassText(alpha = 0.7f, size = 10)
                     )
                     com.aion.chat.compose.ui.pet.PetSprite(
                         displayHeight = 96.dp,
-                        moodAnim = com.aion.chat.compose.data.HeartTideStore.tideAnim(tide)
+                        baseAnim = mind.action,
+                        frozen = mind.frozen,
+                        oneShot = pokeShot,
+                        onOneShotDone = { pokeShot = null },
+                        onTap = { pokePet() }
                     )
                 }
             }
