@@ -1,9 +1,11 @@
 package com.aion.chat.compose.ui.diary
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,15 +35,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -47,30 +54,33 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.aion.chat.compose.data.HomecomingDayStore
 import com.aion.chat.compose.data.SupabaseMomentsStore
 import com.aion.chat.compose.ui.theme.HomecomingColors
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.YearMonth
 
 /**
- * 日记手账·厚卡片本（按 Yuri 提供的技术文档 v2 实现；替换之前的书本方案）。
- * - 一月一张厚卡片：Canvas 弧面（上下边同弧度下凹，光从右上）+ 5 层厚度截面 + 投影（左下偏）
- * - 上下滑动浏览，层层压叠（18dp），jitter 参差（±0.8°/±3dp，种子固定）
- * - 点卡片原地展开（128→430dp）：显示当月日记列表，点一条读全文（信纸弹窗）
- * - 顶部一行（月份名 + 迷你月历）是被压住时唯一露出的部分
+ * 日记书架（Yuri 设计）：木质书柜 + 玻璃柜门 + 一月一本笔记本。
+ * - 点柜门：两扇玻璃门绕外缘向外打开，露出柜内三层搁板
+ * - 每月一本笔记本立在搁板上：厚度随篇数变化，六种封面风格轮换
+ * - 点笔记本：全屏摊开这本本子——内页材质/横线/丝带跟封面风格配套，点条目读全文
  */
 @Composable
 fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val letters = remember { mutableStateOf<List<Letter>>(emptyList()) }
     val loading = remember { mutableStateOf(true) }
-    val selected = remember { mutableStateOf<Letter?>(null) }
+    val selectedLetter = remember { mutableStateOf<Letter?>(null) }
+    val selectedMonth = remember { mutableStateOf<Pair<String, List<Letter>>?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         loading.value = true
@@ -79,20 +89,20 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     }
 
     val monthKeys = remember(letters.value) {
-        letters.value.map { it.date.take(7) }.distinct().sortedDescending() // 新→旧
+        letters.value.map { it.date.take(7) }.distinct().sortedDescending()
     }
     val months = remember(letters.value) {
-        letters.value.groupBy { it.date.take(7) }
+        monthKeys.map { it to letters.value.filter { l -> l.date.take(7) == it } }
     }
 
-    // 屏幕背景：暖米色 + 极淡噪点（文档 §六）
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFF2EDE3))) {
+    // 暖深色墙面（衬托家具）
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF221A12))) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val rnd = java.util.Random(25L)
-            repeat(200) {
+            val rnd = java.util.Random(11L)
+            repeat(160) {
                 drawCircle(
-                    color = Color(0x0D8A7A5A),
-                    radius = 0.7f + rnd.nextFloat() * 1.1f,
+                    color = Color(0x0DFFFFFF),
+                    radius = 0.7f + rnd.nextFloat() * 1.0f,
                     center = Offset(rnd.nextFloat() * size.width, rnd.nextFloat() * size.height)
                 )
             }
@@ -103,396 +113,595 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
-                    tint = HomecomingColors.Ink,
+                    tint = Color(0xFFE8DCC8),
                     modifier = Modifier
                         .size(24.dp)
                         .clickable { onBack() }
                 )
                 Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                    Text("日记手账", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
-                    Text("厚卡片本 · 上下滑 · 点卡片展开一个月", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    Text("日记书架", fontSize = 22.sp, color = Color(0xFFE8DCC8), fontWeight = FontWeight.Medium)
+                    Text("点柜门打开 · 一月一本 · 点本子读那个月", fontSize = 11.sp, color = Color(0xFFB9A88E))
                 }
             }
 
             BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (loading.value) {
                     Text(
-                        "翻开卡片本中…",
-                        fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else if (monthKeys.isEmpty()) {
-                    Text(
-                        "还没有一张卡片——\n和他说上一段话，晚安之后这个月就会有",
-                        fontSize = 13.sp, color = HomecomingColors.InkSoft,
-                        lineHeight = 22.sp, textAlign = TextAlign.Center,
+                        "擦拭柜子中…",
+                        fontSize = 12.sp, color = Color(0xFFB9A88E),
                         modifier = Modifier.align(Alignment.Center)
                     )
                 } else {
-                    var expandedIndex by remember { mutableStateOf<Int?>(null) }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 24.dp, vertical = 34.dp)
-                    ) {
-                        monthKeys.forEachIndexed { index, key ->
-                            val monthLetters = months[key].orEmpty()
-                            val isExpanded = expandedIndex == index
-                            val cardHeight by animateDpAsState(
-                                targetValue = if (isExpanded) 430.dp else 128.dp,
-                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-                                label = "cardH"
-                            )
-                            // 参差微扰：种子固定（文档 §三）
-                            val jitterRotation = remember(index) {
-                                val r = java.util.Random((index * 31).toLong())
-                                (r.nextFloat() - 0.5f) * (JITTER_ROTATION * 2f)
-                            }
-                            val jitterX = remember(index) {
-                                val r = java.util.Random((index * 17).toLong())
-                                ((r.nextFloat() - 0.5f) * 6).dp
-                            }
-                            // 包一层：可见高度 = 卡高 - 压叠量；卡片本体超出部分压在下一张上
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(cardHeight - CARD_OVERLAP)
-                                    .zIndex(index.toFloat())
-                            ) {
-                                ThickCurvedCard(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(cardHeight)
-                                        .offset(x = jitterX)
-                                        .graphicsLayer { rotationZ = jitterRotation }
-                                        .clickable { expandedIndex = if (isExpanded) null else index },
-                                    cardIndex = index,
-                                    monthKey = key,
-                                    letters = monthLetters,
-                                    expanded = isExpanded,
-                                    onLetterTap = { selected.value = it }
+                    // 书柜尺寸：高 = 宽 * 1.16，宽度按可用高度反推，居中
+                    val maxW = maxWidth
+                    val maxH = maxHeight - 24.dp
+                    var cabW = maxW
+                    if (maxW * 1.16f > maxH) cabW = maxH / 1.16f
+                    val doorsOpen = remember { Animatable(0f) }
+                    val doorProgress = doorsOpen.value
+
+                    CabinetView(
+                        cabinetWidth = cabW,
+                        doorProgress = doorProgress,
+                        months = months,
+                        onToggleDoors = {
+                            scope.launch {
+                                doorsOpen.animateTo(
+                                    if (doorsOpen.value > 0.5f) 0f else 1f,
+                                    tween(620, easing = FastOutSlowInEasing)
                                 )
                             }
-                        }
-                        Spacer(Modifier.height(110.dp))
+                        },
+                        onNotebookTap = { key, list ->
+                            selectedMonth.value = key to list
+                        },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+
+                    if (doorProgress < 0.3f) {
+                        Text(
+                            "点柜门，打开它",
+                            fontSize = 11.sp, color = Color(0xFFB9A88E),
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 6.dp)
+                        )
                     }
                 }
             }
         }
+    }
+
+    // ── 摊开的本子 ──
+    selectedMonth.value?.let { (key, list) ->
+        val style = NOTEBOOK_STYLES[monthIndexOf(key) % NOTEBOOK_STYLES.size]
+        NotebookSpreadDialog(
+            monthKey = key,
+            letters = list,
+            style = style,
+            onClose = { selectedMonth.value = null },
+            onLetterTap = { selectedLetter.value = it }
+        )
     }
 
     // ── 全文阅读 ──
-    selected.value?.let { letter ->
-        LetterReaderDialog(letter = letter, onClose = { selected.value = null })
+    selectedLetter.value?.let { letter ->
+        LetterReaderDialog(letter = letter, onClose = { selectedLetter.value = null })
     }
 }
 
-// ── 厚卡片（文档 §六 常量 / 色值） ──
+// ── 书柜 ──
 
-private val CARD_CURL_HEIGHT = 8.dp
-private val CARD_THICKNESS = 5.dp
-private const val THICKNESS_LAYERS = 5
-private val CARD_OVERLAP = 18.dp
-private val JITTER_ROTATION = 0.8f
+private val WoodFrameDark = Color(0xFF4E3826)
+private val WoodFrame = Color(0xFF5F4430)
+private val WoodFrameMid = Color(0xFF6E4F38)
+private val WoodPanel = Color(0xFF7A563E)
+private val WoodShelf = Color(0xFF8A684C)
+private val GlassDark = Color(0xFF38302A)
+private val Brass = Color(0xFFC9A84C)
+private val CavityTop = Color(0xFF3A2C1E)
+private val CavityBottom = Color(0xFF2A1F14)
 
-private val MONTH_NAMES = listOf(
+@Composable
+private fun CabinetView(
+    cabinetWidth: Dp,
+    doorProgress: Float,
+    months: List<Pair<String, List<Letter>>>,
+    onToggleDoors: () -> Unit,
+    onNotebookTap: (String, List<Letter>) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cw = cabinetWidth
+    val ch = cw * 1.16f
+
+    Box(modifier = modifier.width(cw).height(ch)) {
+        // ── 柜身底色（整体木色） ──
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(3.dp))
+                .background(Brush.verticalGradient(listOf(WoodFrameMid, WoodFrameDark)))
+        )
+
+        // ── 上柜内腔（搁板 + 笔记本）──
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = ch * 0.075f)
+                .size(width = cw * 0.89f, height = ch * 0.50f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Brush.verticalGradient(listOf(CavityTop, CavityBottom)))
+        ) {
+            val cavityW = cw * 0.89f
+            val cavityH = ch * 0.50f
+            // 三层搁板
+            listOf(0.36f, 0.64f, 0.92f).forEach { fy ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(y = cavityH * fy)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(WoodShelf)
+                )
+            }
+            // 笔记本：一月一本，按搁板分配（新→旧），厚度随篇数
+            val shelfBooks = List(3) { s -> months.filterIndexed { i, _ -> i % 3 == s } }
+            shelfBooks.forEachIndexed { shelf, books ->
+                val shelfY = cavityH * listOf(0.36f, 0.64f, 0.92f)[shelf]
+                var x = cavityW * 0.05f
+                books.forEach { (key, list) ->
+                    val st = NOTEBOOK_STYLES[monthIndexOf(key) % NOTEBOOK_STYLES.size]
+                    val bookW = 13.dp + 1.2.dp * list.size.coerceAtMost(16)
+                    val bookH = cavityH * 0.22f
+                    val enabled = doorProgress > 0.6f
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = x, y = shelfY - bookH)
+                            .size(width = bookW, height = bookH)
+                            .graphicsLayer { alpha = 0.55f + 0.45f * doorProgress }
+                            .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                            .background(Brush.verticalGradient(listOf(st.cover, st.coverDark)))
+                            .border(0.8.dp, Color(0x33000000), RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                            .clickable(enabled = enabled) { onNotebookTap(key, list) }
+                    ) {
+                        // 书脊饰带 + 月份
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .background(st.ribbon)
+                        )
+                        Text(
+                            key.takeLast(2) + "月",
+                            fontSize = 6.sp, color = st.label,
+                            maxLines = 1,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                        // 书底
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(st.coverDark)
+                        )
+                    }
+                    x += bookW + 5.dp
+                }
+            }
+            // 关门时的压暗（门开着就亮）
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f * (1f - doorProgress)))
+            )
+        }
+
+        // ── 两扇玻璃门（绕外缘向外打开） ──
+        val doorH = ch * 0.545f
+        val doorW = cw * 0.435f
+        val doorTop = ch * 0.048f
+        // 左门（铰链在左缘）
+        DoorPanel(
+            width = doorW, height = doorH,
+            hingeLeft = true,
+            progress = doorProgress,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = cw * 0.03f, y = doorTop)
+        )
+        // 右门（铰链在右缘）
+        DoorPanel(
+            width = doorW, height = doorH,
+            hingeLeft = false,
+            progress = doorProgress,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = -cw * 0.03f, y = doorTop)
+        )
+        // 门中缝竖框（柜门框架，开门后依然在）
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = doorTop)
+                .width(cw * 0.035f)
+                .height(doorH)
+                .background(WoodFrame)
+        )
+        // 门框 click 区（点门开/关：左右两门的合成区域）
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = doorTop)
+                .fillMaxWidth()
+                .height(doorH)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    enabled = true
+                ) { onToggleDoors() }
+        )
+
+        // ── 中段檐口 ──
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = ch * 0.595f)
+                .fillMaxWidth(1.03f)
+                .height(ch * 0.042f)
+                .background(Brush.verticalGradient(listOf(WoodFrame, WoodFrameDark)))
+        )
+
+        // ── 下柜：两只抽屉 + 两扇板门 ──
+        val lowerTop = ch * 0.645f
+        // 抽屉
+        listOf(0, 1).forEach { i ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = cw * (0.05f + i * 0.465f), y = lowerTop + ch * 0.012f)
+                    .size(width = cw * 0.42f, height = ch * 0.105f)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Brush.verticalGradient(listOf(WoodPanel, WoodFrame)))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(width = 34.dp, height = 5.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Brass)
+                )
+            }
+        }
+        // 下柜板门
+        listOf(0, 1).forEach { i ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = cw * (0.05f + i * 0.465f), y = lowerTop + ch * 0.135f)
+                    .size(width = cw * 0.42f, height = ch * 0.20f)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Brush.verticalGradient(listOf(WoodPanel, WoodFrame)))
+                    .border(2.dp, WoodFrameDark, RoundedCornerShape(2.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(if (i == 0) Alignment.CenterEnd else Alignment.CenterStart)
+                        .padding(horizontal = 6.dp)
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(Brass)
+                )
+            }
+        }
+
+        // ── 底座 ──
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(ch * 0.045f)
+                .background(WoodFrameDark)
+        )
+    }
+}
+
+/** 一扇玻璃门：木框 + 半透明玻璃 + 斜向反光 + 铜把手。 */
+@Composable
+private fun DoorPanel(
+    width: Dp,
+    height: Dp,
+    hingeLeft: Boolean,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(width = width, height = height)
+            .graphicsLayer {
+                rotationY = if (hingeLeft) progress * 104f else -progress * 104f
+                transformOrigin = TransformOrigin(
+                    pivotFractionX = if (hingeLeft) 0f else 1f,
+                    pivotFractionY = 0.5f
+                )
+                cameraDistance = 18f * density
+            }
+            .clip(RoundedCornerShape(2.dp))
+    ) {
+        // 门框木框
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(WoodFrame, WoodFrameDark)))
+        )
+        // 玻璃（半透明，能看见柜内）
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxSize()
+                .padding(4.dp)
+                .background(Brush.verticalGradient(listOf(GlassDark.copy(alpha = 0.55f), Color(0x66241C14))))
+        ) {
+            // 斜向反光
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawLine(
+                    color = Color(0x22FFFFFF),
+                    start = Offset(size.width * 0.25f, 0f),
+                    end = Offset(size.width * 0.45f, size.height),
+                    strokeWidth = 6f
+                )
+                drawLine(
+                    color = Color(0x16FFFFFF),
+                    start = Offset(size.width * 0.45f, 0f),
+                    end = Offset(size.width * 0.65f, size.height),
+                    strokeWidth = 3f
+                )
+            }
+        }
+        // 铜把手（门内侧边）
+        Box(
+            modifier = Modifier
+                .align(if (hingeLeft) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(horizontal = 7.dp)
+                .size(width = 4.dp, height = 26.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Brass)
+        )
+    }
+}
+
+// ── 笔记本风格（六种轮换：封面/内页配套） ──
+
+private data class NotebookStyle(
+    val name: String,
+    val cover: Color,
+    val coverDark: Color,
+    val ribbon: Color,
+    val label: Color,
+    val page: Color,
+    val pageEdge: Color,
+    val pageLine: Color,
+    val pageText: Color,
+    val accent: Color
+)
+
+private val NOTEBOOK_STYLES = listOf(
+    NotebookStyle(
+        "酒红布面", Color(0xFF7A2E2E), Color(0xFF5C2020), Color(0xFFD9B98A), Color(0xFFF0E0C8),
+        Color(0xFFFAF3E3), Color(0xFFEFE6D2), Color(0x33A08C6E), Color(0xFF5A4632), Color(0xFF7A2E2E)
+    ),
+    NotebookStyle(
+        "墨绿皮革", Color(0xFF2F4A3C), Color(0xFF20362B), Color(0xFFC9A84C), Color(0xFFE8DCC0),
+        Color(0xFFF3F0E4), Color(0xFFE6E2D2), Color(0x338A9A7A), Color(0xFF44523E), Color(0xFF2F4A3C)
+    ),
+    NotebookStyle(
+        "藏蓝硬壳", Color(0xFF2E3A5C), Color(0xFF1F2A44), Color(0xFFD9C08A), Color(0xFFE4E0D4),
+        Color(0xFFF7F4EC), Color(0xFFE9E6DC), Color(0x337A8AA8), Color(0xFF3A4460), Color(0xFF2E3A5C)
+    ),
+    NotebookStyle(
+        "芥黄牛皮", Color(0xFFC9963C), Color(0xFFA57A2C), Color(0xFF5C4632), Color(0xFF4E3C28),
+        Color(0xFFFCF6E8), Color(0xFFF2EAD6), Color(0x33C9A84C), Color(0xFF6E5A38), Color(0xFFA57A2C)
+    ),
+    NotebookStyle(
+        "紫梅绒面", Color(0xFF5C3A5E), Color(0xFF432A45), Color(0xFFD9B9DB), Color(0xFFEBDCEC),
+        Color(0xFFF9F1F2), Color(0xFFEFE4E6), Color(0x33A87FAA), Color(0xFF584258), Color(0xFF5C3A5E)
+    ),
+    NotebookStyle(
+        "原棕皮面", Color(0xFF6E4A32), Color(0xFF523622), Color(0xFFD9C6A8), Color(0xFFEFE4D0),
+        Color(0xFFF6EFE0), Color(0xFFEAE2CE), Color(0x33A08C6E), Color(0xFF5A4632), Color(0xFF6E4A32)
+    )
+)
+
+private fun monthIndexOf(date: String): Int {
+    val month = if (date.length >= 7) date.split("-")[1].toIntOrNull() ?: 1 else 1
+    return (month - 1).coerceIn(0, 11)
+}
+
+// ── 摊开的本子（全屏：左右两页，内页风格跟封面配套） ──
+
+@Composable
+private fun NotebookSpreadDialog(
+    monthKey: String,
+    letters: List<Letter>,
+    style: NotebookStyle,
+    onClose: () -> Unit,
+    onLetterTap: (Letter) -> Unit
+) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF1C150E))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onClose() },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // 摊开的两页
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .height(430.dp)
+                        .shadow(16.dp, RoundedCornerShape(6.dp))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { /* 摊开的本子挡住关闭点击 */ }
+                ) {
+                    // 左页：月份题头页
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(Brush.verticalGradient(listOf(style.page, style.pageEdge)))
+                    ) {
+                        // 内页横线
+                        Canvas(modifier = Modifier.matchParentSize()) {
+                            var y = 44.dp.toPx()
+                            while (y < size.height - 20.dp.toPx()) {
+                                drawLine(
+                                    color = style.pageLine,
+                                    start = Offset(14.dp.toPx(), y),
+                                    end = Offset(size.width - 12.dp.toPx(), y),
+                                    strokeWidth = 1f
+                                )
+                                y += 27.dp.toPx()
+                            }
+                            // 左侧页边线
+                            drawLine(
+                                color = style.accent.copy(alpha = 0.35f),
+                                start = Offset(10.dp.toPx(), 0f),
+                                end = Offset(10.dp.toPx(), size.height),
+                                strokeWidth = 1.2f
+                            )
+                        }
+                        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                            Text(
+                                MONTH_NAMES2[monthIndexOf(monthKey)],
+                                fontSize = 30.sp, color = style.accent,
+                                fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
+                                fontWeight = FontWeight.Light
+                            )
+                            Text(
+                                monthKey.take(4) + " · " + style.name,
+                                fontSize = 11.sp, color = style.pageText.copy(alpha = 0.7f)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "共 " + letters.size + " 封",
+                                fontSize = 12.sp, color = style.pageText,
+                                fontFamily = FontFamily.Serif
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            // 丝带书签
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 10.dp, height = 64.dp)
+                                    .background(style.ribbon)
+                            )
+                        }
+                        // 中缝阴影（书页向中缝凹陷）
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .width(14.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color.Transparent, Color(0x26000000))
+                                    )
+                                )
+                        )
+                    }
+                    // 右页：日记列表（内页滚动）
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(Brush.verticalGradient(listOf(style.page, style.pageEdge)))
+                    ) {
+                        Canvas(modifier = Modifier.matchParentSize()) {
+                            var y = 44.dp.toPx()
+                            while (y < size.height - 20.dp.toPx()) {
+                                drawLine(
+                                    color = style.pageLine,
+                                    start = Offset(12.dp.toPx(), y),
+                                    end = Offset(size.width - 14.dp.toPx(), y),
+                                    strokeWidth = 1f
+                                )
+                                y += 27.dp.toPx()
+                            }
+                        }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 14.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            letters.forEach { letter ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onLetterTap(letter) }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        "✻ " + letter.date,
+                                        fontSize = 11.sp, color = style.accent,
+                                        fontFamily = FontFamily.Serif
+                                    )
+                                    Text(
+                                        letter.content.replace("\n", " ").trim().take(30),
+                                        fontSize = 12.sp, color = style.pageText,
+                                        lineHeight = 18.sp,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 3.dp)
+                                    )
+                                }
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(0.7.dp)
+                                        .background(style.pageLine)
+                                )
+                            }
+                        }
+                        // 中缝阴影（左页侧）
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .fillMaxHeight()
+                                .width(14.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0x26000000), Color.Transparent)
+                                    )
+                                )
+                        )
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "点本子外合上 · 点日期读那天的信",
+                    fontSize = 11.sp, color = Color(0xFFB9A88E)
+                )
+            }
+        }
+    }
+}
+
+private val MONTH_NAMES2 = listOf(
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
 )
-private val ScreenBg = Color(0xFFF2EDE3)
-private val SurfaceMid = Color(0xFFF1EBDE)
-private val SurfaceLeft = Color(0xFFFBF8F1)
-private val SurfaceLeft2 = Color(0xFFFCFAF4)
-private val SurfaceLeftIn = Color(0xFFF5F0E5)
-private val SurfaceRightIn = Color(0xFFF6F1E7)
-private val SurfaceRight = Color(0xFFFDFBF6)
-private val SurfaceRightEdge = Color(0xFFFFFDF8)
-private val SectionNear = Color(0xFFF6F1E6)
-private val SectionFar = Color(0xFFE8E1D2)
-private val MonthNameColor = Color(0xFFC9A876)
-private val HighlightColor = Color(0xFF8A7A66)
-private val BulletColor = Color(0xFFB5AA98)
-private val CalHeaderColor = Color(0xFFAAA093)
-private val CalDayColor = Color(0xFF9A8E7C)
-private val MarkedGreen = Color(0xFF9DB58A)
-private val AnniversaryRed = Color(0xFFD98B8B)
-private val CardSideBase = Color(0xFFE8E1D2)
-
-/** 构造“打开状态”卡片的轮廓：上下边中间下凹（控制点 2 倍翘起高度），左右直边。 */
-private fun buildCardPath(w: Float, h: Float, curlHeight: Float): Path = Path().apply {
-    moveTo(0f, 0f)
-    quadraticBezierTo(w / 2f, curlHeight * 2f, w, 0f)
-    lineTo(w, h)
-    quadraticBezierTo(w / 2f, h + curlHeight * 2f, 0f, h)
-    close()
-}
-
-private fun darken(c: Color, f: Float): Color =
-    Color(c.red * (1f - f), c.green * (1f - f), c.blue * (1f - f), c.alpha)
-
-@Composable
-private fun ThickCurvedCard(
-    modifier: Modifier,
-    cardIndex: Int,
-    monthKey: String,
-    letters: List<Letter>,
-    expanded: Boolean,
-    onLetterTap: (Letter) -> Unit
-) {
-    Box(modifier = modifier.clipToBounds()) {
-        // ── 卡片外壳：投影 + 厚度 + 弧面（Canvas，文档 §二） ──
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val curl = CARD_CURL_HEIGHT.toPx()
-
-            // ① 投影：往左下偏，越靠下的卡片越重（多层近似模糊）
-            val shadowAlpha = 0.10f + cardIndex * 0.015f
-            for (i in 5 downTo 1) {
-                val sp = buildCardPath(w, h, curl)
-                sp.translate(Offset((-3 - i * 1.1f).dp.toPx(), (5 + i * 1.5f).dp.toPx()))
-                drawPath(sp, Color.Black.copy(alpha = shadowAlpha / 3f))
-            }
-
-            // ② 厚度侧面：同一条弧形路径往下平移，颜色逐层加深（文档 §二②）
-            for (i in THICKNESS_LAYERS downTo 1) {
-                val yo = CARD_THICKNESS * (i / THICKNESS_LAYERS.toFloat())
-                val sidePath = buildCardPath(w, h, curl)
-                sidePath.translate(Offset(0f, yo.toPx()))
-                drawPath(sidePath, darken(CardSideBase, 0.08f + (i / THICKNESS_LAYERS.toFloat()) * 0.12f))
-            }
-
-            // ③ 卡片表面：弧形轮廓 + 弧面光影（右更亮，光从右上来）
-            val cardPath = buildCardPath(w, h, curl)
-            val surfaceBrush = Brush.horizontalGradient(
-                0.00f to SurfaceLeft,
-                0.12f to SurfaceLeft2,
-                0.38f to SurfaceLeftIn,
-                0.50f to SurfaceMid,
-                0.62f to SurfaceRightIn,
-                0.88f to SurfaceRight,
-                1.00f to SurfaceRightEdge
-            )
-            drawPath(cardPath, surfaceBrush)
-
-            // 纸张噪点（限制在卡片路径内）
-            clipPath(cardPath) {
-                val rnd = java.util.Random(cardIndex * 977L)
-                repeat(80) {
-                    drawCircle(
-                        color = Color(0x0A8A7A5A),
-                        radius = 0.7f + rnd.nextFloat() * 1.0f,
-                        center = Offset(rnd.nextFloat() * w, rnd.nextFloat() * h)
-                    )
-                }
-            }
-        }
-
-        // ── 内容：左右避开翘起区（文档 §三） ──
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 16.dp)
-        ) {
-            MonthCardContent(
-                monthKey = monthKey,
-                letters = letters,
-                expanded = expanded,
-                onLetterTap = onLetterTap
-            )
-        }
-    }
-}
-
-/** 卡片内容：月份名 + 迷你月历（被压住时露出的部分）；展开后追加当月日记列表。 */
-@Composable
-private fun MonthCardContent(
-    monthKey: String,
-    letters: List<Letter>,
-    expanded: Boolean,
-    onLetterTap: (Letter) -> Unit
-) {
-    val ym = runCatching { YearMonth.parse(monthKey) }.getOrNull()
-    val monthIdx = (ym?.monthValue ?: 1) - 1
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 顶部行：月份名（左） + 迷你月历（右）——被压住时唯一露出的部分
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            Column {
-                Text(
-                    MONTH_NAMES[monthIdx],
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = MonthNameColor,
-                    fontFamily = FontFamily.Serif,
-                    fontStyle = FontStyle.Italic
-                )
-                Text(
-                    monthKey.take(4),
-                    fontSize = 10.sp, color = Color(0xFFA89878)
-                )
-                if (letters.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "共 " + letters.size + " 封" + if (expanded) " · 点日期读全文" else "",
-                        fontSize = 10.sp, color = BulletColor
-                    )
-                }
-            }
-            MiniCalendar(
-                yearMonth = ym,
-                markedDays = letters.map { it.date.takeLast(2).toIntOrNull() ?: 0 }.toSet()
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        if (!expanded) {
-            // 收起态：日记要点
-            letters.take(3).forEach { letter ->
-                Row(modifier = Modifier.padding(vertical = 2.dp)) {
-                    Text("✻ ", fontSize = 11.sp, color = BulletColor)
-                    Text(
-                        letter.content.replace("\n", " ").trim().take(18),
-                        fontSize = 11.sp, lineHeight = 21.sp, color = HighlightColor,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        } else {
-            // 展开态：当月每篇日记（日期 + 开头），点一条读全文
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(240.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                letters.forEach { letter ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onLetterTap(letter) }
-                            .padding(vertical = 7.dp)
-                    ) {
-                        Text(
-                            "✻ " + letter.date,
-                            fontSize = 11.sp, color = MonthNameColor,
-                            fontFamily = FontFamily.Serif
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            letter.content.replace("\n", " ").trim().take(24),
-                            fontSize = 12.sp, color = HighlightColor,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            "读 →",
-                            fontSize = 10.sp, color = HomecomingColors.Accent
-                        )
-                    }
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(0.7.dp)
-                            .background(Color(0x1FA89A78))
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 迷你月历（文档 §四）：写了日记的日子画青提绿实心圆。 */
-@Composable
-private fun MiniCalendar(yearMonth: YearMonth?, markedDays: Set<Int>) {
-    if (yearMonth == null) return
-    val firstDow = yearMonth.atDay(1).dayOfWeek.value % 7 // 周日=0
-    val days = yearMonth.lengthOfMonth()
-    Column(horizontalAlignment = Alignment.End) {
-        Text(
-            "日 一 二 三 四 五 六",
-            fontSize = 8.sp,
-            letterSpacing = 1.5.sp,
-            color = CalHeaderColor
-        )
-        Spacer(Modifier.height(3.dp))
-        var cell = 1 - firstDow
-        while (cell <= days) {
-            Row {
-                repeat(7) {
-                    val d = cell; cell++
-                    Box(
-                        Modifier.size(13.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (d in 1..days) {
-                            if (d in markedDays) {
-                                Box(
-                                    Modifier
-                                        .size(12.dp)
-                                        .background(MarkedGreen, CircleShape)
-                                )
-                            }
-                            Text(
-                                d.toString(),
-                                fontSize = 8.sp,
-                                color = if (d in markedDays) Color.White else CalDayColor
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── 数据 ──
-
-data class Letter(
-    val date: String,
-    val title: String,
-    val content: String,
-    val weather: String,
-    val mood: String,
-    val createdAt: Long
-)
-
-private suspend fun loadLetters(context: android.content.Context): List<Letter> {
-    val remote = runCatching { SupabaseMomentsStore.fetchSeanDiaries() }
-        .getOrNull()
-        ?.takeIf { it.error == null }
-        ?.data
-        .orEmpty()
-        .map { d ->
-            val (date, ms) = resolveDate(d.createdAt, d.createdAtMs)
-            Letter(date, d.title, d.content, d.weather, d.mood, ms)
-        }
-    val local = HomecomingDayStore.diaries(context)
-        .filter { it.author == "sean" }
-        .map { d ->
-            val (date, _) = resolveDate("", d.createdAt)
-            Letter(date, d.title, d.content, "", "", d.createdAt)
-        }
-    val remoteDates = remote.map { it.date }.toSet()
-    val localOnly = local.filter { it.date !in remoteDates }
-    return (remote + localOnly).sortedByDescending { it.createdAt }
-}
-
-private fun resolveDate(iso: String, ms: Long): Pair<String, Long> {
-    val millis = if (ms > 0) ms
-    else runCatching { Instant.parse(iso).toEpochMilli() }.getOrElse { 0L }
-    val date = if (millis > 0)
-        Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
-    else iso.take(10)
-    return date to millis
-}
 
 // ── 全文阅读 ──
 
@@ -509,7 +718,7 @@ private fun LetterReaderDialog(letter: Letter, onClose: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .clickable(
                     indication = null,
-                    interactionSource = MutableInteractionSource()
+                    interactionSource = remember { MutableInteractionSource() }
                 ) { onClose() }
                 .padding(horizontal = 30.dp, vertical = 40.dp)
         ) {
@@ -563,4 +772,45 @@ private fun LetterReaderDialog(letter: Letter, onClose: () -> Unit) {
             )
         }
     }
+}
+
+// ── 数据 ──
+
+data class Letter(
+    val date: String,
+    val title: String,
+    val content: String,
+    val weather: String,
+    val mood: String,
+    val createdAt: Long
+)
+
+private suspend fun loadLetters(context: android.content.Context): List<Letter> {
+    val remote = runCatching { SupabaseMomentsStore.fetchSeanDiaries() }
+        .getOrNull()
+        ?.takeIf { it.error == null }
+        ?.data
+        .orEmpty()
+        .map { d ->
+            val (date, ms) = resolveDate(d.createdAt, d.createdAtMs)
+            Letter(date, d.title, d.content, d.weather, d.mood, ms)
+        }
+    val local = HomecomingDayStore.diaries(context)
+        .filter { it.author == "sean" }
+        .map { d ->
+            val (date, _) = resolveDate("", d.createdAt)
+            Letter(date, d.title, d.content, "", "", d.createdAt)
+        }
+    val remoteDates = remote.map { it.date }.toSet()
+    val localOnly = local.filter { it.date !in remoteDates }
+    return (remote + localOnly).sortedByDescending { it.createdAt }
+}
+
+private fun resolveDate(iso: String, ms: Long): Pair<String, Long> {
+    val millis = if (ms > 0) ms
+    else runCatching { Instant.parse(iso).toEpochMilli() }.getOrElse { 0L }
+    val date = if (millis > 0)
+        Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+    else iso.take(10)
+    return date to millis
 }
