@@ -274,6 +274,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         val w = wiring ?: return
         try {
             val list = w.listMessages(HomecomingChatWiring.TIMELINE)
+            // 即时指令：扫他的新消息里的 <countdown> 标签（去重过的不会重复入药丸）
+            com.aion.chat.compose.data.CommandStore.ensureIssuerKnowledge(context)
+            list.reversed().filter { it.role != "user" }.forEach {
+                com.aion.chat.compose.data.CommandStore.scanMessage(context, it.id, it.text)
+            }
             main.post {
                 messages.clear()
                 messages.addAll(list)
@@ -341,7 +346,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         val requestId = "req_" + System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                val prompt = if (promptPrefix != null) promptPrefix + "\n" + text else text
+                // 即时指令：有已完成的指令时，把用时反馈拼进这一轮（他就能知道她用了多久）
+                val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
+                val prefix = listOfNotNull(promptPrefix, cmdFeedback?.let { "[$it]" })
+                    .joinToString("\n").ifBlank { null }
+                val prompt = if (prefix != null) prefix + "\n" + text else text
                 w.engine.send(
                     HomecomingChatEngine.ChatCommand(
                         requestId,
@@ -759,7 +768,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             }
                             UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value, alpha = bubbleAlpha.value)
                         } else {
-                            AssistantBubbles(text = msg.text, skin = skin.value, alpha = bubbleAlpha.value)
+                            val cleanText = remember(msg.id) {
+                                com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                            }
+                            AssistantBubbles(text = cleanText, skin = skin.value, alpha = bubbleAlpha.value)
                         }
                     }
                     // AI 点歌的播放卡（真实可播，点卡片用全局唯一播放器）

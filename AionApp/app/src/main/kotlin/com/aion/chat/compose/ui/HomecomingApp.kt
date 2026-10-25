@@ -142,6 +142,7 @@ fun HomecomingApp() {
                 }
             }
         ) { padding ->
+            Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
                 startDestination = "splash",
@@ -202,6 +203,11 @@ fun HomecomingApp() {
                         )
                     }
                 }
+            }
+            // 即时指令药丸：全 App 最上层（任何页面都能看到、都能左滑完成）
+            if (current != "splash") {
+                com.aion.chat.compose.ui.command.CommandPillHost()
+            }
             }
         }
     }
