@@ -111,7 +111,17 @@
             android:launchMode="singleTask"
             android:screenOrientation="portrait" />
 
-        <!-- 提醒到点接收器 -->
+        <!-- 最后解锁时间（状态上报用） -->
+        <receiver
+            android:name=".compose.data.UnlockReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+
+    <!-- 提醒到点接收器 -->
         <receiver
             android:name=".compose.data.MusicNotification$MusicActionReceiver"
             android:exported="false">

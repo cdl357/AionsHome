@@ -182,6 +182,7 @@ fun HomecomingApp() {
                 composable("reading") { ReadingScreen(onBack = { navController.popBackStack() }) }
                 composable("reminders") { ReminderScreen() }
                 composable("hearttide") { HeartTideScreen(onBack = { navController.popBackStack() }) }
+                composable("herstate") { com.aion.chat.compose.ui.herstate.HerStateScreen(onBack = { navController.popBackStack() }) }
                 composable("music") { MusicScreen(onBack = { navController.popBackStack() }) }
                 composable("love") {
                     ListenTogetherScreen(
@@ -199,7 +200,8 @@ fun HomecomingApp() {
                             onOpenReading = { navController.navigate("reading") },
                             onOpenReminders = { navController.navigate("reminders") },
                             onOpenCall = { navController.navigate("call") },
-                            onOpenHeartTide = { navController.navigate("hearttide") }
+                            onOpenHeartTide = { navController.navigate("hearttide") },
+                            onOpenHerState = { navController.navigate("herstate") }
                         )
                     }
                 }
