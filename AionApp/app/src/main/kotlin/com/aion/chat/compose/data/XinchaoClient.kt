@@ -125,7 +125,7 @@ object XinchaoClient {
          * 用途：Supabase RLS 未放行 anon 读 moments 时的兜底——服务端密钥不出服务器，App 端无任何密钥。
          */
     /** Yuri 点赞写回（只置 yuri_liked=true，窄端点）。best-effort，失败不阻塞本地点赞。 */
-    suspend fun likeMomentViaXinchao(momentId: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun likeMomentViaXinchao(momentId: String, on: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         for (base in BASES) {
             try {
                 val conn = URL("$base/api/moments_proxy/like").openConnection() as HttpURLConnection
@@ -135,7 +135,7 @@ object XinchaoClient {
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.outputStream.use {
-                    it.write(org.json.JSONObject().put("id", momentId).toString().toByteArray())
+                    it.write(org.json.JSONObject().put("id", momentId).put("on", on).toString().toByteArray())
                 }
                 if (conn.responseCode in 200..299) return@withContext true
             } catch (e: Exception) { }

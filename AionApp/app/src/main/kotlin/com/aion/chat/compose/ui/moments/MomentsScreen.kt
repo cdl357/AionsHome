@@ -470,16 +470,25 @@ fun MomentsScreen() {
                 commentOpen = commentTarget.value == moment.id,
                 onToggleLike = {
                     val liked = HomecomingMomentsStore.toggleLike(context, moment.id, "user")
-                    reload()
-                    // 云端动态的赞同步写回 yuri_liked（best-effort，走服务器窄端点）
-                    if (liked && moment.remoteId != null) {
+                    // 乐观更新：立刻在界面上反映，不等网络刷新
+                    val idx = feed.indexOfFirst { it.id == moment.id }
+                    if (idx >= 0) {
+                        val m = feed[idx]
+                        feed[idx] = m.copy(
+                            likes = if (liked) (m.likes + "user").distinct() else m.likes - "user"
+                        )
+                    }
+                    // 云端动态的赞同步写回 yuri_liked（赞/取消都回写；best-effort）
+                    if (moment.remoteId != null) {
                         scope.launch(Dispatchers.IO) {
                             runCatching {
-                                com.aion.chat.compose.data.XinchaoClient.likeMomentViaXinchao(moment.remoteId)
+                                com.aion.chat.compose.data.XinchaoClient.likeMomentViaXinchao(moment.remoteId, liked)
                             }
                         }
                     }
                     if (liked) askSeanReply(moment.id, moment.content, "")
+                    // 后台再对一次真值（不阻塞界面）
+                    reload()
                 },
                 onComment = {
                     commentTarget.value =

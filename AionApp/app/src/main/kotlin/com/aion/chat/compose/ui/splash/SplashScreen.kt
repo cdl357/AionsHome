@@ -81,7 +81,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(width = w * 0.38f, height = w * 0.38f * (1056f / 800f))
+                .size(width = w * 0.38f, height = w * 0.38f * (1070f / 800f))
                 .graphicsLayer {
                     rotationZ = sway
                     alpha = ((t - 60f) / 380f).coerceIn(0f, 1f)
