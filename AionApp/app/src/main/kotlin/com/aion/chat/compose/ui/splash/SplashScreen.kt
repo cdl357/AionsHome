@@ -81,7 +81,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(width = w * 0.60f, height = w * 0.60f * (1056f / 800f))
+                .size(width = w * 0.38f, height = w * 0.38f * (1056f / 800f))
                 .graphicsLayer {
                     rotationZ = sway
                     alpha = ((t - 60f) / 380f).coerceIn(0f, 1f)
@@ -97,7 +97,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             val groundY = h * GROUND_Y
             val r = appleH / 2f
             val x0 = w * d.xF
-            val hangY = h * 0.235f
+            val hangY = h * 0.185f
 
             if (t < d.t0) {
                 // 还挂在枝上
@@ -199,14 +199,18 @@ private const val DROP_T0 = 620f
 private const val DROP_GAP = 230f
 private const val FALL_MS = 470f
 private const val BOUNCE_MS = 190f
-private const val GROUND_Y = 0.74f
+private const val GROUND_Y = 0.86f
 
 private data class AppleDrop(val xF: Float, val t0: Float, val rot: Float, val rollDir: Float)
 
 private val DROPS = listOf(
-    AppleDrop(0.60f, DROP_T0, 16f, 1f),
-    AppleDrop(0.70f, DROP_T0 + DROP_GAP, -19f, -1f),
-    AppleDrop(0.79f, DROP_T0 + DROP_GAP * 2, 12f, 1f)
+    AppleDrop(0.58f, DROP_T0, 16f, 1f),
+    AppleDrop(0.66f, DROP_T0 + DROP_GAP, -19f, -1f),
+    AppleDrop(0.74f, DROP_T0 + DROP_GAP * 2, 12f, 1f),
+    AppleDrop(0.62f, DROP_T0 + DROP_GAP * 3.4f, -15f, -1f),
+    AppleDrop(0.70f, DROP_T0 + DROP_GAP * 4.6f, 20f, 1f),
+    AppleDrop(0.78f, DROP_T0 + DROP_GAP * 5.7f, -12f, -1f),
+    AppleDrop(0.55f, DROP_T0 + DROP_GAP * 6.8f, 18f, 1f)
 )
 
 // ── 阳光斑（保留原版） ──
