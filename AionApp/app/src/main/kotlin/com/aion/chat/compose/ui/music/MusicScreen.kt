@@ -1,6 +1,7 @@
 package com.aion.chat.compose.ui.music
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -212,22 +213,23 @@ fun MusicScreen(onBack: () -> Unit = {}) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Brush.horizontalGradient(listOf(Color(0xFF3A2A2E), Color(0xFF262024))))
+                .background(Color.White.copy(alpha = 0.55f))
                 .clickable { showTogether = true }
+                .border(0.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
                 .padding(horizontal = 16.dp, vertical = 13.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Filled.Headphones,
                     contentDescription = null,
-                    tint = Color(0xFFEC4141),
+                    tint = HomecomingColors.Accent,
                     modifier = Modifier.size(22.dp)
                 )
                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                     Text("一起听", fontSize = 15.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                    Text("和 Sean 听同一首歌", fontSize = 11.sp, color = Color(0xFFB8AEB0))
+                    Text("和 Sean 听同一首歌", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
-                Text("进入 ›", fontSize = 12.sp, color = Color(0xFFEC4141))
+                Text("进入 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }
         }
         Spacer(Modifier.height(10.dp))
