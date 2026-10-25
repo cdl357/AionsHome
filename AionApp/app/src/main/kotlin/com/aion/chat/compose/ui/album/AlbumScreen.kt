@@ -7,7 +7,10 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -784,7 +787,7 @@ private fun HangingPlush(
     }
 }
 
-/** 铁盒子：没上墙的照片做成竖版小卡插在盒里，滑动时有拨动卡片的摆动效果。 */
+/** 铁盒子（翻盖式）：盖子绕后缘铰链向后敞开 62°，竖版小卡插在盒里，滑动有拨动效果；点盖子会晃。 */
 @Composable
 private fun TinBox(
     photos: List<HomecomingAlbumStore.AlbumPhoto>,
@@ -792,102 +795,175 @@ private fun TinBox(
     onPhotoTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val density = androidx.compose.ui.platform.LocalDensity.current
+    val tinDensity = androidx.compose.ui.platform.LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val wobble = remember { Animatable(0f) }
     BoxWithConstraints(
         modifier
             .padding(horizontal = 12.dp)
-            .height(150.dp)
+            .height(196.dp)
     ) {
         val W = maxWidth
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .shadow(7.dp, RoundedCornerShape(12.dp))
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFFEDEBE4), Color(0xFFC9C5BB), Color(0xFFA8A49A))
-                    )
-                )
-                .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(12.dp))
-        ) {
-            // 金属拉丝纹
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                repeat(26) { i ->
-                    val y = i * size.height / 26f
-                    drawLine(
-                        color = Color(0x12FFFFFF),
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = 1f
-                    )
-                }
-            }
-            // 开口内阴影
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(14.dp)
-                    .background(Brush.verticalGradient(listOf(Color(0x59000000), Color.Transparent)))
-            )
-            if (photos.isEmpty()) {
-                Text(
-                    "都在墙上呢 · 存新照片会先钉上毛毡板",
-                    fontSize = 11.sp, color = Color(0xFF7A766C),
-                    fontFamily = FontFamily.Serif,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            } else {
-                val scroll = rememberScrollState()
-                val cardW = 64.dp
-                val overlap = 30.dp
-                val stride = with(density) { (cardW - overlap).toPx() }
-                val startPad = with(density) { 18.dp.toPx() }
-                val viewport = with(density) { W.toPx() }
-                val cardWpx = with(density) { cardW.toPx() }
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = 6.dp)
-                        .horizontalScroll(scroll)
-                ) {
-                    Spacer(Modifier.width(18.dp))
-                    photos.forEachIndexed { i, photo ->
-                        // 拨动效果：卡片中心离视口中心越远越歪，带 3D 转角
-                        val centerPx = startPad + i * stride + cardWpx / 2f - scroll.value
-                        val rel = ((centerPx - viewport / 2f) / viewport).coerceIn(-0.6f, 0.6f)
-                        Box(modifier = Modifier.width(cardW - overlap)) {
-                            TinCard(
-                                photo = photo,
-                                version = version,
-                                width = cardW,
-                                rel = rel,
-                                onTap = onPhotoTap
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(22.dp))
-                }
-            }
-            // 前壁（盖住卡片下沿 → 卡片插在盒里）
+        val boxH = 150.dp
+        Box(modifier = Modifier.fillMaxSize()) {
+            // ── 盒体（下半） ──
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(26.dp)
+                    .height(boxH)
+                    .shadow(7.dp, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(
-                        Brush.verticalGradient(listOf(Color(0xFFDCD8CE), Color(0xFFABA79C)))
+                        Brush.verticalGradient(
+                            listOf(Color(0xFFEDEBE4), Color(0xFFC9C5BB), Color(0xFFA8A49A))
+                        )
+                    )
+                    .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(12.dp))
+            ) {
+                // 金属拉丝纹
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    repeat(26) { i ->
+                        val y = i * size.height / 26f
+                        drawLine(
+                            color = Color(0x12FFFFFF),
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 1f
+                        )
+                    }
+                }
+                // 开口内阴影
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(14.dp)
+                        .background(Brush.verticalGradient(listOf(Color(0x59000000), Color.Transparent)))
+                )
+                if (photos.isEmpty()) {
+                    Text(
+                        "都在墙上呢 · 存新照片会先钉上毛毡板",
+                        fontSize = 11.sp, color = Color(0xFF7A766C),
+                        fontFamily = FontFamily.Serif,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    val scroll = rememberScrollState()
+                    val cardW = 64.dp
+                    val overlap = 30.dp
+                    val stride = with(tinDensity) { (cardW - overlap).toPx() }
+                    val startPad = with(tinDensity) { 18.dp.toPx() }
+                    val viewport = with(tinDensity) { W.toPx() }
+                    val cardWpx = with(tinDensity) { cardW.toPx() }
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 6.dp)
+                            .horizontalScroll(scroll)
+                    ) {
+                        Spacer(Modifier.width(18.dp))
+                        photos.forEachIndexed { i, photo ->
+                            // 拨动效果：卡片中心离视口中心越远越歪，带 3D 转角
+                            val centerPx = startPad + i * stride + cardWpx / 2f - scroll.value
+                            val rel = ((centerPx - viewport / 2f) / viewport).coerceIn(-0.6f, 0.6f)
+                            Box(modifier = Modifier.width(cardW - overlap)) {
+                                TinCard(
+                                    photo = photo,
+                                    version = version,
+                                    width = cardW,
+                                    rel = rel,
+                                    onTap = onPhotoTap
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(22.dp))
+                    }
+                }
+                // 前壁（盖住卡片下沿 → 卡片插在盒里）
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .background(
+                            Brush.verticalGradient(listOf(Color(0xFFDCD8CE), Color(0xFFABA79C)))
+                        )
+                )
+                Text(
+                    "TIN · 没上墙的照片都在这",
+                    fontSize = 9.sp, color = Color(0xFF6E6A60),
+                    fontFamily = FontFamily.Serif,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 12.dp, bottom = 6.dp)
+                )
+            }
+
+            // ── 铰链座（盒顶后缘，盖子底下） ──
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 42.dp)
+                    .size(width = 74.dp, height = 7.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF9A968C), Color(0xFFDCD8CE), Color(0xFF9A968C))
+                        )
                     )
             )
-            Text(
-                "TIN · 没上墙的照片都在这",
-                fontSize = 9.sp, color = Color(0xFF6E6A60),
-                fontFamily = FontFamily.Serif,
+
+            // ── 盖子（绕底边铰链向后敞开 62°；点一下晃一晃） ──
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 12.dp, bottom = 6.dp)
-            )
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-40).dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .height(92.dp)
+                    .graphicsLayer {
+                        rotationX = 62f + wobble.value * 8f
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        cameraDistance = 320f * density
+                        shadowElevation = 10f
+                    }
+                    .shadow(8.dp, RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.verticalGradient(listOf(Color(0xFFF0EEE8), Color(0xFFC6C2B8)))
+                    )
+                    .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(10.dp))
+                    .clickable(
+                        indication = null,
+                        interactionSource = MutableInteractionSource()
+                    ) {
+                        scope.launch {
+                            wobble.snapTo(0f)
+                            wobble.animateTo(1f, tween(150, easing = FastOutSlowInEasing))
+                            wobble.animateTo(0f, spring(dampingRatio = 0.32f, stiffness = Spring.StiffnessMedium))
+                        }
+                    }
+            ) {
+                // 盖内面：高光块
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 18.dp)
+                        .fillMaxWidth()
+                        .height(30.dp)
+                        .background(
+                            Brush.verticalGradient(listOf(Color(0x2EFFFFFF), Color(0x0FFFFFFF))),
+                            RoundedCornerShape(8.dp)
+                        )
+                )
+                Text(
+                    "YURI ♥ SEAN",
+                    fontSize = 10.sp, color = Color(0xFF8A867C),
+                    fontFamily = FontFamily.Serif, letterSpacing = 2.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
     }
 }
