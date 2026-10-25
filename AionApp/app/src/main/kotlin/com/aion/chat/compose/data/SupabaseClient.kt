@@ -423,3 +423,69 @@ object SupabaseQuoteSync {
 
     suspend fun push(content: String): Boolean = false
 }
+
+/** sean_diary 一行（Z字折叠信日记页用）：他的信 + 小鑫的回应。 */
+data class SeanDiaryRow(
+    val id: Long,
+    val thoughts: String,
+    val content: String,
+    val createdAtIso: String,
+    val createdAtMs: Long,
+    val replyContent: String,
+    val repliedAtMs: Long
+)
+
+object SeanDiaryStore {
+
+    /** 读他的信（含回应字段），新→旧。表空不算错误（Sean 还没写）。 */
+    suspend fun fetchAll(): CloudResult<List<SeanDiaryRow>> {
+        val reply = supabaseRequest(
+            "rest/v1/sean_diary?select=id,thoughts,content,created_at,reply_content,replied_at" +
+                "&order=created_at.desc&limit=100",
+            "GET",
+            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
+        )
+        if (reply.error != null) return CloudResult(null, reply.error)
+        val arr = reply.payload as? JSONArray ?: return CloudResult(null, CloudErrorKind.PARSE)
+        val out = mutableListOf<SeanDiaryRow>()
+        for (i in 0 until arr.length()) {
+            try {
+                val o = arr.getJSONObject(i)
+                val repliedIso = o.optString("replied_at", "")
+                out.add(
+                    SeanDiaryRow(
+                        id = o.optLong("id", 0L),
+                        thoughts = o.optString("thoughts", ""),
+                        content = o.optString("content", ""),
+                        createdAtIso = o.optString("created_at", ""),
+                        createdAtMs = parseSupabaseTime(o.optString("created_at", "")),
+                        replyContent = o.optString("reply_content", ""),
+                        repliedAtMs = if (repliedIso.isBlank()) 0L else parseSupabaseTime(repliedIso)
+                    )
+                )
+            } catch (e: Exception) {
+                android.util.Log.w(SupabaseClient.TAG, "[PARSE] sean_diary 第 $i 行解析失败: ${e.message}")
+            }
+        }
+        return CloudResult(out, null)
+    }
+
+    /**
+     * 贴回应（一篇一句）：写 reply_content / replied_at，并把 reply_seen 重置 false，
+     * 让他那边能「撞见」。RLS 已放行（PATCH 实测 204）。
+     */
+    suspend fun saveReply(diaryId: Long, text: String): Boolean {
+        val nowIso = java.time.Instant.now().toString()
+        val body = org.json.JSONObject()
+            .put("reply_content", text)
+            .put("replied_at", nowIso)
+            .put("reply_seen", false)
+            .toString().toByteArray(Charsets.UTF_8)
+        val reply = supabaseRequest(
+            "rest/v1/sean_diary?id=eq." + diaryId,
+            "PATCH",
+            body = body
+        )
+        return reply.error == null
+    }
+}
