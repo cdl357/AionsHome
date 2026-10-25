@@ -118,6 +118,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
         context.getSharedPreferences("album_board", android.content.Context.MODE_PRIVATE)
     }
     val boardPositions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+    val cloudImportIssue = remember { mutableStateOf(false) }
     val draggingKey = remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -129,6 +130,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
             runCatching {
                 val imported = boardPrefs.getStringSet("cloud_imported", emptySet()).orEmpty().toMutableSet()
                 val res = com.aion.chat.compose.data.SupabaseMomentsStore.fetchAlbumPhotos()
+                cloudImportIssue.value = res.error != null
                 val rows = res.data.orEmpty()
                 var added = 0
                 rows.forEach { cp ->
@@ -259,7 +261,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "钉着最近的 " + minOf(photos.size, 10) + " 张（长按可挪） · 没上墙的在下面铁盒里",
+                        "钉着最近的 " + minOf(photos.size, 10) + " 张（长按可挪） · 没上墙的在下面铁盒里" + if (cloudImportIssue.value) " · 云端相册没权限，SQL 放行后自动导入" else "",
                         fontSize = 11.sp, color = HomecomingColors.InkSoft,
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
