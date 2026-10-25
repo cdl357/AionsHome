@@ -10,7 +10,7 @@ import java.time.LocalDate
  * 全部存在 homecoming.db（随 HomecomingDatabase 打开时运行时建表，不动其版本号）：
  * - anniversary_local：钉在日历上的纪念日（图标 + 类型，图标按类型/自选）
  * - diary_local：日记（author: user=Yuri / sean=Sean；Sean 每天必写——没写=偷懒）
- * - board_note_local：两人的留言（便利贴，留言板与日历共用）
+ * - board_note_local：两人的留言便利贴（留言板页已删，日历「那天的小纸条」仍读这里）
  */
 object HomecomingDayStore {
 
@@ -123,7 +123,7 @@ object HomecomingDayStore {
         db.close(); true
     } catch (e: Exception) { false }
 
-    // ── 两人的留言（便利贴） ──
+    // ── 两人的留言（便利贴）：留言板页已删，日历「那天的小纸条」仍从这里读 ──
 
     data class BoardNote(val id: Long, val author: String, val content: String, val createdAt: Long)
 
@@ -144,19 +144,6 @@ object HomecomingDayStore {
         cur.close(); db.close()
         list
     } catch (e: Exception) { emptyList() }
-
-    fun addBoardNote(context: Context, author: String, content: String): Long = try {
-        val db = db(context); ensure(db)
-        db.execSQL(
-            "INSERT INTO board_note_local(author, content, created_at) VALUES(?,?,?)",
-            arrayOf(author, content, System.currentTimeMillis())
-        )
-        val cur = db.rawQuery("SELECT last_insert_rowid()", null)
-        val id = if (cur.moveToFirst()) cur.getLong(0) else -1L
-        cur.close()
-        db.close()
-        id
-    } catch (e: Exception) { -1L }
 
     // ── 重要记忆（复用 homecoming 的 memory_local，按天取摘要） ──
 
@@ -182,32 +169,4 @@ object HomecomingDayStore {
         cur.close(); db.close()
         list
     } catch (e: Exception) { emptyList() }
-
-    // ── 便利贴回复（点开一张便利贴后的你来我往） ──
-
-    data class NoteReply(val id: Long, val author: String, val content: String, val createdAt: Long)
-
-    fun noteReplies(context: Context, noteId: Long): List<NoteReply> = try {
-        val db = db(context); ensure(db)
-        val cur = db.rawQuery(
-            "SELECT id, author, content, created_at FROM board_reply_local "
-                + "WHERE note_id = ? ORDER BY created_at ASC",
-            arrayOf(noteId.toString())
-        )
-        val list = mutableListOf<NoteReply>()
-        while (cur.moveToNext()) {
-            list.add(NoteReply(cur.getLong(0), cur.getString(1), cur.getString(2), cur.getLong(3)))
-        }
-        cur.close(); db.close()
-        list
-    } catch (e: Exception) { emptyList() }
-
-    fun addNoteReply(context: Context, noteId: Long, author: String, content: String): Boolean = try {
-        val db = db(context); ensure(db)
-        db.execSQL(
-            "INSERT INTO board_reply_local(note_id, author, content, created_at) VALUES(?,?,?,?)",
-            arrayOf(noteId, author, content, System.currentTimeMillis())
-        )
-        db.close(); true
-    } catch (e: Exception) { false }
 }

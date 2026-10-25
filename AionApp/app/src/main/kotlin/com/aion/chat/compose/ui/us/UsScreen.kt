@@ -571,7 +571,7 @@ fun DayDrawer(
             else "这天还没有留言。"
         ) {
             if (dayNotes.isEmpty()) {
-                Text("去「更多 → 留言板」贴第一张便利贴吧。", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+                Text("他贴在那天的小纸条会出现在这里。", fontSize = 12.sp, color = HomecomingColors.InkSoft)
             } else {
                 dayNotes.forEach { n ->
                     Text("${authorName(n.author)}：${n.content}", fontSize = 14.sp, color = HomecomingColors.Ink, lineHeight = 21.sp)

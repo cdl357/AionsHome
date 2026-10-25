@@ -32,14 +32,13 @@ import com.aion.chat.R
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
  * 开屏（Yuri 素材版）：约 3.2 秒
- * ①奶白浅绿底 + 阳光斑；②右上角苹果树枝轻晃（实拍素材），青苹果从枝上掉落（弹两下再滚一点）；
- * ③黑猫（实拍剪影）从左侧跑入、带着跑动的起伏停到中场；④淡出进回家页。
- * SY 花体已按需求移除。素材：splash_branch / splash_cat_run / splash_apple_a / splash_apple_b。
+ * ①奶白浅绿底 + 阳光斑；②右上角苹果树枝被风吹得摇晃（两阵风），苹果一颗一颗被晃落；
+ * ③落地弹两下后沿地面滚出去（边滚边转、减速停住）；④淡出进回家页。
+ * 猫已按需求移除。素材：splash_branch / splash_apple_a / splash_apple_b。
  */
 @Composable
 fun SplashScreen(onFinished: () -> Unit) {
@@ -71,10 +70,11 @@ fun SplashScreen(onFinished: () -> Unit) {
             drawSunSpots(t, size.width, size.height)
         }
 
-        // ── 苹果树枝（右上角，轻晃；淡入） ──
-        val sway = if (t in 260f..760f) {
-            sin((t - 260f) / 500f * 2f * PI.toFloat()) * 2.4f * (1f - (t - 260f) / 500f)
-        } else sin(t / 1900f) * 1.1f
+        // ── 苹果树枝（右上角）：两阵风依次吹过，每阵风吹得枝子晃几下再平息 ──
+        val g1 = if (t < 1150f) sin(t / 1150f * 3f * PI.toFloat()) * 3.4f * (1f - t / 1150f) else 0f
+        val g2 = if (t in 1500f..2550f)
+            sin((t - 1500f) / 1050f * 2.5f * PI.toFloat()) * 2.6f * (1f - (t - 1500f) / 1050f) else 0f
+        val sway = g1 + g2 + sin(t / 1900f) * 1.1f
         Image(
             painter = painterResource(R.drawable.splash_branch),
             contentDescription = null,
@@ -89,7 +89,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 }
         )
 
-        // ── 掉落的青苹果（两颗素材交替，落下→弹→滚） ──
+        // ── 掉落的青苹果：挂在枝上时看不见（藏在树叶里），风把它晃下来才出现 ──
         DROPS.forEachIndexed { idx, d ->
             val applePainter = painterResource(if (idx % 2 == 0) R.drawable.splash_apple_a else R.drawable.splash_apple_b)
             val appleW = w * (if (idx % 2 == 0) 0.075f else 0.088f)
@@ -99,18 +99,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             val x0 = w * d.xF
             val hangY = h * 0.185f
 
-            if (t < d.t0) {
-                // 还挂在枝上
-                if (t > 240f) {
-                    val swayX = w * 0.003f * sin(t / 320f + idx)
-                    Image(
-                        applePainter, null,
-                        modifier = Modifier
-                            .offset { IntOffset((x0 + swayX - appleW / 2f).roundToPx(), (hangY - r).roundToPx()) }
-                            .size(appleW, appleH)
-                    )
-                }
-            } else {
+            if (t >= d.t0) {
                 val ft = t - d.t0
                 var y: androidx.compose.ui.unit.Dp
                 var rot: Float
@@ -123,19 +112,21 @@ fun SplashScreen(onFinished: () -> Unit) {
                     }
                     ft < FALL_MS + BOUNCE_MS -> {
                         val p = (ft - FALL_MS) / BOUNCE_MS
-                        y = groundY - r - h * 0.045f * (1 - p) * abs(sin(p * PI.toFloat()))
+                        y = groundY - r - h * 0.038f * (1 - p) * abs(sin(p * PI.toFloat()))
                         rot = d.rot
                     }
-                    ft < FALL_MS + BOUNCE_MS * 2 + 90f -> {
-                        val p = (ft - FALL_MS - BOUNCE_MS) / (BOUNCE_MS + 90f)
-                        y = groundY - r - h * 0.016f * (1 - p) * abs(sin(p * PI.toFloat()))
+                    ft < FALL_MS + BOUNCE_MS + 110f -> {
+                        val p = (ft - FALL_MS - BOUNCE_MS) / 110f
+                        y = groundY - r - h * 0.014f * (1 - p) * abs(sin(p * PI.toFloat()))
                         rot = d.rot
-                        x = x0 + w * 0.008f * p * d.rollDir
                     }
                     else -> {
+                        // 落地后沿地面滚出去：位移和旋转一起减速，直到停住
+                        val p = ((ft - FALL_MS - BOUNCE_MS - 110f) / ROLL_MS).coerceIn(0f, 1f)
+                        val roll = 1f - (1f - p) * (1f - p) * (1f - p)
+                        x = x0 + w * 0.10f * roll * d.rollDir
                         y = groundY - r
-                        x = x0 + w * (0.008f + 0.012f * ((ft - FALL_MS - BOUNCE_MS * 2 - 90f) / 400f).coerceIn(0f, 1f)) * d.rollDir
-                        rot = d.rot
+                        rot = d.rot + 320f * roll * d.rollDir
                     }
                 }
                 Image(
@@ -146,35 +137,6 @@ fun SplashScreen(onFinished: () -> Unit) {
                         .graphicsLayer { rotationZ = rot }
                 )
             }
-        }
-
-        // ── 黑猫：从左侧跑入（带跑动起伏），停在中场继续小跑 ──
-        val catW = w * 0.30f
-        val catH = catW * (309f / 420f)
-        val catGround = h * GROUND_Y
-        val runP = ((t - CAT_T0) / RUN_MS).coerceIn(0f, 1f)
-        val ease = 1f - (1f - runP) * (1f - runP)
-        val catXF = -0.16f + (0.40f + 0.16f) * ease
-        val bob = if (t >= CAT_T0) h * 0.009f * abs(sin(t / 72f)) else 0.dp
-        val wig = if (t >= CAT_T0) sin(t / 145f) * 2.2f else 0f
-        val catAlpha = ((t - CAT_T0) / 180f).coerceIn(0f, 1f)
-        if (t >= CAT_T0) {
-            Image(
-                painter = painterResource(R.drawable.splash_cat_run),
-                contentDescription = null,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(
-                        x = w * catXF,
-                        y = -(h * GROUND_Y - catH) - bob
-                    )
-                    .size(width = catW, height = catH)
-                    .graphicsLayer {
-                        rotationZ = wig
-                        alpha = catAlpha
-                        transformOrigin = TransformOrigin(0.5f, 1f)
-                    }
-            )
         }
 
         // ── 淡出进回家页 ──
@@ -193,24 +155,22 @@ fun SplashScreen(onFinished: () -> Unit) {
 
 private const val TOTAL_MS = 3200f
 private const val FADE_T0 = 2950f
-private const val CAT_T0 = 480f
-private const val RUN_MS = 1150f
-private const val DROP_T0 = 620f
-private const val DROP_GAP = 230f
 private const val FALL_MS = 470f
 private const val BOUNCE_MS = 190f
+private const val ROLL_MS = 850f
 private const val GROUND_Y = 0.86f
 
 private data class AppleDrop(val xF: Float, val t0: Float, val rot: Float, val rollDir: Float)
 
+// 掉落时刻跟着两阵风走：第一阵（0~1.1s）掉前 3 颗，第二阵（1.5~2.55s）掉后 4 颗
 private val DROPS = listOf(
-    AppleDrop(0.58f, DROP_T0, 16f, 1f),
-    AppleDrop(0.66f, DROP_T0 + DROP_GAP, -19f, -1f),
-    AppleDrop(0.74f, DROP_T0 + DROP_GAP * 2, 12f, 1f),
-    AppleDrop(0.62f, DROP_T0 + DROP_GAP * 3.4f, -15f, -1f),
-    AppleDrop(0.70f, DROP_T0 + DROP_GAP * 4.6f, 20f, 1f),
-    AppleDrop(0.78f, DROP_T0 + DROP_GAP * 5.7f, -12f, -1f),
-    AppleDrop(0.55f, DROP_T0 + DROP_GAP * 6.8f, 18f, 1f)
+    AppleDrop(0.58f, 620f, 16f, 1f),
+    AppleDrop(0.66f, 840f, -19f, -1f),
+    AppleDrop(0.74f, 1050f, 12f, 1f),
+    AppleDrop(0.62f, 1560f, -15f, -1f),
+    AppleDrop(0.70f, 1830f, 20f, 1f),
+    AppleDrop(0.78f, 2130f, -12f, -1f),
+    AppleDrop(0.55f, 2400f, 18f, 1f)
 )
 
 // ── 阳光斑（保留原版） ──

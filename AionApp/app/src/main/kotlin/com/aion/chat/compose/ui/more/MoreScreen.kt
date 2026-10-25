@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Water
@@ -42,7 +41,7 @@ private data class MoreEntry(val icon: androidx.compose.ui.graphics.vector.Image
 
 /**
  * 页面⑤：更多（功能总入口）——按交接文档 §8 只做这些：
- * 相册 / 留言板 / 记忆库 / 语音通话 / 陪伴阅读 / 提醒闹钟 / 设置。其余 AionsHome 功能全部不做。
+ * 相册 / 记忆库 / 语音通话 / 陪伴阅读 / 提醒闹钟 / 设置。其余 AionsHome 功能全部不做。
  */
 @Composable
 fun MoreScreen(
@@ -52,13 +51,11 @@ fun MoreScreen(
     onOpenReading: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
     onOpenCall: () -> Unit = {},
-    onOpenHeartTide: () -> Unit = {},
-    onOpenBoard: () -> Unit = {}
+    onOpenHeartTide: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
         MoreEntry(Icons.Filled.Drafts, "日记信盒", "翻页手账 · 一月一页回忆"),
-        MoreEntry(Icons.Filled.MailOutline, "留言板", "双向便利贴 · 点开可对话"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
         MoreEntry(Icons.Filled.Call, "语音通话", "打电话给 Sean · 可抢话"),
         MoreEntry(Icons.Filled.Water, "心潮梦境", "他的情绪潮汐与梦"),
@@ -84,7 +81,6 @@ fun MoreScreen(
                     "提醒 / 闹钟" -> onOpenReminders()
                     "语音通话" -> onOpenCall()
                     "心潮梦境" -> onOpenHeartTide()
-                    "留言板" -> onOpenBoard()
                     else -> Toast.makeText(context, "${entry.name}：阶段二起逐个接线", Toast.LENGTH_SHORT).show()
                 }
             }) {
