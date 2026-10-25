@@ -93,6 +93,9 @@ import com.aion.chat.compose.data.HomecomingChatWiring
 import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -119,30 +122,43 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
     }
     val boardPositions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
     val cloudImportIssue = remember { mutableStateOf(false) }
+    val cloudSyncDone = remember { mutableStateOf(0) }
+    val cloudSyncTotal = remember { mutableStateOf(0) }
     val draggingKey = remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         photos.clear()
         photos.addAll(HomecomingAlbumStore.list(context))
         version.value++
-        // ── 云端相册导入（album_photos）：没导过的行 → 解码 → 存本地相册；幂等 ──
+        // ── 云端相册导入（album_photos）：没导过的行 6 路并行解码入库，导一张标记一张
+        //    （中途退出不会重复导入；之前串行要一两分钟、标记只在全部结束时写，等不及退出就白导） ──
         withContext(Dispatchers.IO) {
             runCatching {
                 val imported = boardPrefs.getStringSet("cloud_imported", emptySet()).orEmpty().toMutableSet()
                 val res = com.aion.chat.compose.data.SupabaseMomentsStore.fetchAlbumPhotos()
                 cloudImportIssue.value = res.error != null
-                val rows = res.data.orEmpty()
-                var added = 0
-                rows.forEach { cp ->
-                    if (cp.id in imported) return@forEach
-                    val bytes = decodeCloudImage(context, cp.image) ?: return@forEach
-                    val date = cp.date.take(10).ifBlank { java.time.LocalDate.now().toString() }
-                    HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
-                    imported.add(cp.id)
-                    added++
-                }
-                if (added > 0) {
-                    boardPrefs.edit().putStringSet("cloud_imported", imported).apply()
+                val rows = res.data.orEmpty().filter { it.id !in imported }
+                if (rows.isNotEmpty()) {
+                    cloudSyncTotal.value = rows.size
+                    cloudSyncDone.value = 0
+                    val lock = Any()
+                    coroutineScope {
+                        rows.map { cp ->
+                            async {
+                                val bytes = decodeCloudImage(context, cp.image)
+                                if (bytes != null) {
+                                    val date = cp.date.take(10).ifBlank { java.time.LocalDate.now().toString() }
+                                    HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
+                                    // 立刻持久化标记：退出/断网都不重导
+                                    synchronized(lock) {
+                                        imported.add(cp.id)
+                                        boardPrefs.edit().putStringSet("cloud_imported", imported).apply()
+                                    }
+                                }
+                                synchronized(lock) { cloudSyncDone.value++ }
+                            }
+                        }.awaitAll()
+                    }
                 }
             }
         }
@@ -261,7 +277,10 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "钉着最近的 " + minOf(photos.size, 10) + " 张（长按可挪） · 没上墙的在下面铁盒里" + if (cloudImportIssue.value) " · 云端相册没权限，SQL 放行后自动导入" else "",
+                        "钉着最近的 " + minOf(photos.size, 10) + " 张（长按可挪） · 没上墙的在下面铁盒里" +
+                            (if (cloudSyncTotal.value > cloudSyncDone.value) " · 正在同步云端相册 ${cloudSyncDone.value}/${cloudSyncTotal.value}"
+                             else if (cloudImportIssue.value) " · 云端相册没权限，SQL 放行后自动导入"
+                             else ""),
                         fontSize = 11.sp, color = HomecomingColors.InkSoft,
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
