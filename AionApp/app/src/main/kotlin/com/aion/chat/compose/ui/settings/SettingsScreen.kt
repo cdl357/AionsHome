@@ -317,6 +317,8 @@ fun SettingsScreen() {
                         val res = pingRoute(base, key, model)
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                             routeTest.value = res
+                            // 测通了就直接保存——「填好」不等于「保存」，别让这一步漏掉
+                            if (res.startsWith("通了")) saveRoute()
                         }
                     }
                 }) { Text("测一下", color = HomecomingColors.InkSoft) }
@@ -363,6 +365,10 @@ fun SettingsScreen() {
                                     .clickable {
                                         routeModel.value = id
                                         showModelsDialog.value = false
+                                        // 选完模型三项就齐了，直接保存（URL+Key 已填才能拉到列表）
+                                        if (routeBaseUrl.value.isNotBlank() && routeApiKey.value.isNotBlank()) {
+                                            saveRoute()
+                                        }
                                     }
                                     .padding(vertical = 9.dp)
                             )

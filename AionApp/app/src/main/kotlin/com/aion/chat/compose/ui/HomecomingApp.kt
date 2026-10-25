@@ -166,7 +166,7 @@ fun HomecomingApp() {
                 }
                 composable(HomeTab.Chat.route) {
                     Box(Modifier.fillMaxSize()) {
-                        ChatScreen(onOpenCall = { navController.navigate("call") })
+                        ChatScreen(onOpenCall = { navController.navigate("call") }, onOpenSettings = { navController.navigate("settings") })
                     }
                 }
                 composable(HomeTab.Moments.route) {

@@ -117,7 +117,7 @@ import kotlinx.coroutines.withContext
 /** 页面③：聊天。接 HomecomingChatEngine 真实链路；分条冒泡 + 气泡皮肤 + 背景可换。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(onOpenCall: () -> Unit = {}) {
+fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val main = remember { Handler(Looper.getMainLooper()) }
@@ -656,9 +656,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}) {
                             )
                             Text(
                                 if (connected) "  已连接 · ${route?.optString("label", "我的线路")}"
-                                else "  线路未配置，去「更多 → 设置」",
+                                else "  线路未配置 · 点这里去设置",
                                 fontSize = 11.sp,
-                                color = HomecomingColors.InkSoft
+                                color = if (connected) HomecomingColors.InkSoft else HomecomingColors.Accent,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                    ) { if (!connected) onOpenSettings() }
+                                    .padding(vertical = 2.dp)
                             )
                         }
                     }
