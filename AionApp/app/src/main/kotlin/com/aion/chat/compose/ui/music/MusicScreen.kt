@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import android.widget.Toast
@@ -73,6 +75,7 @@ fun MusicScreen(onBack: () -> Unit = {}) {
     // 网易云账号（扫码登录，Cookie 只存服务器）
     var ncState by remember { mutableStateOf<MusicClient.NeteaseLoginState?>(null) }
     var showQr by remember { mutableStateOf(false) }
+    var showTogether by remember { mutableStateOf(false) }
 
     val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
@@ -159,6 +162,7 @@ fun MusicScreen(onBack: () -> Unit = {}) {
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -199,6 +203,31 @@ fun MusicScreen(onBack: () -> Unit = {}) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Filled.Search, contentDescription = "搜索", tint = Color.White)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // ── 一起听（和 Sean 的听歌房） ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF3A2A2E), Color(0xFF262024))))
+                .clickable { showTogether = true }
+                .padding(horizontal = 16.dp, vertical = 13.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Headphones,
+                    contentDescription = null,
+                    tint = Color(0xFFEC4141),
+                    modifier = Modifier.size(22.dp)
+                )
+                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("一起听", fontSize = 15.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                    Text("和 Sean 听同一首歌", fontSize = 11.sp, color = Color(0xFFB8AEB0))
+                }
+                Text("进入 ›", fontSize = 12.sp, color = Color(0xFFEC4141))
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -528,6 +557,10 @@ fun MusicScreen(onBack: () -> Unit = {}) {
                 }
             }
         }
+    }
+    if (showTogether) {
+        ListenTogetherScreen(onExit = { showTogether = false })
+    }
     }
 }
 
