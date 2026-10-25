@@ -185,10 +185,7 @@ fun HomecomingApp() {
                 composable("herstate") { com.aion.chat.compose.ui.herstate.HerStateScreen(onBack = { navController.popBackStack() }) }
                 composable("music") { MusicScreen(onBack = { navController.popBackStack() }) }
                 composable("love") {
-                    ListenTogetherScreen(
-                        onExit = { navController.popBackStack() },
-                        onOpenMusic = { navController.navigate("music") }
-                    )
+                    ListenTogetherScreen(onExit = { navController.popBackStack() })
                 }
                 composable("call") { CallScreen(onHangUp = { navController.popBackStack() }) }
                 composable(HomeTab.More.route) {
