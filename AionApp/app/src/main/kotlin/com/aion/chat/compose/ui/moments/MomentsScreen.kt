@@ -72,6 +72,7 @@ import com.aion.chat.compose.ui.theme.HomecomingColors
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -110,11 +111,76 @@ fun MomentsScreen() {
      * - Yuri 的赞、Sean 的惰性评论挂在本地表（key=远端 id 的 hash），刷新后仍在
      * - 本地独有动态（旧版本发的 / 云端未连上的兜底）与远端按 内容 去重后按时间排
      */
+    // ── 缓存：上次刷好的最终列表存本地，进页面立刻显示（橘瓣式秒开），后台再刷新覆盖 ──
+    fun cacheFile() = File(context.filesDir, "moments_feed_cache.json")
+
+    fun writeCache(list: List<Moment>) {
+        runCatching {
+            val arr = org.json.JSONArray()
+            list.forEach { m ->
+                arr.put(
+                    org.json.JSONObject()
+                        .put("id", m.id).put("author", m.author).put("content", m.content)
+                        .put("attachments", org.json.JSONArray(m.attachments))
+                        .put("createdAt", m.createdAt)
+                        .put("likes", org.json.JSONArray(m.likes))
+                        .put("comments", org.json.JSONArray().apply {
+                            m.comments.forEach { c ->
+                                put(org.json.JSONObject().put("id", c.id).put("author", c.author)
+                                    .put("content", c.content).put("createdAt", c.createdAt))
+                            }
+                        })
+                        .put("remoteId", m.remoteId ?: "")
+                        .put("localRowId", m.localRowId ?: -1L)
+                )
+            }
+            cacheFile().writeText(arr.toString())
+        }
+    }
+
+    fun readCache(): List<Moment>? = runCatching {
+        val f = cacheFile()
+        if (!f.exists()) return null
+        val arr = org.json.JSONArray(f.readText())
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            Moment(
+                id = o.getLong("id"),
+                author = o.getString("author"),
+                content = o.getString("content"),
+                attachments = (0 until o.getJSONArray("attachments").length()).map { o.getJSONArray("attachments").getString(it) },
+                createdAt = o.getLong("createdAt"),
+                likes = (0 until o.getJSONArray("likes").length()).map { o.getJSONArray("likes").getString(it) },
+                comments = (0 until o.getJSONArray("comments").length()).map { j ->
+                    val c = o.getJSONArray("comments").getJSONObject(j)
+                    HomecomingMomentsStore.Comment(c.getLong("id"), c.getString("author"), c.getString("content"), c.getLong("createdAt"))
+                },
+                remoteId = o.optString("remoteId").ifBlank { null },
+                localRowId = o.optLong("localRowId", -1L).let { if (it == -1L) null else it }
+            )
+        }
+    }.getOrNull()
+
     fun reload() {
         scope.launch(Dispatchers.IO) {
-            val res = runCatching {
-                com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
-            }.getOrNull()
+            // ① 缓存先行：页面一打开就看到上次的动态（不等网络）
+            if (feed.isEmpty()) {
+                val cached = readCache()
+                if (!cached.isNullOrEmpty()) {
+                    main.post {
+                        feed.clear()
+                        feed.addAll(cached)
+                    }
+                }
+            }
+            // ② 动态和评论并行拉（原来串行，慢一倍）
+            val momentsDef = async {
+                runCatching { com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments() }.getOrNull()
+            }
+            val commentsDef = async {
+                runCatching { com.aion.chat.compose.data.SupabaseMomentsStore.fetchMomentComments() }.getOrNull()
+            }
+            val res = momentsDef.await()
             var remote: List<com.aion.chat.compose.data.SupabaseMomentsStore.RemoteMoment>? = null
             var kind = res?.error
             if (res == null || res.error != null) {
@@ -128,7 +194,7 @@ fun MomentsScreen() {
                 }
             }
             if (remote == null) {
-                // 网络 / 权限 / 解析失败分种提示；保留现有内容，可重试
+                // 网络 / 权限 / 解析失败分种提示；保留现有内容（含缓存），可重试
                 main.post {
                     cloudError.value = kind ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
                     isRefreshing.value = false
@@ -137,10 +203,7 @@ fun MomentsScreen() {
             }
             val remoteList = remote ?: emptyList()
             val local = runCatching { HomecomingMomentsStore.feed(context) }.getOrDefault(emptyList())
-            // 评论是独立表：读得到就并入；读不到（权限/网络）静默降级，不影响动态主列表
-            val commentsRes = runCatching {
-                com.aion.chat.compose.data.SupabaseMomentsStore.fetchMomentComments()
-            }.getOrNull()
+            val commentsRes = commentsDef.await()
             val cloudCommentsByMoment = if (commentsRes?.error == null) {
                 (commentsRes?.data ?: emptyList()).groupBy { it.momentId }
             } else emptyMap()
@@ -150,18 +213,12 @@ fun MomentsScreen() {
                 remoteKeys.add(rm.author + "|" + rm.content)
                 val hid = rm.id.hashCode().toLong()
                 val paired = local.firstOrNull { it.id == hid }
-                // 云端动态没有本地父行时，赞/评论按 id 直读旁表（修复：点赞刷新即消失）
-                val localLikes = paired?.likes
-                    ?: HomecomingMomentsStore.likesFor(context, hid)
-                val localComments = paired?.comments
-                    ?: HomecomingMomentsStore.commentsFor(context, hid)
-                // 旧表自带的赞（liked=哥哥 / yuri_liked=Yuri）与本地赞去重合并
+                val localLikes = paired?.likes ?: HomecomingMomentsStore.likesFor(context, hid)
+                val localComments = paired?.comments ?: HomecomingMomentsStore.commentsFor(context, hid)
                 val remoteLikes = buildList {
                     if (rm.liked) add("sean")
                     if (rm.yuriLiked) add("yuri")
                 }
-                // 旧表 reply_content = 哥哥当时写的回应；id 落负数空间，不和本地表自增 id 撞
-                // 字面量 "null" 一律当没写（老后端序列化残留）
                 val replyClean = cloudText(rm.replyContent)
                 val seanReply = if (replyClean.isNotBlank()) {
                     listOf(HomecomingMomentsStore.Comment(Long.MIN_VALUE, "sean", replyClean, rm.createdAtMs))
@@ -190,6 +247,7 @@ fun MomentsScreen() {
                 .filter { it.author + "|" + it.content !in remoteKeys }
                 .map { it.copy(remoteId = null, localRowId = it.id) }
             val all = (merged + localOnly).sortedByDescending { it.createdAt }
+            writeCache(all)
             main.post {
                 cloudError.value = null
                 feed.clear()

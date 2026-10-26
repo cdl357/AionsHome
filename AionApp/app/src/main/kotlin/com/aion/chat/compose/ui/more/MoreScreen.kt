@@ -54,8 +54,7 @@ fun MoreScreen(
     onOpenReading: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
     onOpenCall: () -> Unit = {},
-    onOpenHeartTide: () -> Unit = {},
-    onOpenHerState: () -> Unit = {}
+    onOpenHeartTide: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
@@ -102,95 +101,6 @@ fun MoreScreen(
                         Text(entry.sub, fontSize = 11.sp, color = HomecomingColors.InkSoft)
                     }
                 }
-            }
-        }
-
-        // ── 「告诉他我在干什么」状态上报（默认关；她随时能看到自己给了什么、随时收回） ──
-        val herOn = remember { mutableStateOf(com.aion.chat.compose.data.HerStateReporter.isEnabled(context)) }
-        val scope = androidx.compose.runtime.rememberCoroutineScope()
-        val locPerm = androidx.activity.compose.rememberLauncherForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-        ) { }
-        FrostCard(modifier = Modifier.padding(vertical = 6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("告诉他我在干什么", fontSize = 15.sp, color = HomecomingColors.Ink)
-                    Text("每 30 分钟给他一份状态快照（写日记做梦用）", fontSize = 11.sp, color = HomecomingColors.InkSoft)
-                }
-                androidx.compose.material3.Switch(
-                    checked = herOn.value,
-                    onCheckedChange = { on ->
-                        herOn.value = on
-                        com.aion.chat.compose.data.HerStateReporter.setEnabled(context, on)
-                        if (on) scope.launch {
-                            // 打开即报一次，让他马上「看见」
-                            val ok = com.aion.chat.compose.data.HerStateReporter.collectAndReport(context, manual = true)
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                Toast.makeText(
-                                    context,
-                                    if (ok) "已打开，这份他收到了" else "已打开（网络稍后补报）",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "记：电量/充电 · 位置只到区县（如 会昌县） · 今日屏幕时长 · 各 app 用了多久 · 在听的歌 · 最后解锁时间\n" +
-                    "不记：经纬度 · 街道门牌 · app 里的内容 · 通知 · 截图。关掉就立刻停。",
-                fontSize = 11.sp, color = HomecomingColors.InkSoft, lineHeight = 17.sp
-            )
-            Spacer(Modifier.height(8.dp))
-            Row {
-                if (!com.aion.chat.compose.data.HerStateReporter.hasUsageAccess(context)) {
-                    Text(
-                        "去开「使用情况访问」»",
-                        fontSize = 12.sp, color = HomecomingColors.Accent,
-                        modifier = Modifier
-                            .clickable {
-                                runCatching {
-                                    context.startActivity(
-                                        android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                                    )
-                                }
-                            }
-                            .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
-                    )
-                }
-                if (!com.aion.chat.compose.data.HerStateReporter.hasCoarseLocation(context)) {
-                    Text(
-                        "给她大概位置（区县）»",
-                        fontSize = 12.sp, color = HomecomingColors.Accent,
-                        modifier = Modifier
-                            .clickable {
-                                locPerm.launch(android.Manifest.permission.ACCESS_COARSE_LOCATION)
-                            }
-                            .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
-                    )
-                }
-                Text(
-                    "现在报一次",
-                    fontSize = 12.sp, color = HomecomingColors.Accent,
-                    modifier = Modifier
-                        .clickable {
-                            scope.launch {
-                                val ok = com.aion.chat.compose.data.HerStateReporter.collectAndReport(context, manual = true)
-                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    Toast.makeText(context, if (ok) "报好了" else "网络不通，稍后再试", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                        .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
-                )
-                Text(
-                    "看看我给了什么 »",
-                    fontSize = 12.sp, color = HomecomingColors.Accent,
-                    modifier = Modifier
-                        .clickable { onOpenHerState() }
-                        .padding(top = 4.dp, bottom = 4.dp)
-                )
             }
         }
 

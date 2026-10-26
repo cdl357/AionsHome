@@ -34,6 +34,10 @@ object SupabaseClient {
 
     internal val BASES = arrayOf(RELAY_URL, RELAY_URL_ALT, URL)
 
+    /** 最近一次成功的线路：下次直接从它开始，别每条请求都从第一条死线等满超时（同步慢的主因）。 */
+    @JvmStatic @Volatile
+    internal var lastGoodBase: String? = null
+
     val configured: Boolean get() = URL.isNotBlank() && ANON_KEY.isNotBlank()
 }
 
@@ -65,7 +69,9 @@ internal suspend fun supabaseRequest(
     parse: ((HttpURLConnection) -> Any?)? = null
 ): CloudReply = withContext(Dispatchers.IO) {
     var lastError: CloudErrorKind? = null
-    for (base in SupabaseClient.BASES) {
+    val goodBase = SupabaseClient.lastGoodBase
+    val ordered = (listOfNotNull(goodBase) + SupabaseClient.BASES).distinct()
+    for (base in ordered) {
         try {
             val conn = URL("$base/$path").openConnection() as HttpURLConnection
             conn.requestMethod = method
@@ -76,11 +82,12 @@ internal suspend fun supabaseRequest(
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true
             }
-            conn.connectTimeout = 8_000
-            conn.readTimeout = 20_000
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 12_000
             if (body != null) conn.outputStream.use { it.write(body) }
             val code = conn.responseCode
             if (code in 200..299) {
+                SupabaseClient.lastGoodBase = base
                 Log.i(SupabaseClient.TAG, "[OK] $method /$path ($code)")
                 if (parse != null) {
                     return@withContext try {

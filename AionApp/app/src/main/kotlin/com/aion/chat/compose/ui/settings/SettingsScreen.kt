@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -227,6 +227,63 @@ fun SettingsScreen() {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("恢复默认") }
+            }
+        }
+
+        // ── 告诉他我在干什么（从「更多」收进设置；说明一行就够） ──
+        val herOn = remember { mutableStateOf(com.aion.chat.compose.data.HerStateReporter.isEnabled(context)) }
+        FrostCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("告诉他我在干什么", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("每半小时报一次电量·区县·屏幕时长·在听的歌，不记位置明细", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                androidx.compose.material3.Switch(
+                    checked = herOn.value,
+                    onCheckedChange = { on ->
+                        herOn.value = on
+                        com.aion.chat.compose.data.HerStateReporter.setEnabled(context, on)
+                        if (on) scope.launch {
+                            val ok = com.aion.chat.compose.data.HerStateReporter.collectAndReport(context, manual = true)
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                Toast.makeText(context, if (ok) "已打开，这份他收到了" else "已打开（网络稍后补报）", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            }
+            Row(modifier = Modifier.padding(top = 4.dp)) {
+                if (!com.aion.chat.compose.data.HerStateReporter.hasUsageAccess(context)) {
+                    Text(
+                        "开「使用情况访问」»", fontSize = 12.sp, color = HomecomingColors.Accent,
+                        modifier = Modifier
+                            .clickable {
+                                runCatching {
+                                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                                }
+                            }
+                            .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
+                    )
+                }
+                Text(
+                    "看看我给了什么 »", fontSize = 12.sp, color = HomecomingColors.Accent,
+                    modifier = Modifier
+                        .clickable { onOpenHerState() }
+                        .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
+                )
+                Text(
+                    "现在报一次", fontSize = 12.sp, color = HomecomingColors.Accent,
+                    modifier = Modifier
+                        .clickable {
+                            scope.launch {
+                                val ok = com.aion.chat.compose.data.HerStateReporter.collectAndReport(context, manual = true)
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    Toast.makeText(context, if (ok) "报好了" else "网络不通，稍后再试", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                        .padding(top = 4.dp, bottom = 4.dp)
+                )
             }
         }
 

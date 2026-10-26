@@ -176,7 +176,7 @@ fun HomecomingApp() {
                 composable(HomeTab.Us.route) {
                     Box(Modifier.fillMaxSize()) { UsScreen() }
                 }
-                composable("settings") { SettingsScreen() }
+                composable("settings") { SettingsScreen(onOpenHerState = { navController.navigate("herstate") }) }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
                 composable("diarybox") { DiaryBoxScreen(onBack = { navController.popBackStack() }) }
                 composable("memories") { MemoriesScreen(onBack = { navController.popBackStack() }) }
@@ -198,8 +198,7 @@ fun HomecomingApp() {
                             onOpenReading = { navController.navigate("reading") },
                             onOpenReminders = { navController.navigate("reminders") },
                             onOpenCall = { navController.navigate("call") },
-                            onOpenHeartTide = { navController.navigate("hearttide") },
-                            onOpenHerState = { navController.navigate("herstate") }
+                            onOpenHeartTide = { navController.navigate("hearttide") }
                         )
                     }
                 }
