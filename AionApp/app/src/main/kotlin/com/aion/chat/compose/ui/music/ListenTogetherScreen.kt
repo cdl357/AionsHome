@@ -335,7 +335,8 @@ fun ListenTogetherScreen(onExit: () -> Unit = {}) {
                     }
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            // 抬高：避开悬浮的 App 底部导航，别被压住点不了
+            Spacer(Modifier.height(86.dp))
         }
 
         // ── 设置面板（右上） ──

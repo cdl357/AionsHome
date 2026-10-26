@@ -16,6 +16,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -74,6 +76,25 @@ private fun loadStrip(context: android.content.Context, src: String): ImageBitma
         }.getOrNull()
     }
 
+/**
+ * idle 条素材的逐帧纵向对齐数据（交接文档规定不重新裁切/不改素材尺寸，故在渲染层补偿）：
+ * 素材 6 帧中 0/2/4/5 的可见鞋底止于 y=195，y=196..207 只剩半透明残影贴片（alpha<128）；
+ * 帧 1/3 实踩 y=207。逐帧取「实心像素底行」（该行存在 alpha>=0.5 的像素），绘制时据此
+ * 裁 src 高度并钉底，等价于把可见内容整体下移补齐踩底，消除 160ms/帧的「踩地↔悬空12px」抖动。
+ */
+private val idleSolidBottomCache = mutableMapOf<String, IntArray>()
+
+private fun idleSolidBottomRows(bmp: ImageBitmap, a: PetAnim): IntArray =
+    idleSolidBottomCache.getOrPut(a.src) {
+        val pm = bmp.toPixelMap()
+        IntArray(a.frameCount) { f ->
+            val x0 = f * a.frameWidth
+            (a.frameHeight - 1 downTo 0).firstOrNull { y ->
+                (0 until a.frameWidth).any { x -> (pm[x0 + x, y].toArgb() ushr 24) >= 0x80 }
+            } ?: -1
+        }
+    }
+
 @Composable
 fun PetSprite(
     modifier: Modifier = Modifier,
@@ -97,15 +118,12 @@ fun PetSprite(
     }
     val anim = resolved ?: idleAnim
 
-    // 切换动作：等价于换目标即换动画（等当前循环播完的节奏由帧推进自然衔接，不硬清帧）
-    LaunchedEffect(wanted) {
-        val idx = manifest.keys.indexOfFirst { it == (anim?.name ?: "idle") }
-        if (idx >= 0) frameIndex = 0
-    }
-
     // 帧推进：frozen 定在第 1 帧；oneShot 播完一轮回调；baseAnim 循环
     LaunchedEffect(anim?.name, oneShot, frozen) {
         val a = anim ?: return@LaunchedEffect
+        // 钳制防越界：换条瞬间 frameIndex 可能超过新条帧数（如 idle 第 6 帧 → waving 4 帧），
+        // 否则 drawImage 的 srcOffset 会越界。必须与「删除 wanted 硬清帧」同批生效。
+        frameIndex = frameIndex.coerceIn(0, a.frameCount - 1)
         while (true) {
             val d = a.durationsMs.getOrElse(frameIndex) { 140L }
             delay(d)
@@ -124,6 +142,11 @@ fun PetSprite(
     }
 
     val strip = anim?.let { loadStrip(context, it.src) } ?: idleAnim?.let { loadStrip(context, it.src) }
+    // 逐帧纵向对齐补偿仅作用于 idle：其余条（如 happy 帧 3 离地 11px）是疑似跳跃关键帧，不能压平
+    val idleBottoms = remember(anim?.src) {
+        val a = anim
+        if (a != null && a.name == "idle" && strip != null) idleSolidBottomRows(strip, a) else null
+    }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val drawH = with(density) { displayHeight.toPx() }
 
@@ -136,18 +159,24 @@ fun PetSprite(
         val bmp = strip ?: return@Canvas
         val fw = a.frameWidth.toFloat()
         val fh = a.frameHeight.toFloat()
+        // 帧号钳制：换条瞬间 frameIndex 可能超出新条帧数，防 srcOffset 越界
+        val fi = frameIndex.coerceIn(0, a.frameCount - 1)
+        // idle 逐帧纵向对齐：按实心像素底行裁 src 高度并钉底，可见鞋底统一踩在绘制区底部
+        val srcH = if (a.name == "idle") {
+            idleBottoms?.getOrNull(fi)?.takeIf { it in 0 until a.frameHeight }?.plus(1) ?: a.frameHeight
+        } else a.frameHeight
         // 锚点 bottom-center：整体按显示高度缩放，绘制区底部对齐
         val drawScale = drawH / fh
         scale(drawScale, drawScale, pivot = Offset(size.width / 2f, size.height)) {
             drawImage(
                 image = bmp,
-                srcOffset = IntOffset(frameIndex * a.frameWidth, 0),
-                srcSize = IntSize(a.frameWidth, a.frameHeight),
+                srcOffset = IntOffset(fi * a.frameWidth, 0),
+                srcSize = IntSize(a.frameWidth, srcH),
                 dstOffset = IntOffset(
                     ((size.width - fw) / 2).toInt(),
-                    (size.height - fh).toInt()
+                    (size.height - srcH).toInt()
                 ),
-                dstSize = IntSize(fw.toInt(), fh.toInt())
+                dstSize = IntSize(fw.toInt(), srcH)
             )
         }
     }
