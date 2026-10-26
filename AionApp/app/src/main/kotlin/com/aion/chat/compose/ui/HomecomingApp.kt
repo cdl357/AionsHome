@@ -161,7 +161,8 @@ fun HomecomingApp() {
                     Box(Modifier.fillMaxSize()) {
                         HomeScreen(
                             onOpenAlbum = { navController.navigate("album") },
-                            onOpenMusic = { navController.navigate("love") }
+                            onOpenMusic = { navController.navigate("love") },
+                            onOpenStudy = { navController.navigate("study") }
                         )
                     }
                 }
@@ -184,6 +185,15 @@ fun HomecomingApp() {
                 composable("reminders") { ReminderScreen() }
                 composable("hearttide") { HeartTideScreen(onBack = { navController.popBackStack() }) }
                 composable("herstate") { com.aion.chat.compose.ui.herstate.HerStateScreen(onBack = { navController.popBackStack() }) }
+                composable("study") {
+                    com.aion.chat.compose.ui.study.StudyRoomScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenDiaryWrite = { navController.navigate("diarywrite") }
+                    )
+                }
+                composable("diarywrite") {
+                    com.aion.chat.compose.ui.diary.DiaryWriteScreen(onBack = { navController.popBackStack() })
+                }
                 composable("music") { MusicScreen(onBack = { navController.popBackStack() }) }
                 composable("love") {
                     ListenTogetherScreen(onExit = { navController.popBackStack() })

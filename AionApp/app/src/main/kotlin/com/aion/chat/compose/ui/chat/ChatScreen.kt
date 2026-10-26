@@ -276,8 +276,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             val list = w.listMessages(HomecomingChatWiring.TIMELINE)
             // 即时指令：扫他的新消息里的 <countdown> 标签（去重过的不会重复入药丸）
             com.aion.chat.compose.data.CommandStore.ensureIssuerKnowledge(context)
+            com.aion.chat.compose.data.StudyRoomStore.ensureIssuerKnowledge(context)
             list.reversed().filter { it.role != "user" }.forEach {
                 com.aion.chat.compose.data.CommandStore.scanMessage(context, it.id, it.text)
+                com.aion.chat.compose.data.StudyRoomStore.scanMessage(context, it.id, it.text)
             }
             main.post {
                 messages.clear()
@@ -769,7 +771,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value, alpha = bubbleAlpha.value)
                         } else {
                             val cleanText = remember(msg.id) {
-                                com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                                com.aion.chat.compose.data.StudyRoomStore.strip(
+                                    com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                                )
                             }
                             AssistantBubbles(text = cleanText, skin = skin.value, alpha = bubbleAlpha.value)
                         }

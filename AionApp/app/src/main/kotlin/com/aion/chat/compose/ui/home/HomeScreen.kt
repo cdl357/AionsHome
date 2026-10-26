@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Psychology
@@ -104,7 +105,7 @@ private fun glassText(
 
 /** 页面①：回家（中心首页）。Haze 液态玻璃：折射 + 通透 + 边缘高光；布局严格六项，不自加卡。 */
 @Composable
-fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
+fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}, onOpenStudy: () -> Unit = {}) {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
@@ -408,6 +409,37 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                     )
                 }
             }
+
+            // 4. 书房：你们的共用桌面（点本子写她自己的日记）
+            GlassCard(hazeState = hazeState, contentPadding = 14.dp, onClick = onOpenStudy) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(GlassShape)
+                            .background(Color.White.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.MenuBook,
+                            contentDescription = "书房",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("书房", style = glassText(size = 15, weight = FontWeight.Medium))
+                        Text("你们的桌子 · 点本子写日记 · 花和玩偶一起挑", style = glassText(size = 11))
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
 
             // 4. 一起听歌：点开搜歌播放；卡片副标题跟随全局唯一播放器状态
             val musicState by com.aion.chat.compose.data.MusicPlayer.state.collectAsState()
