@@ -119,6 +119,13 @@ object StyleSettings {
     fun bubbleRadius(context: Context) = p(context).getInt("bubble_radius", 16)
     fun setBubbleRadius(context: Context, v: Int) { p(context).edit().putInt("bubble_radius", v.coerceIn(0, 40)).apply(); bump(context) }
 
+    /** 爱页唱片样式：-1=默认黑胶，0..26=自选唱片（love_disc_XX）。 */
+    const val DISC_COUNT = 27
+    fun loveDisc(context: Context) = p(context).getInt("love_disc", -1)
+    fun setLoveDisc(context: Context, v: Int) {
+        p(context).edit().putInt("love_disc", v.coerceIn(-1, DISC_COUNT - 1)).apply(); bump(context)
+    }
+
     /** 背景图叠加主题色遮罩（关=纯图片）。 */
     fun themeTintOverlay(context: Context) = p(context).getBoolean("theme_tint", false)
     fun setThemeTintOverlay(context: Context, v: Boolean) { p(context).edit().putBoolean("theme_tint", v).apply(); bump(context) }

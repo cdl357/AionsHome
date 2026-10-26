@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -88,6 +89,7 @@ import com.aion.chat.compose.data.MusicCardStore
 import com.aion.chat.compose.data.MusicClient
 import com.aion.chat.compose.data.MusicPlayer
 import com.aion.chat.compose.data.SettingsBg
+import com.aion.chat.compose.data.StyleSettings
 import com.aion.chat.compose.ui.common.AvatarPhoto
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import kotlinx.coroutines.Dispatchers
@@ -138,6 +140,7 @@ fun ListenTogetherScreen(onExit: () -> Unit = {}) {
     val wiring = remember { HomecomingChatWiring.safeCreate(context) }
     val listState = rememberLazyListState()
     var showSettings by remember { mutableStateOf(false) }
+    var showDiscPicker by remember { mutableStateOf(false) }
     var showQr by remember { mutableStateOf(false) }
     var ncState by remember { mutableStateOf<MusicClient.NeteaseLoginState?>(null) }
     fun loadNc() {
@@ -279,7 +282,14 @@ fun ListenTogetherScreen(onExit: () -> Unit = {}) {
             // ── 内容区：四个页面 ──
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
-                    0 -> LoveNowPage(player = player, togetherSec = togetherSec)
+                    0 -> LoveNowPage(
+                        player = player,
+                        togetherSec = togetherSec,
+                        onPickDisc = { showDiscPicker = true },
+                        onOpenWallpaper = {
+                            lovePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                    )
                     1 -> PlaylistPage()
                     2 -> LibraryPage()
                     else -> TogetherPage(
@@ -365,13 +375,130 @@ fun ListenTogetherScreen(onExit: () -> Unit = {}) {
                 onLoggedIn = { showQr = false; loadNc() }
             )
         }
+        if (showDiscPicker) {
+            DiscPickerSheet(
+                onPick = { idx ->
+                    StyleSettings.setLoveDisc(context, idx)
+                    showDiscPicker = false
+                },
+                onPickWallpaper = {
+                    showDiscPicker = false
+                    lovePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                onDismiss = { showDiscPicker = false }
+            )
+        }
+    }
+}
+
+/**
+ * 唱片样式选择（Yuri：把我给的唱片图都放上去能直接选）：
+ * 首格是默认黑胶（回原版），后面 27 张自选唱片；底部一行换本页壁纸。
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun DiscPickerSheet(
+    onPick: (Int) -> Unit,
+    onPickWallpaper: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val current = StyleSettings.loveDisc(context)
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFFFBF9F4)) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+            Text("桌上的唱片", fontSize = 16.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
+            Text("点一张换上，播放的时候它会转", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                modifier = Modifier.fillMaxWidth().height(400.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 10.dp)
+            ) {
+                item(key = "default") {
+                    val sel = current < 0
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (sel) HomecomingColors.Accent.copy(alpha = 0.14f) else Color.White)
+                            .border(
+                                1.5.dp,
+                                if (sel) HomecomingColors.Accent else Color(0x22000000),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable { onPick(-1) }
+                            .padding(8.dp)
+                    ) {
+                        Canvas(modifier = Modifier.size(84.dp)) {
+                            val r = size.minDimension / 2f
+                            val c = Offset(size.width / 2f, size.height / 2f)
+                            drawCircle(Brush.radialGradient(listOf(Color(0xFF48444C), Color(0xFF1B191E))), radius = r, center = c)
+                            drawCircle(HomecomingColors.Accent, radius = r * 0.26f, center = c)
+                            drawCircle(Color.White, radius = r * 0.045f, center = c)
+                        }
+                        Text("默认黑胶", fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+                items(StyleSettings.DISC_COUNT) { i ->
+                    val sel = current == i
+                    val bmp = remember(i) {
+                        runCatching {
+                            android.graphics.BitmapFactory.decodeResource(
+                                context.resources,
+                                context.resources.getIdentifier(
+                                    "love_disc_%02d".format(i), "drawable", context.packageName
+                                )
+                            )
+                        }.getOrNull()
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (sel) HomecomingColors.Accent.copy(alpha = 0.14f) else Color.White)
+                            .border(
+                                1.5.dp,
+                                if (sel) HomecomingColors.Accent else Color(0x22000000),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable { onPick(i) }
+                            .padding(8.dp)
+                    ) {
+                        bmp?.let {
+                            Image(
+                                bitmap = it.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(84.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            ) {
+                Text("这页的背景也随你换", fontSize = 12.sp, color = HomecomingColors.InkSoft, modifier = Modifier.weight(1f))
+                TextButton(onClick = onPickWallpaper) { Text("换本页壁纸 ›", color = HomecomingColors.Accent) }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 
 // ══════════ ① 爱（参考图的「此刻」） ══════════
 
 @Composable
-private fun LoveNowPage(player: MusicPlayer.PlayerState, togetherSec: Int) {
+private fun LoveNowPage(
+    player: MusicPlayer.PlayerState,
+    togetherSec: Int,
+    onPickDisc: () -> Unit,
+    onOpenWallpaper: () -> Unit,
+) {
+    val discContext = LocalContext.current
     val context = LocalContext.current
     val GlassBg = Color.White.copy(alpha = 0.55f)
     val GlassBorder = Color.White.copy(alpha = 0.85f)
@@ -426,8 +553,35 @@ private fun LoveNowPage(player: MusicPlayer.PlayerState, togetherSec: Int) {
         )
         Spacer(Modifier.height(14.dp))
 
-        // 大黑胶
+        // 大黑胶（可自定义：点唱片换样式，StyleSettings.loveDisc）
+        val discIdx = StyleSettings.loveDisc(discContext)
+        val discBmp = remember(discIdx) {
+            if (discIdx >= 0) {
+                runCatching {
+                    android.graphics.BitmapFactory.decodeResource(
+                        discContext.resources,
+                        discContext.resources.getIdentifier(
+                            "love_disc_%02d".format(discIdx), "drawable", discContext.packageName
+                        )
+                    )
+                }.getOrNull()
+            } else null
+        }
         Box(contentAlignment = Alignment.Center) {
+            if (discBmp != null) {
+                Image(
+                    bitmap = discBmp.asImageBitmap(),
+                    contentDescription = "唱片（点一下换样式）",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(206.dp)
+                        .graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                        ) { onPickDisc() }
+                )
+            } else
             Canvas(modifier = Modifier.size(196.dp).graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }) {
                 val r = size.minDimension / 2f
                 val c = Offset(size.width / 2f, size.height / 2f)
@@ -440,7 +594,15 @@ private fun LoveNowPage(player: MusicPlayer.PlayerState, togetherSec: Int) {
                 drawCircle(Color.White, radius = r * 0.045f, center = c)
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Text(
+            "点唱片换样式 · 点这里换本页背景",
+            fontSize = 9.sp, color = HomecomingColors.InkSoft.copy(alpha = 0.8f),
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onOpenWallpaper() }
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        )
+        Spacer(Modifier.height(14.dp))
 
         Text(
             player.song?.name ?: "还没选歌",
