@@ -72,7 +72,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -126,6 +132,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
     val cloudSyncTotal = remember { mutableStateOf(0) }
     val draggingKey = remember { mutableStateOf<String?>(null) }
 
+    val boardIds = remember { mutableStateOf(HashSet<String>()) }
     LaunchedEffect(Unit) {
         photos.clear()
         photos.addAll(HomecomingAlbumStore.list(context))
@@ -174,6 +181,14 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                 boardPositions[k] = Pair(arr.getDouble(0).toFloat(), arr.getDouble(1).toFloat())
             }
         }
+        // board_ids：没有存过 → 首次迁移，把原先自动钉着的最新10张当作已选，避免整墙突然清空
+        if (!boardPrefs.contains("board_ids")) {
+            val seed = photos.take(10).map { "photo_" + it.id }.toHashSet()
+            boardIds.value = seed
+            boardPrefs.edit().putStringSet("board_ids", seed).apply()
+        } else {
+            boardIds.value = boardPrefs.getStringSet("board_ids", emptySet()).orEmpty().toHashSet()
+        }
     }
 
     fun persistBoard() {
@@ -185,6 +200,27 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
             boardPrefs.edit().putString("pos", obj.toString()).apply()
         }
     }
+
+    // ── 上墙自选（Yuri：哪些上毛毡板由我们决定，不再自动钉最新10张） ──
+    fun persistBoardIds() {
+        boardPrefs.edit().putStringSet("board_ids", boardIds.value).apply()
+    }
+    fun pinToBoard(photo: HomecomingAlbumStore.AlbumPhoto) {
+        val key = "photo_" + photo.id
+        if (boardIds.value.contains(key)) return
+        boardIds.value = (boardIds.value + key) as HashSet<String>
+        // 给一个空位默认点（按已选数量轮转），上去以后可长按拖到喜欢的地方
+        val slot = PHOTO_DEFAULT[boardIds.value.size % PHOTO_DEFAULT.size]
+        boardPositions[key] = Pair(slot.first, slot.second)
+        persistBoardIds(); persistBoard()
+    }
+    fun unpinFromBoard(photo: HomecomingAlbumStore.AlbumPhoto) {
+        val key = "photo_" + photo.id
+        boardIds.value = (boardIds.value - key) as HashSet<String>
+        boardPositions.remove(key)
+        persistBoardIds(); persistBoard()
+    }
+
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 9)
@@ -259,7 +295,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                 ) {
                     Spacer(Modifier.height(18.dp))
                     FeltBoard(
-                        photos = photos.toList(),
+                        photos = photos.filter { boardIds.value.contains("photo_" + it.id) },
                         version = version.value,
                         positions = boardPositions,
                         draggingKey = draggingKey,
@@ -270,14 +306,18 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                     )
                     Spacer(Modifier.height(16.dp))
                     TinBox(
-                        photos = photos.drop(10),
+                        photos = photos.filterNot { boardIds.value.contains("photo_" + it.id) },
                         version = version.value,
                         onPhotoTap = { selected.value = it; showDetail.value = true },
+                        onPhotoLongPress = { ph ->
+                            pinToBoard(ph)
+                            Toast.makeText(context, "钉上毛毡板了，长按可挪位置", Toast.LENGTH_SHORT).show()
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "钉着最近的 " + minOf(photos.size, 10) + " 张（长按可挪） · 没上墙的在下面铁盒里" +
+                        "钉着你挑的 " + boardIds.value.size + " 张（长按可挪） · 想上墙：长按铁盒里的照片 · 点开照片也能上下墙" +
                             (if (cloudSyncTotal.value > cloudSyncDone.value) " · 正在同步云端相册 ${cloudSyncDone.value}/${cloudSyncTotal.value}"
                              else if (cloudImportIssue.value) " · 云端相册没权限，SQL 放行后自动导入"
                              else ""),
@@ -393,6 +433,18 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                             label = { Text("日期 / 备注（可改）", fontSize = 12.sp) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
+                        )
+                        val onBoardNow = boardIds.value.contains("photo_" + photo.id)
+                        Text(
+                            if (onBoardNow) "↓ 从墙上取下 · 放回铁盒" else "↑ 钉上毛毡板",
+                            fontSize = 12.sp, color = HomecomingColors.Accent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    if (onBoardNow) unpinFromBoard(photo) else pinToBoard(photo)
+                                    showDetail.value = false
+                                }
+                                .padding(vertical = 2.dp)
                         )
                         Text(
                             if (seanBusy.value) "Sean 正在写…" else "「Sean 写一句」需要云线路就绪",
@@ -808,33 +860,39 @@ private fun HangingPlush(
     }
 }
 
-/** 铁盒子（实拍素材，含开盖）：没上墙的照片做成竖版小卡插在盒内，滑动有拨动效果。 */
+/** 铁盒子（实拍素材）：没上墙的照片竖版插在盒里——盒体打底、卡片后倾高低错落、
+ *  盒子前唇裁切压在卡片底部（盖住下1/3），是「放进去」不是「浮在面上」。滑动有拨动效果。 */
 @Composable
 private fun TinBox(
     photos: List<HomecomingAlbumStore.AlbumPhoto>,
     version: Long,
     onPhotoTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
+    onPhotoLongPress: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val boxContext = LocalContext.current
+    val tinBmp = remember {
+        android.graphics.BitmapFactory.decodeResource(boxContext.resources, R.drawable.tin_box).asImageBitmap()
+    }
     BoxWithConstraints(
         modifier
             .padding(horizontal = 12.dp)
-            .height(184.dp)
+            .height(196.dp)
     ) {
         val W = maxWidth
-        val tinW = (W - 8.dp).coerceAtMost(210.dp)
+        val tinW = (W - 8.dp).coerceAtMost(214.dp)
         val tinH = tinW * 421f / 480f
         Box(modifier = Modifier.align(Alignment.TopCenter).size(width = tinW, height = tinH)) {
-            // 盒体素材（含开盖）
+            // ① 盒体素材（底层，含开盖）
             Image(
-                painter = painterResource(R.drawable.tin_box),
+                bitmap = tinBmp,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize()
             )
             if (photos.isEmpty()) {
                 Text(
-                    "都在墙上呢 · 存新照片会先钉上毛毡板",
+                    "都钉在墙上了 · 新照片先放这儿，长按就能钉上毛毡板",
                     fontSize = 10.sp, color = Color(0xFF7A766C),
                     fontFamily = FontFamily.Serif,
                     modifier = Modifier
@@ -842,29 +900,30 @@ private fun TinBox(
                         .padding(top = tinH * 0.10f)
                 )
             } else {
-                // 小卡插在盒内：底边对齐盒内底，横向滑动拨动
+                // ② 竖版卡插进盒里：后倾、高低错落、只露上 2/3（横向滑动拨动）
                 val scroll = rememberScrollState()
-                val cardH = tinH * 0.34f
-                val cardW = cardH * 0.72f
-                val overlap = cardW * 0.42f
+                val cardH = tinH * 0.46f
+                val cardW = cardH * 0.66f
+                val overlap = cardW * 0.44f
                 val stride = with(density) { (cardW - overlap).toPx() }
-                val startPad = with(density) { (tinW * 0.10f).toPx() }
-                val viewport = with(density) { (tinW * 0.80f).toPx() }
+                val startPad = with(density) { (tinW * 0.08f).toPx() }
+                val viewport = with(density) { (tinW * 0.84f).toPx() }
                 val cardWpx = with(density) { cardW.toPx() }
                 Row(
                     verticalAlignment = Alignment.Bottom,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = tinH * 0.085f)
+                        .padding(bottom = tinH * 0.26f)   // 卡片底沉进盒内，等着前唇来盖
                         .fillMaxWidth()
-                        .height(cardH + 2.dp)
+                        .height(cardH + 6.dp)
                         .horizontalScroll(scroll)
                 ) {
-                    Spacer(Modifier.width(tinW * 0.06f))
+                    Spacer(Modifier.width(tinW * 0.05f))
                     photos.forEachIndexed { i, photo ->
-                        // 拨动效果：卡片中心离视口中心越远越歪，带 3D 转角
                         val centerPx = startPad + i * stride + cardWpx / 2f - scroll.value
                         val rel = ((centerPx - viewport / 2f) / viewport).coerceIn(-0.55f, 0.55f)
+                        // 高低参差：轻错落，像随手插进去的
+                        val lift = (seedRand(photo.id, 11) * 10f).dp
                         Box(modifier = Modifier.width(cardW)) {
                             TinCard(
                                 photo = photo,
@@ -872,18 +931,44 @@ private fun TinBox(
                                 width = cardW,
                                 height = cardH,
                                 rel = rel,
-                                onTap = onPhotoTap
+                                lift = lift,
+                                onTap = onPhotoTap,
+                                onLongPress = onPhotoLongPress
                             )
                         }
                     }
-                    Spacer(Modifier.width(tinW * 0.06f))
+                    Spacer(Modifier.width(tinW * 0.05f))
                 }
+            }
+            // ③ 前唇：把盒体图底部裁出来压在卡片上（真实遮挡 = 放进去了）+ 唇沿阴影
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val src = tinBmp
+                val lipTopFrac = 0.62f
+                val srcW = src.width
+                val srcH = src.height
+                val srcTop = (srcH * lipTopFrac).toInt()
+                drawImage(
+                    image = src,
+                    srcOffset = IntOffset(0, srcTop),
+                    srcSize = IntSize(srcW, srcH - srcTop),
+                    dstOffset = IntOffset(0, (size.height * lipTopFrac).toInt()),
+                    dstSize = IntSize(size.width.toInt(), (size.height * (1f - lipTopFrac)).toInt())
+                )
+                // 唇沿进盒的阴影一线
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0x1F000000), Color(0x00000000))
+                    ),
+                    topLeft = Offset(0f, size.height * lipTopFrac),
+                    size = androidx.compose.ui.geometry.Size(size.width, 5.dp.toPx())
+                )
             }
         }
     }
 }
 
-/** 铁盒里的竖版小卡。 */
+/** 铁盒里的竖版小卡：微微后倾立在盒里（放进去的感觉），长按可钉上毛毡板。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TinCard(
     photo: HomecomingAlbumStore.AlbumPhoto,
@@ -891,7 +976,9 @@ private fun TinCard(
     width: Dp,
     height: Dp,
     rel: Float,
-    onTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit
+    lift: Dp,
+    onTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
+    onLongPress: (HomecomingAlbumStore.AlbumPhoto) -> Unit
 ) {
     val context = LocalContext.current
     val bmp = remember(photo.id, version) {
@@ -900,9 +987,13 @@ private fun TinCard(
     Box(
         modifier = Modifier
             .size(width = width, height = height)
+            .offset(y = -lift)
             .graphicsLayer {
-                rotationZ = rel * 12f
-                rotationY = -rel * 18f
+                // 立着插进盒里：往后仰一点，底部为轴
+                rotationX = 7f
+                transformOrigin = TransformOrigin(0.5f, 1f)
+                rotationZ = rel * 10f
+                rotationY = -rel * 14f
                 cameraDistance = 220f * density
                 shadowElevation = 5f
             }
@@ -910,7 +1001,10 @@ private fun TinCard(
             .clip(RoundedCornerShape(3.dp))
             .background(Color(0xFFFDFBF5))
             .border(0.7.dp, Color(0x33000000), RoundedCornerShape(3.dp))
-            .clickable { onTap(photo) }
+            .combinedClickable(
+                onClick = { onTap(photo) },
+                onLongClick = { onLongPress(photo) }
+            )
             .padding(2.5.dp)
     ) {
         Box(
