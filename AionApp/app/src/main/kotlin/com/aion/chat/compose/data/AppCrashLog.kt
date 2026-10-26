@@ -68,8 +68,9 @@ object AppCrashLog {
 
     fun markCrashed(context: Context) {
         runCatching {
+            // commit 同步落盘：闪退时进程立刻死，apply 会丢标记（排查闪退踩过的坑）
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putBoolean(KEY_CRASHED_LAST, true).apply()
+                .edit().putBoolean(KEY_CRASHED_LAST, true).commit()
         }
     }
 
@@ -77,8 +78,25 @@ object AppCrashLog {
     fun clearCrashedFlag(context: Context) {
         runCatching {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putBoolean(KEY_CRASHED_LAST, false).apply()
+                .edit().putBoolean(KEY_CRASHED_LAST, false).commit()
         }
+    }
+
+    /** 日志末条是崩溃 → 视为上次崩过（标记可能被异步写丢，日志文件是同步写的更可靠）。 */
+    fun lastEntryIsCrash(context: Context): Boolean = try {
+        val f = file(context)
+        if (!f.exists()) false
+        else {
+            val tail = f.readText().takeLast(800)
+            val last = tail.substringAfterLast("[", "").trim()
+            last.startsWith("CRASH]") || last.startsWith("未捕获崩溃") ||
+                tail.substringAfterLast("] ", "").startsWith("未捕获崩溃")
+        }
+    } catch (e: Exception) { false }
+
+    /** 启动面包屑：每走一步写一行，闪退时日志末条就是最后到过的地方。 */
+    fun breadcrumb(context: Context, where: String) {
+        write(context, "STEP] $where")
     }
 
     /**

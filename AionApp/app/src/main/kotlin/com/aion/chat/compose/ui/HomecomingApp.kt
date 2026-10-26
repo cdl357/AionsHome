@@ -84,6 +84,12 @@ enum class HomeTab(val route: String, val label: String, val icon: ImageVector) 
 
 @Composable
 fun HomecomingApp() {
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.aion.chat.compose.data.AppCrashLog.breadcrumb(appContext, "HomecomingApp 组合")
+        }
+    }
     val navController = rememberNavController()
     var current by rememberSaveable { mutableStateOf("splash") }
     val onSelect: (HomeTab) -> Unit = { tab ->
@@ -96,7 +102,6 @@ fun HomecomingApp() {
     }
 
     // ── 全局背景：所有页面浮在同一张图上，设置换一次全 App 生效 ──
-    val appContext = androidx.compose.ui.platform.LocalContext.current
     // stamp 是 Compose 状态 + 异步解码：选完图立刻重载，不用再切页面等
     val bgBitmap = remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     LaunchedEffect(SettingsBg.stamp) {

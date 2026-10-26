@@ -107,6 +107,11 @@ private fun glassText(
 @Composable
 fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}, onOpenStudy: () -> Unit = {}) {
     val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.aion.chat.compose.data.AppCrashLog.breadcrumb(context, "主页组合完成")
+        }
+    }
     val hazeState = rememberHazeState()
     var recent by remember { mutableStateOf(listOf<HomecomingData.FeedItem>()) }
 

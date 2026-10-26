@@ -44,15 +44,16 @@ class MainActivity : ComponentActivity() {
         // 全局崩溃捕获：写日志 + 打崩溃标记（下次启动进安全模式），设置页也可查看
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            AppCrashLog.write(this, "未捕获崩溃 @ ${thread.name}: ${throwable.javaClass.name}")
+            AppCrashLog.write(this, "CRASH] 未捕获 @ ${thread.name}: ${throwable.javaClass.name}")
             AppCrashLog.write(this, android.util.Log.getStackTraceString(throwable).take(1500))
             AppCrashLog.markCrashed(this)
             previous?.uncaughtException(thread, throwable)
         }
+        AppCrashLog.breadcrumb(this, "Activity onCreate")
         setContent {
             HomecomingThemeState.load(this)
             HomecomingTheme {
-                if (AppCrashLog.crashedLastLaunch(this)) {
+                if (AppCrashLog.crashedLastLaunch(this) || AppCrashLog.lastEntryIsCrash(this)) {
                     SafeModeScreen()
                 } else {
                     HomecomingApp()
