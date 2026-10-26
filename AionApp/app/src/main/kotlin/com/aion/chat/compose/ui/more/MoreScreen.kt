@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Water
@@ -54,10 +55,12 @@ fun MoreScreen(
     onOpenReading: () -> Unit = {},
     onOpenReminders: () -> Unit = {},
     onOpenCall: () -> Unit = {},
-    onOpenHeartTide: () -> Unit = {}
+    onOpenHeartTide: () -> Unit = {},
+    onOpenStyleHub: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
+        MoreEntry(Icons.Filled.Palette, "样式中心", "聊天长什么样，这里说了算"),
         MoreEntry(Icons.Filled.Drafts, "日记信盒", "翻页手账 · 一月一页回忆"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
         MoreEntry(Icons.Filled.Call, "语音通话", "打电话给 Sean · 可抢话"),
@@ -78,6 +81,7 @@ fun MoreScreen(
         entries.forEach { entry ->
             FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
                 when (entry.name) {
+                    "样式中心" -> onOpenStyleHub()
                     "日记信盒" -> onOpenDiaryBox()
                     "记忆库" -> onOpenMemories()
                     "陪伴阅读" -> onOpenReading()

@@ -381,6 +381,37 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}) {
                 }) { Text("测一下", color = HomecomingColors.InkSoft) }
                 TextButton(onClick = { saveRoute() }) { Text("保存线路", color = HomecomingColors.Accent) }
             }
+            Spacer(Modifier.height(10.dp))
+            // 聊天后端开关（网关 SSE 未联调，默认走旧中转站；文档：改完先别删旧实现）
+            val gwOn = remember {
+                mutableStateOf(
+                    context.getSharedPreferences("chat_backend", android.content.Context.MODE_PRIVATE)
+                        .getBoolean("gateway", false)
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("聊天后端（实验）", fontSize = 13.sp, color = HomecomingColors.Ink)
+                    Text(
+                        if (gwOn.value) "网关 SSE（未联调，需要沈聿淮那边通了才能聊）" else "中转站（当前可用）",
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = gwOn.value,
+                    onCheckedChange = { on ->
+                        gwOn.value = on
+                        context.getSharedPreferences("chat_backend", android.content.Context.MODE_PRIVATE)
+                            .edit().putBoolean("gateway", on).apply()
+                        Toast.makeText(
+                            context,
+                            if (on) "已切到网关 SSE——回聊天页生效（未联调前会连不上）" else "已切回中转站",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             Text(
                 "从备份恢复线路",
                 fontSize = 12.sp, color = HomecomingColors.InkSoft,

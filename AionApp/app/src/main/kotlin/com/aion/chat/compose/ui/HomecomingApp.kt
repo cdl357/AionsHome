@@ -194,6 +194,9 @@ fun HomecomingApp() {
                 composable("diarywrite") {
                     com.aion.chat.compose.ui.diary.DiaryWriteScreen(onBack = { navController.popBackStack() })
                 }
+                composable("stylehub") {
+                    com.aion.chat.compose.ui.style.StyleHubScreen(onBack = { navController.popBackStack() })
+                }
                 composable("music") { MusicScreen(onBack = { navController.popBackStack() }) }
                 composable("love") {
                     ListenTogetherScreen(onExit = { navController.popBackStack() })
@@ -208,7 +211,8 @@ fun HomecomingApp() {
                             onOpenReading = { navController.navigate("reading") },
                             onOpenReminders = { navController.navigate("reminders") },
                             onOpenCall = { navController.navigate("call") },
-                            onOpenHeartTide = { navController.navigate("hearttide") }
+                            onOpenHeartTide = { navController.navigate("hearttide") },
+                            onOpenStyleHub = { navController.navigate("stylehub") }
                         )
                     }
                 }

@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
@@ -75,6 +76,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
@@ -210,6 +212,31 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val messages = remember { mutableStateListOf<HomecomingChatRepository.Message>() }
     val pendingSegments = remember { mutableStateListOf<String>() }
     val sending = remember { mutableStateOf(false) }
+    // ── 网关 SSE 后端（开关在设置；默认旧中转站） ──
+    val useGateway = remember(routeStamp) {
+        context.getSharedPreferences("chat_backend", android.content.Context.MODE_PRIVATE)
+            .getBoolean("gateway", false)
+    }
+    val thinkingLive = remember { mutableStateOf<String?>(null) }
+    val toolName = remember { mutableStateOf<String?>(null) }
+    val toolDone = remember { mutableStateOf<Boolean?>(null) }
+    val noticeText = remember { mutableStateOf<String?>(null) }
+    val emptyHint = remember { mutableStateOf(false) }
+    var activeRequestId by remember { mutableStateOf("") }
+    var stopping by remember { mutableStateOf(false) }
+    fun stopGeneration() {
+        if (!sending.value) return
+        stopping = true
+        if (useGateway) {
+            com.aion.chat.compose.data.GatewayChat.stop(HomecomingChatWiring.TIMELINE)
+        } else {
+            runCatching { wiring?.engine?.stop(activeRequestId) }
+        }
+        sending.value = false
+        pendingSegments.clear()
+        thinkingLive.value = null; toolName.value = null; noticeText.value = null
+        Toast.makeText(context, "停了", Toast.LENGTH_SHORT).show()
+    }
     val input = remember { mutableStateOf("") }
     val pendingImage = remember { mutableStateOf("") }
     // 图片消息的本地文件（气泡渲染真图/表情用），发送完成后挂到消息 id 上
@@ -302,7 +329,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         val imagePath = pendingImagePath.value
         if (text.isEmpty() && image.isEmpty()) return
         val w = wiring ?: return
-        if (sending.value) return
+        if (sending.value) {
+            // 生成中按发送：此刻的意图是「先停下」（文档 4.3）
+            stopGeneration()
+            return
+        }
         if (!connected) {
             Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
             return
@@ -346,6 +377,82 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
 
         val requestId = "req_" + System.currentTimeMillis()
+        activeRequestId = requestId
+        emptyHint.value = false
+        // ── 网关 SSE 后端（开关打开时走这里；旧中转站分支原样保留在后面） ──
+        if (useGateway) {
+            val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
+            val prefix = listOfNotNull(promptPrefix, cmdFeedback?.let { "[$it]" })
+                .joinToString("\n").ifBlank { null }
+            val prompt = if (prefix != null) prefix + "\n" + text else text
+            val acc = StringBuilder()
+            com.aion.chat.compose.data.GatewayChat.send(
+                HomecomingChatWiring.TIMELINE, requestId, prompt, image, context, w.chats,
+                HomecomingChatWiring.RESPONDER,
+                object : com.aion.chat.compose.data.GatewayChat.Observer {
+                    override fun onThinking(delta: String) {
+                        main.post { thinkingLive.value = (thinkingLive.value ?: "") + delta }
+                    }
+                    override fun onTool(toolName0: String, done: Boolean?) {
+                        main.post {
+                            if (done == null) { toolName.value = toolName0; toolDone.value = null }
+                            else if (toolName.value == toolName0) toolDone.value = done
+                        }
+                    }
+                    override fun onChunk(delta: String) {
+                        main.post {
+                            acc.append(delta)
+                            pendingSegments.clear()
+                            pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(acc.toString()))))
+                        }
+                    }
+                    override fun onNotice(t: String) { main.post { noticeText.value = t } }
+                    override fun onComplete(fullText: String, thinking: String) {
+                        main.post {
+                            if (stopping) { stopping = false; return@post }
+                            sending.value = false
+                            thinkingLive.value = null; toolName.value = null; noticeText.value = null
+                            pendingSegments.clear()
+                            if (fullText.isBlank()) {
+                                // 空回复≠他没说话（文档 5.5）
+                                emptyHint.value = true
+                            } else {
+                                speakReply(fullText)
+                            }
+                            scope.launch(Dispatchers.IO) {
+                                reloadNow()
+                                if (imagePath.isNotBlank()) {
+                                    val latest = runCatching {
+                                        w.listMessages(HomecomingChatWiring.TIMELINE)
+                                            .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
+                                    }.getOrNull()
+                                    if (latest != null) {
+                                        com.aion.chat.compose.data.HomecomingChatImageStore.map(context, latest.id, imagePath)
+                                    }
+                                }
+                                if (text.contains("晚安")) {
+                                    runCatching { generateTonightDiary(context) }
+                                }
+                                if (preSong != null) {
+                                    com.aion.chat.compose.data.MusicCardStore.add(context, preSong)
+                                    main.post { musicCardsReload.value++ }
+                                }
+                            }
+                        }
+                    }
+                    override fun onFailure(code: String) {
+                        main.post {
+                            if (stopping) { stopping = false; return@post }
+                            sending.value = false
+                            thinkingLive.value = null; toolName.value = null; noticeText.value = null
+                            errorText.value = "回复失败（$code）。检查网络后重试。"
+                            Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
+            return
+        }
         scope.launch(Dispatchers.IO) {
             try {
                 // 即时指令：有已完成的指令时，把用时反馈拼进这一轮（他就能知道她用了多久）
@@ -434,7 +541,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     }
 
     fun sendSticker(f: java.io.File) {
-        if (sending.value) return
+        if (sending.value) {
+            // 生成中按发送：此刻的意图是「先停下」（文档 4.3）
+            stopGeneration()
+            return
+        }
         if (!connected) {
             Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
             return
@@ -761,6 +872,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             )
                         }
                     }
+                    if (emptyHint.value) {
+                        item(key = "empty_hint") {
+                            Text(
+                                "刚才那句没传过来，可能丢件了——再说一次试试",
+                                fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                     items(messages, key = { it.id }) { msg ->
                         if (msg.role == "user") {
                             val imgPath = remember(msg.id) {
@@ -775,7 +896,63 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     com.aion.chat.compose.data.CommandStore.strip(msg.text)
                                 )
                             }
+                            // 思考链（文档 4.1）：在气泡上方、弱样式、默认折叠、随消息持久化
+                            if (com.aion.chat.compose.data.StyleSettings.showThinking(context)) {
+                                var think by remember(msg.requestId) { mutableStateOf("") }
+                                var open by remember(msg.requestId) { mutableStateOf(false) }
+                                LaunchedEffect(msg.requestId) {
+                                    if (msg.requestId.isNotBlank()) {
+                                        think = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                            com.aion.chat.compose.data.ThinkingStore.get(context, msg.requestId)
+                                        }
+                                    }
+                                }
+                                if (think.isNotBlank()) {
+                                    ThinkingFoldRow(
+                                        thinking = think,
+                                        expanded = open,
+                                        onToggle = { open = !open },
+                                        fontScale = com.aion.chat.compose.data.StyleSettings.thinkingFontScale(context),
+                                        opacity = com.aion.chat.compose.data.StyleSettings.thinkingOpacity(context)
+                                    )
+                                }
+                            }
                             AssistantBubbles(text = cleanText, skin = skin.value, alpha = bubbleAlpha.value)
+                        }
+                    }
+                    // 生成中：思维链（实时）+ 工具状态行 + 温和提示（网关后端）
+                    if (sending.value) {
+                        val tl = thinkingLive.value
+                        if (tl != null && com.aion.chat.compose.data.StyleSettings.showThinking(context)) {
+                            item(key = "thinking_live") {
+                                ThinkingFoldRow(
+                                    thinking = tl,
+                                    expanded = !com.aion.chat.compose.data.StyleSettings.autoFoldThinking(context),
+                                    onToggle = {},
+                                    fontScale = com.aion.chat.compose.data.StyleSettings.thinkingFontScale(context),
+                                    opacity = com.aion.chat.compose.data.StyleSettings.thinkingOpacity(context),
+                                    live = true
+                                )
+                            }
+                        }
+                        val tn = toolName.value
+                        if (tn != null) {
+                            item(key = "tool_row") {
+                                Text(
+                                    (if (toolDone.value == null) "正在使用 " else "✓ ") + tn + (if (toolDone.value == null) "…" else ""),
+                                    fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                    fontStyle = FontStyle.Italic,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        noticeText.value?.let { t ->
+                            item(key = "notice_row") {
+                                Text(
+                                    t, fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                     // AI 点歌的播放卡（真实可播，点卡片用全局唯一播放器）
@@ -1034,7 +1211,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             .background(HomecomingColors.Accent)
                             .clickable { send() },
                         contentAlignment = Alignment.Center
-                    ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送", tint = Color.White) }
+                    ) {
+                        Icon(
+                            imageVector = if (sending.value) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
+                            contentDescription = if (sending.value) "停止" else "发送",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -1451,4 +1634,53 @@ private suspend fun generateTonightDiary(context: android.content.Context) {
     com.aion.chat.compose.data.HomecomingDayStore.addDiary(
         context, "sean", "$today 日记", d, System.currentTimeMillis()
     )
+}
+
+/**
+ * 思考链折叠行（文档 4.1）：弱样式、默认折叠、点开看全文；live=true 为生成中的实时区。
+ */
+@Composable
+fun ThinkingFoldRow(
+    thinking: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    fontScale: Float,
+    opacity: Float,
+    live: Boolean = false,
+) {
+    var open by remember { mutableStateOf(expanded) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFEFECE4).copy(alpha = 0.75f * opacity))
+            .clickable { onToggle(); open = !open }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(
+            (if (live) "他正在想…" else "他在想") + (if (open) " ▾" else " ▸"),
+            fontSize = 10.sp,
+            color = Color(0xFF8A8172),
+            fontStyle = FontStyle.Italic,
+            fontWeight = FontWeight.Medium
+        )
+        if (open) {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                thinking,
+                fontSize = (11 * fontScale).sp,
+                lineHeight = (17 * fontScale).sp,
+                color = Color(0xFF7A7264),
+                fontStyle = FontStyle.Italic
+            )
+        } else {
+            Text(
+                thinking.take(46) + if (thinking.length > 46) "…" else "",
+                fontSize = (10 * fontScale).sp,
+                color = Color(0xFFA49B8A),
+                fontStyle = FontStyle.Italic,
+                maxLines = 1
+            )
+        }
+    }
 }
