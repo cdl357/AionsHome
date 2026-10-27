@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -96,6 +97,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
@@ -254,6 +258,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     }
     val input = remember { mutableStateOf("") }
     val pendingImage = remember { mutableStateOf("") }
+    // 多图发送（参考原作者 image-viewer/多图形式）：一次最多 3 张
+    val pendingImages = remember { mutableStateListOf<Pair<String, String>>() }  // (dataUrl, path)
+    var viewerPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    var viewerIndex by remember { mutableStateOf(0) }
     // 图片消息的本地文件（气泡渲染真图/表情用），发送完成后挂到消息 id 上
     val pendingImagePath = remember { mutableStateOf("") }
     val showStickerPanel = remember { mutableStateOf(false) }
@@ -340,8 +348,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
 
     fun send(forcedText: String? = null, promptPrefix: String? = null, preSong: com.aion.chat.compose.data.MusicClient.Song? = null) {
         val text = (forcedText ?: input.value).trim()
-        val image = pendingImage.value
-        val imagePath = pendingImagePath.value
+        val image = pendingImage.value.ifBlank { pendingImages.firstOrNull()?.first ?: "" }
+        val imagePath = pendingImagePath.value.ifBlank { pendingImages.firstOrNull()?.second ?: "" }
+        val extraImagePaths = pendingImages.drop(1).map { it.second }
         if (text.isEmpty() && image.isEmpty()) return
         val w = wiring ?: return
         if (sending.value) {
@@ -358,6 +367,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         input.value = ""
         pendingImage.value = ""
         pendingImagePath.value = ""
+        val imagesForBubble = listOf(imagePath) + extraImagePaths
+        pendingImages.clear()
         // ── AI 点歌（教程 §13）：说想听歌 → 搜真歌+验证 → Sean 知道结果 → 聊天里生成真实播放卡 ──
         if (promptPrefix == null && image.isEmpty() && isSongRequest(text)) {
             val rawText = text
@@ -451,7 +462,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                             .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
                                     }.getOrNull()
                                     if (latest != null) {
-                                        com.aion.chat.compose.data.HomecomingChatImageStore.map(context, latest.id, imagePath)
+                                        com.aion.chat.compose.data.HomecomingChatImageStore.mapMany(
+                                            context, latest.id, imagesForBubble.filter { it.isNotBlank() }
+                                        )
                                     }
                                 }
                                 if (text.contains("晚安")) {
@@ -658,8 +671,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 main.post {
                     pendingImage.value = dataUrl
                     pendingImagePath.value = saved
+                    pendingImages.clear()
+                    pendingImages.add(dataUrl to saved)
                     plusOpen.value = false
-                    send()
                 }
             }
         }
@@ -678,32 +692,37 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
-    // ── 图片选择（加号） ──
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
+    // ── 图片选择（加号）：多选最多 3 张 ──
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 3)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
             scope.launch(Dispatchers.IO) {
-                val pair = runCatching {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: return@runCatching null
-                    // 本地存一份（气泡渲染用），再压成 dataUrl 给模型看
-                    val saved = saveChatImage(context, bytes, sticker = false)
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                    var sample = 1
-                    var w = bounds.outWidth
-                    while (w / 2 >= 1024) { sample *= 2; w /= 2 }
-                    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                        ?: return@runCatching null
-                    val out = ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.JPEG, 82, out)
-                    bmp.recycle()
-                    "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP) to saved
-                }.getOrNull()
+                val pairs = uris.mapNotNull { uri ->
+                    runCatching {
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                            ?: return@runCatching null
+                        // 本地存一份（气泡渲染用），再压成 dataUrl 给模型看
+                        val saved = saveChatImage(context, bytes, sticker = false)
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                        var sample = 1
+                        var w = bounds.outWidth
+                        while (w / 2 >= 1024) { sample *= 2; w /= 2 }
+                        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                            ?: return@runCatching null
+                        val out = ByteArrayOutputStream()
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 82, out)
+                        bmp.recycle()
+                        "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP) to saved
+                    }.getOrNull()
+                }
                 main.post {
-                    if (pair != null) {
-                        pendingImage.value = pair.first
-                        pendingImagePath.value = pair.second
+                    if (pairs.isNotEmpty()) {
+                        pendingImages.clear()
+                        pendingImages.addAll(pairs)
+                        plusOpen.value = false
                     } else {
                         Toast.makeText(context, "图片读取失败", Toast.LENGTH_SHORT).show()
                     }
@@ -925,12 +944,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             }
                         }
                         if (msg.role == "user") {
-                            val imgPath = remember(msg.id) {
+                            val imgPaths = remember(msg.id) {
                                 if (msg.attachmentKind == "image") {
-                                    com.aion.chat.compose.data.HomecomingChatImageStore.pathFor(context, msg.id)
-                                } else null
+                                    com.aion.chat.compose.data.HomecomingChatImageStore.pathsFor(context, msg.id)
+                                } else emptyList()
                             }
-                            UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt)
+                            UserBubbles(
+                                text = msg.text, imagePaths = imgPaths, skin = skin.value, alpha = bubbleAlpha.value,
+                                timeMs = msg.createdAt,
+                                onViewImage = { idx -> viewerPaths = imgPaths; viewerIndex = idx }
+                            )
                         } else {
                             val cleanText = remember(msg.id) {
                                 com.aion.chat.compose.data.StudyRoomStore.strip(
@@ -1194,6 +1217,43 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     }
                                 }
                             }
+                    }
+                }
+
+                // ── 待发图片预览（多图）：缩略图 + 移除 ──
+                if (pendingImages.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, end = 14.dp, bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        pendingImages.forEachIndexed { pi, pair ->
+                            Box {
+                                val pv = remember(pair.second) {
+                                    decodeChatImage(java.io.File(pair.second), 192)
+                                }
+                                pv?.let {
+                                    Image(
+                                        bitmap = it.asImageBitmap(),
+                                        contentDescription = "待发图片",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .border(1.dp, HomecomingColors.Accent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                    )
+                                }
+                                Text(
+                                    "✕", fontSize = 11.sp, color = Color.White,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(18.dp)
+                                        .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                                        .clickable { pendingImages.removeAt(pi) }
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1511,9 +1571,16 @@ private fun userStyle(skin: Int, alpha: Float): UserStyle = when (skin) {
     else -> UserStyle(HomecomingColors.IceBlueDeep.copy(alpha = alpha), Color(0xFF17323A), RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp))
 }
 
-/** 用户气泡组（一条消息渲染为多条小气泡）。 */
+/** 用户气泡组（一条消息渲染为多条小气泡）；多图堆叠卡，点图进查看器。 */
 @Composable
-fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f, timeMs: Long = 0L) {
+fun UserBubbles(
+    text: String,
+    imagePaths: List<String>,
+    skin: Int,
+    alpha: Float = 1f,
+    timeMs: Long = 0L,
+    onViewImage: (Int) -> Unit = {},
+) {
     val segments = splitBubbles(text)
     val timeText = if (timeMs > 0) timeText(timeMs) else ""
     Column(
@@ -1521,47 +1588,60 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f, 
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.End
     ) {
-        if (imagePath != null) {
-            val isSticker = imagePath.contains("/stickers")  // 本地 stickers/ 与远端 stickers_remote/ 都算表情
-            val bmp = remember(imagePath) { decodeChatImage(java.io.File(imagePath), if (isSticker) 384 else 1024) }
-            val shown = bmp
-            if (shown != null) {
-                if (isSticker) {
-                    // 表情：无气泡底，直接一张大图；TG 式时间胶囊叠右下角
-                    Box {
-                        Image(
-                            bitmap = shown.asImageBitmap(),
-                            contentDescription = "表情",
-                            modifier = Modifier.size(120.dp)
-                        )
-                        if (skin == 3) TgTimePill(timeText, Modifier.align(Alignment.BottomEnd).padding(6.dp))
-                    }
-                } else {
-                    Box {
-                        Image(
-                            bitmap = shown.asImageBitmap(),
-                            contentDescription = "图片",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .widthIn(max = 240.dp)
-                                .heightIn(max = 320.dp)
-                                .clip(RoundedCornerShape(if (skin == 3) 14.dp else 12.dp))
-                        )
-                        if (skin == 3) TgTimePill(timeText, Modifier.align(Alignment.BottomEnd).padding(6.dp))
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-            } else {
+        if (imagePaths.isNotEmpty()) {
+            // 多图堆叠卡（原作者 chat-image-group 的 Compose 版）：>1 张折叠成扇形堆，点一下展开
+            var stackExpanded by remember(imagePaths) { mutableStateOf(imagePaths.size == 1) }
+            if (imagePaths.size > 1) {
                 Text(
-                    "📷 图片已发送",
-                    fontSize = 11.sp,
-                    color = HomecomingColors.InkSoft,
+                    if (stackExpanded) "收起图片 ▴" else "共 ${imagePaths.size} 张 · 点开 ▾",
+                    fontSize = 10.sp, color = HomecomingColors.InkSoft,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 2.dp),
-                    textAlign = TextAlign.End
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { stackExpanded = !stackExpanded }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
+            if (imagePaths.size > 1 && !stackExpanded) {
+                // 折叠：第一张完整显示，后面几张错位叠在后面
+                Box(modifier = Modifier.padding(end = 10.dp)) {
+                    imagePaths.drop(1).asReversed().forEachIndexed { i, _ ->
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (6 * (i + 1)).dp, y = (4 * (i + 1)).dp)
+                                .widthIn(max = 200.dp)
+                                .heightIn(max = 140.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFFD9D4C8).copy(alpha = 0.9f))
+                        )
+                    }
+                    TgChatImage(
+                        path = imagePaths.first(), skin = skin,
+                        modifier = Modifier
+                            .widthIn(max = 220.dp)
+                            .heightIn(max = 150.dp)
+                            .clip(RoundedCornerShape(14.dp)),
+                        onView = { onViewImage(0) }
+                    )
+                }
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    imagePaths.forEachIndexed { idx, p ->
+                        TgChatImage(
+                            path = p, skin = skin,
+                            modifier = Modifier
+                                .widthIn(max = 240.dp)
+                                .heightIn(max = 300.dp)
+                                .clip(RoundedCornerShape(14.dp)),
+                            isSticker = p.contains("/stickers") && imagePaths.size == 1,
+                            onView = { onViewImage(idx) }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(2.dp))
         }
         segments.forEachIndexed { segIdx, seg ->
             if (skin == 3) {
@@ -1605,6 +1685,39 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f, 
             Spacer(Modifier.height(4.dp))
         }
     }
+}
+
+/** 聊天单张图：普通图片，点开进查看器。 */
+@Composable
+private fun TgChatImage(
+    path: String,
+    skin: Int,
+    modifier: Modifier,
+    isSticker: Boolean = false,
+    onView: () -> Unit,
+) {
+    val bmp = remember(path) { decodeChatImage(java.io.File(path), if (isSticker) 384 else 1024) }
+    val shown = bmp
+    if (shown == null) {
+        Text(
+            "📷 图片已发送",
+            fontSize = 11.sp, color = HomecomingColors.InkSoft,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+            textAlign = TextAlign.End
+        )
+        return
+    }
+    Image(
+        bitmap = shown.asImageBitmap(),
+        contentDescription = "聊天图片",
+        contentScale = if (isSticker) ContentScale.Fit else ContentScale.Crop,
+        modifier = modifier
+            .then(if (isSticker) Modifier.size(120.dp) else Modifier)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onView() }
+    )
 }
 
 /** Sean 气泡组（一条消息渲染为多条小气泡）。 */
@@ -1818,6 +1931,142 @@ fun ThinkingFoldRow(
                 color = Color(0xFFA49B8A),
                 fontStyle = FontStyle.Italic,
                 maxLines = 1
+            )
+        }
+    }
+}
+
+
+// ── 图片查看器（参考原作者 image-viewer）：全屏黑底、缩放拖动、保存到相册、多图切换 ──
+
+@Composable
+private fun ChatImageViewer(
+    paths: List<String>,
+    index: Int,
+    onIndex: (Int) -> Unit,
+    onClose: () -> Unit,
+) {
+    val context = LocalContext.current
+    var scale by remember { mutableStateOf(1f) }
+    var offX by remember { mutableStateOf(0f) }
+    var offY by remember { mutableStateOf(0f) }
+    Dialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xF508090B))
+        ) {
+            val path = paths.getOrNull(index) ?: paths.firstOrNull() ?: return@Box
+            val bmp = remember(path) { decodeChatImage(java.io.File(path), 2048) }
+            bmp?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = "查看图片",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = offX
+                            translationY = offY
+                        }
+                        .pointerInput(path) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 6f)
+                                if (scale > 1.02f) {
+                                    offX += pan.x
+                                    offY += pan.y
+                                } else {
+                                    offX = 0f; offY = 0f
+                                }
+                            }
+                        }
+                )
+            }
+            // 顶栏：关闭 + 序号
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color(0x88000000), Color.Transparent)))
+                    .padding(paddingValues = PaddingValues(horizontal = 16.dp, vertical = 14.dp)),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "✕ 关闭", fontSize = 14.sp, color = Color.White,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { onClose() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+                if (paths.size > 1) {
+                    Text("${index + 1} / ${paths.size}", fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f))
+                }
+            }
+            // 底栏：上一张 / 保存到相册 / 下一张
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000))))
+                    .padding(bottom = 22.dp, top = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (paths.size > 1) {
+                    Text(
+                        "‹ 上一张", fontSize = 13.sp, color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0x33303238))
+                            .clickable { if (index > 0) { onIndex(index - 1); scale = 1f; offX = 0f; offY = 0f } }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+                Text(
+                    "保存到相册", fontSize = 13.sp, color = Color.White,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0x33303238))
+                        .clickable {
+                            runCatching {
+                                val bmpSave = decodeChatImage(java.io.File(path), 2048) ?: throw IllegalStateException("图片读不出来")
+                                val values = android.content.ContentValues().apply {
+                                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "aionshome_" + System.currentTimeMillis() + ".jpg")
+                                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                                }
+                                val uri = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                                    ?: throw IllegalStateException("相册拒绝写入")
+                                context.contentResolver.openOutputStream(uri)?.use { out ->
+                                    bmpSave.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
+                                }
+                                Toast.makeText(context, "已保存到相册", Toast.LENGTH_SHORT).show()
+                            }.onFailure {
+                                Toast.makeText(context, "保存失败：${it.message ?: "未知"}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+                if (paths.size > 1) {
+                    Text(
+                        "下一张 ›", fontSize = 13.sp, color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0x33303238))
+                            .clickable { if (index < paths.size - 1) { onIndex(index + 1); scale = 1f; offX = 0f; offY = 0f } }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            Text(
+                "双指缩放 · 拖动查看",
+                fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = 240.dp)
             )
         }
     }

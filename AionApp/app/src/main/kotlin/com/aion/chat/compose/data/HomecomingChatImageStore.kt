@@ -30,6 +30,22 @@ object HomecomingChatImageStore {
         db.close(); true
     } catch (e: Exception) { false }
 
+    /** 多图：换行分隔存同表。 */
+    fun mapMany(context: Context, messageId: String, paths: List<String>): Boolean =
+        map(context, messageId, paths.joinToString("\n"))
+
+    /** 多图读：按 \n 拆分；旧单图数据返回单元素列表。 */
+    fun pathsFor(context: Context, messageId: String): List<String> = try {
+        val db = db(context); ensure(db)
+        val cur = db.rawQuery(
+            "SELECT path FROM chat_image_local WHERE message_id = ?",
+            arrayOf(messageId)
+        )
+        val path = if (cur.moveToFirst()) cur.getString(0) else null
+        cur.close(); db.close()
+        path?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+    } catch (e: Exception) { emptyList() }
+
     fun pathFor(context: Context, messageId: String): String? = try {
         val db = db(context); ensure(db)
         val cur = db.rawQuery(
