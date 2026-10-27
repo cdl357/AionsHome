@@ -59,15 +59,17 @@ fun CommandPillHost() {
     val context = LocalContext.current
     val view = LocalView.current
     val density = LocalDensity.current
-    var cmds by remember { mutableStateOf(CommandStore.pending(context)) }
+    // 组合期不碰任何可能抛初始化异常的东西：先空列表渲染，1 秒内由协程补上真实数据
+    var cmds by remember { mutableStateOf(emptyList<CommandStore.Cmd>()) }
     var expandedId by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
 
-    // 每秒走一次表（墙钟，后台时间也算）
+    // 每秒走一次表（墙钟，后台时间也算）；pending 的读取在这里也是安全的
     LaunchedEffect(Unit) {
         while (true) {
             now = System.currentTimeMillis()
-            cmds = CommandStore.pending(context)
+            runCatching { cmds = CommandStore.pending(context) }
+                .onFailure { com.aion.chat.compose.data.AppCrashLog.write(context, "CommandPill pending 失败: ${it.javaClass.name}: ${it.message ?: ""}") }
             delay(1000)
         }
     }

@@ -34,7 +34,13 @@ object CommandStore {
 
     // ── 标签解析 ──
 
-    private val RE = Regex("<countdown>\\s*(\\{.*?})\\s*</countdown>", RegexOption.DOT_MATCHES_ALL)
+    // <clinit> 里编译正则曾在一台设备上抛 ExceptionInInitializerError（炸掉整个主页）。
+    // lazy + 兜底：把任何初始化风险挪出静态初始化器，最坏情况退化为宽松匹配。
+    private val RE: Regex by lazy {
+        runCatching {
+            Regex("<countdown>\\s*(\\{.*?})\\s*</countdown>", RegexOption.DOT_MATCHES_ALL)
+        }.getOrElse { Regex("<countdown>(.*?)</countdown>") }
+    }
 
     /** 解析正文里的指令标签（title + minutes）。 */
     fun parse(text: String): List<Pair<String, Int>> {
