@@ -169,8 +169,8 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val ease = smooth(unfold.value)
-        // 折叠段高度：屏高 42%，夹紧 230~300dp——比首版小，左右留边四角完整
-        val segH = (maxHeight * 0.42f).coerceIn(230.dp, 300.dp)
+        // 折叠段高度：屏高 36%，夹紧 200~260dp——卡片完整可见不顶满
+        val segH = (maxHeight * 0.36f).coerceIn(200.dp, 260.dp)
 
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -275,6 +275,8 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                 geo = cardGeo[key],
                 ease = ease,
                 maxH = maxHeight - 150.dp,
+                screenW = maxWidth,
+                screenH = maxHeight,
                 onClickCollapse = { closeReq.value = true },
                 onStampClick = { if (letter.cloudId > 0) editingId.value = letter.cloudId }
             )
@@ -346,10 +348,11 @@ private fun ZFoldCard(
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp)   // 左右留边：四角完整可见
+            .padding(horizontal = 22.dp)   // 左右留边：四角完整可见
             .height(segH)
             .graphicsLayer {
-                rotationX = tilt
+                // 方向（Yuri 指出反了）：上面的卡顶边往屏幕里倒=正角度，下面的卡底边往里倒=负角度
+                rotationX = -tilt
                 transformOrigin = TransformOrigin(0.5f, pivotY)
                 cameraDistance = CAMERA_DISTANCE * density.density
                 // 倒得越狠稍微缩一点，加强纵深
@@ -445,12 +448,14 @@ private fun LetterOverlay(
     geo: Pair<Offset, IntSize>?,
     ease: Float,
     maxH: androidx.compose.ui.unit.Dp,
+    screenW: androidx.compose.ui.unit.Dp,
+    screenH: androidx.compose.ui.unit.Dp,
     onClickCollapse: () -> Unit,
     onStampClick: () -> Unit
 ) {
     val dens = LocalDensity.current
     var measuredH by remember { mutableStateOf(0) }
-    val pos = geo?.first ?: Offset(120f, 620f)
+    val startPos = geo?.first ?: Offset(120f, 620f)
     val geoSize = geo?.second?.let { IntSize(it.width.coerceAtLeast(1), it.height.coerceAtLeast(1)) }
         ?: IntSize(420, 300)
     val fullW = with(dens) { (geoSize.width * 1.15f).toDp() }.coerceAtMost(430.dp)
@@ -458,10 +463,19 @@ private fun LetterOverlay(
     val startSx = (geoSize.width / fullWPx).coerceIn(0.3f, 1f)
     val startSy = if (measuredH > 0) (geoSize.height / measuredH.toFloat()).coerceIn(0.05f, 1f) else 1f
     val textAlpha = ((ease - 0.12f) / 0.55f).coerceIn(0f, 1f)
+    // 展开过程中从卡片位置飞向屏幕中央：展开完成后全文必然完整在屏内
+    val screenWpx = with(dens) { screenW.toPx() }
+    val screenHpx = with(dens) { screenH.toPx() }
+    val maxHpx = with(dens) { maxH.toPx() }
+    val contentHPx = if (measuredH > 0) minOf(measuredH.toFloat(), maxHpx) else maxHpx
+    val targetXPx = ((screenWpx - fullWPx) / 2f).coerceAtLeast(with(dens) { 8.dp.toPx() })
+    val targetYPx = ((screenHpx - contentHPx) / 2f).coerceIn(with(dens) { 110.dp.toPx() }, (screenHpx - contentHPx - with(dens) { 16.dp.toPx() }).coerceAtLeast(with(dens) { 110.dp.toPx() }))
+    val curX = startPos.x + (targetXPx - startPos.x) * ease
+    val curY = startPos.y + (targetYPx - startPos.y) * ease
 
     Column(
         modifier = Modifier
-            .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
+            .offset { IntOffset(curX.roundToInt(), curY.roundToInt()) }
             .graphicsLayer {
                 rotationX = 8f * (1f - ease)
                 transformOrigin = TransformOrigin(0.5f, 1f)
