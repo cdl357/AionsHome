@@ -27,9 +27,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -85,27 +86,29 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 日记 · 折叠的信（Yuri 定稿需求合并版）：
- * - 背景：页面透明，直接透出全局主页背景
- * - 列表：Z 字折叠的纸条堆（上面的往屏幕里倒轴心在底边、下面的轴心在顶边，相邻绕同一折痕），
- *   每张折叠卡只放那天的概述：日期 + 三行摘要 + 邮戳/回应纸条；卡片高度按屏幕自适应
- * - 点卡片：原地「折信展开」成整封信（缩放+摆正+透视落平+折痕分相淡出+文字浮现），可滚动读全文
- * - 回应：一篇一句，没回应显示邮戳「留一句」，贴上后成歪贴的暖色小纸条带完整时间戳
+ * 日记 · Z 字折叠的信（交接文档《日记页-Z字折叠信》，修复版）：
+ * 一长条纸折成 Z 字——中间那封摊平正对屏幕，上面的往屏幕里倒（轴心在底边）、
+ * 下面的往里倒（轴心在顶边），相邻两封绕同一条折痕，滑动像手风琴连续折叠展开。
+ * 0.3.43 曾整页换成平放卡片（方向擅自改了，已回退）；本版修掉 Z 版首发的三个问题：
+ * ①左右留边+高度收进屏内——四角完整可见；②点卡片→折信展开成整封浮层（能展开、能读全文）；
+ * ③方向按文档：上方往里倒轴心底边、下方轴心顶边。
  *
  * 数据：sean_diary（他的信+回应）为主，旧 diary_entries/本地按天去重兜底。
+ * 回应：一篇一句，没回应显示邮戳「留一句」，贴上后成歪贴暖色小纸条带完整时间戳。
  */
 
 // ============ 可调参数 ============
 
-private const val MAX_TILT_DEG = 64f
+private const val MAX_TILT_DEG = 66f
 private const val CAMERA_DISTANCE = 10f
 private const val THICKNESS_LAYERS = 4
 private const val CREASE_DARKNESS = 0.16f
 
-// ============ 色值（暖纸） ============
+// ============ 色值 ============
 
 private val PaperLight = Color(0xFFFBF7EE)
 private val PaperMid = Color(0xFFF4EEE1)
@@ -136,6 +139,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val letters = remember { mutableStateOf<List<FoldLetter>>(emptyList()) }
     val loading = remember { mutableStateOf(true) }
+    val listState = rememberLazyListState()
     val overlayKey = remember { mutableStateOf<String?>(null) }
     val closeReq = remember { mutableStateOf(false) }
     val unfold = remember { Animatable(0f) }
@@ -165,9 +169,10 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val ease = smooth(unfold.value)
+        // 折叠段高度：屏高 42%，夹紧 230~300dp——比首版小，左右留边四角完整
+        val segH = (maxHeight * 0.42f).coerceIn(230.dp, 300.dp)
 
         Column(modifier = Modifier.fillMaxSize()) {
-            // 顶栏（玻璃胶囊，透出全局背景）
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -191,8 +196,8 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                     )
                 }
                 Text(
-                    "日记 · 折叠的信",
-                    fontSize = 17.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium,
+                    "日记 · Z字折叠的信",
+                    fontSize = 16.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .padding(start = 10.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -221,20 +226,27 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                         fontSize = 13.sp, color = InkSub, lineHeight = 22.sp,
                         modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp)
                     )
-                    else -> LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Fixed(2),
+                    else -> LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 116.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalItemSpacing = 14.dp
+                        contentPadding = PaddingValues(vertical = 0.dp),
+                        // 必须是 0：纸是连着的一条，不是分开的卡片
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
                     ) {
-                        items(letters.value, key = { it.key }) { letter ->
-                            SummaryCard(
+                        itemsIndexed(letters.value, key = { _, it -> it.key }) { index, letter ->
+                            ZFoldCard(
                                 letter = letter,
+                                index = index,
+                                listState = listState,
+                                segH = segH,
                                 onGeometry = { pos, size -> cardGeo[letter.key] = pos to size },
                                 onOpen = {
-                                    overlayKey.value = letter.key
-                                    closeReq.value = false
+                                    if (overlayKey.value == letter.key) {
+                                        closeReq.value = true
+                                    } else {
+                                        overlayKey.value = letter.key
+                                        closeReq.value = false
+                                    }
                                 },
                                 onStampClick = { if (letter.cloudId > 0) editingId.value = letter.cloudId }
                             )
@@ -244,7 +256,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
             }
         }
 
-        // ── 展开的信：遮罩 + 信纸浮层 ──
+        // ── 展开的信：遮罩 + 信纸浮层（点空白收起；遮罩挡住列表滚动） ──
         overlayKey.value?.let { key ->
             val letter = letters.value.firstOrNull { it.key == key } ?: return@let
             Box(
@@ -276,7 +288,6 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                 onDismiss = { editingId.value = null },
                 onConfirm = fun(text: String) {
                     editingId.value = null
-                    // 乐观更新，但记住旧值：贴失败回滚，别给她"贴上了"的假象
                     val prev = letters.value.firstOrNull { it.cloudId == id } ?: return
                     letters.value = letters.value.map {
                         if (it.cloudId == id)
@@ -300,50 +311,91 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
 
 private fun smooth(t: Float) = t * t * (3f - 2f * t)
 
-/** 稳定伪随机（歪斜角度/错位固定，不随重组变化）。 */
-private fun seedRand(id: Long, salt: Int): Float {
-    var x = id * 2654435761L + salt * 40503L
-    x = x xor (x ushr 13); x *= 1274126177L; x = x xor (x ushr 16)
-    return ((x and 0x7fffffffL) % 10000L) / 10000f
-}
-
-// ============ 概述信卡：平放、微微歪斜散落（参考图效果），四角完整可见 ============
+// ============ Z 折叠卡：手风琴核心 ============
 
 @Composable
-private fun SummaryCard(
+private fun ZFoldCard(
     letter: FoldLetter,
+    index: Int,
+    listState: LazyListState,
+    segH: androidx.compose.ui.unit.Dp,
     onGeometry: (Offset, IntSize) -> Unit,
     onOpen: () -> Unit,
     onStampClick: () -> Unit,
 ) {
-    // 固定种子：歪斜角度和错位稳定，不随重组跳
-    val rot = (seedRand(letter.dateMs, 1) - 0.5f) * 8f          // ±4°
-    val dx = 4.dp * (seedRand(letter.dateMs, 2) - 0.5f)
+    val density = LocalDensity.current
+    val segHpx = with(density) { segH.toPx() }
+
+    // progress：-1 = 视口上方一屏（完全倒进去） 0 = 视口中间（摊平） +1 = 下方一屏
+    val progress by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                ?: return@derivedStateOf if (index < listState.firstVisibleItemIndex) -1f else 1f
+            val viewportCenter =
+                (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+            val itemCenter = item.offset + item.size / 2f
+            ((itemCenter - viewportCenter) / segHpx).coerceIn(-1.4f, 1.4f)
+        }
+    }
+    val tilt = (progress * MAX_TILT_DEG).coerceIn(-MAX_TILT_DEG, MAX_TILT_DEG)
+    // 关键：轴心跟着倾斜方向变——上方（往里倒）轴心在底边，下方轴心在顶边。
+    // 相邻两封绕同一条折痕，看起来才是连着的一张纸。
+    val pivotY = if (tilt < 0f) 1f else 0f
 
     Box(
         Modifier
-            .padding(top = 8.dp)
-            .offset(x = dx)
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp)   // 左右留边：四角完整可见
+            .height(segH)
             .graphicsLayer {
-                rotationZ = rot
-                shadowElevation = 4f
-                cameraDistance = 24f * density
+                rotationX = tilt
+                transformOrigin = TransformOrigin(0.5f, pivotY)
+                cameraDistance = CAMERA_DISTANCE * density.density
+                // 倒得越狠稍微缩一点，加强纵深
+                val shrink = 1f - abs(progress) * 0.06f
+                scaleX = shrink
+                scaleY = shrink
             }
             .onGloballyPositioned { onGeometry(it.positionInRoot(), it.size) }
     ) {
+        // 纸面：渐变 + 折痕暗带 + 纸叠厚度层
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(
-                    Brush.verticalGradient(listOf(PaperLight, PaperMid))
-                )
-                .border(0.8.dp, PaperEdge, RoundedCornerShape(4.dp))
+                .fillMaxSize()
+                .clip(RoundedCornerShape(3.dp))
+                .drawBehind {
+                    val darken = abs(progress).coerceIn(0f, 1f) * 0.55f
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to lerpColor(PaperLight, PaperDark, darken),
+                            0.45f to lerpColor(PaperMid, PaperDark, darken),
+                            1f to lerpColor(PaperMid, PaperDark, darken * 1.2f)
+                        )
+                    )
+                    val creaseH = 12.dp.toPx()
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = CREASE_DARKNESS)
+                        ),
+                        topLeft = Offset(0f, size.height - creaseH),
+                        size = Size(size.width, creaseH)
+                    )
+                    for (i in 1..THICKNESS_LAYERS) {
+                        val layerH = 1.5.dp.toPx()
+                        drawRect(
+                            color = lerpColor(PaperEdge, Color(0xFFBFB4A0), i / THICKNESS_LAYERS.toFloat()),
+                            topLeft = Offset(0f, size.height - creaseH + (i - 1) * layerH),
+                            size = Size(size.width, layerH)
+                        )
+                    }
+                }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) { onOpen() }
-                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)
+                .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 18.dp)
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -353,10 +405,10 @@ private fun SummaryCard(
                 Column {
                     Text(
                         letter.dateMs.fmt("M月d日"),
-                        fontSize = 19.sp, fontWeight = FontWeight.Light, color = InkMain
+                        fontSize = 21.sp, fontWeight = FontWeight.Light, color = InkMain
                     )
                     Row {
-                        Text(letter.dateMs.fmt("yyyy·EEEEE"), fontSize = 9.sp, color = InkSub)
+                        Text(letter.dateMs.fmt("yyyy · EEEE"), fontSize = 9.sp, color = InkSub)
                         if (letter.meta.isNotBlank()) Text(" · " + letter.meta, fontSize = 9.sp, color = InkSub, maxLines = 1)
                     }
                 }
@@ -368,17 +420,16 @@ private fun SummaryCard(
                 )
             }
             Spacer(Modifier.height(7.dp))
-            Box(Modifier.width(26.dp).height(1.dp).background(InkSub.copy(alpha = 0.4f)))
+            Box(Modifier.width(28.dp).height(1.dp).background(InkSub.copy(alpha = 0.4f)))
             Spacer(Modifier.height(7.dp))
             Text(
                 letter.content.replace("\n", " ").trim(),
-
-                fontSize = 11.sp, lineHeight = 17.sp, color = InkMain,
+                fontSize = 12.sp, lineHeight = 18.sp, color = InkMain,
                 maxLines = 3, overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.weight(1f))
             Text(
-                "点开这封 ›", fontSize = 9.sp, color = InkSub,
+                "点开这封 ›", fontSize = 10.sp, color = InkSub.copy(alpha = 0.9f),
                 fontStyle = FontStyle.Italic,
                 modifier = Modifier.align(Alignment.End)
             )
@@ -402,7 +453,7 @@ private fun LetterOverlay(
     val pos = geo?.first ?: Offset(120f, 620f)
     val geoSize = geo?.second?.let { IntSize(it.width.coerceAtLeast(1), it.height.coerceAtLeast(1)) }
         ?: IntSize(420, 300)
-    val fullW = with(dens) { (geoSize.width * 1.18f).toDp() }.coerceAtMost(420.dp)
+    val fullW = with(dens) { (geoSize.width * 1.15f).toDp() }.coerceAtMost(430.dp)
     val fullWPx = with(dens) { fullW.toPx() }
     val startSx = (geoSize.width / fullWPx).coerceIn(0.3f, 1f)
     val startSy = if (measuredH > 0) (geoSize.height / measuredH.toFloat()).coerceIn(0.05f, 1f) else 1f
@@ -662,7 +713,7 @@ private fun ReplyEditor(
     }
 }
 
-// ============ 数据合并 ============
+// ============ 数据合并（sean_diary 为主，旧云端/本地按天去重兜底） ============
 
 private suspend fun loadFoldLetters(context: android.content.Context): List<FoldLetter> {
     val list = mutableListOf<FoldLetter>()
