@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -112,6 +113,10 @@ import com.aion.chat.homecoming.HomecomingChatEngine
 import com.aion.chat.homecoming.HomecomingChatRepository
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -889,7 +894,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             )
                         }
                     }
-                    items(messages, key = { it.id }) { msg ->
+                    itemsIndexed(messages, key = { _, m -> m.id }) { msgIdx, msg ->
+                        // 间隔提示（功能三）：相邻消息时间差决定灰字，纯渲染层判断
+                        val gapText = if (msgIdx > 0) {
+                            gapLabel(messages[msgIdx - 1].createdAt, msg.createdAt)
+                        } else null
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            gapText?.let { g ->
+                                Text(
+                                    g,
+                                    fontSize = if (g.contains("月") && g.contains("周")) 12.sp else 11.sp,
+                                    color = if (g.contains("月") && g.contains("周")) HomecomingColors.Ink else HomecomingColors.InkSoft,
+                                    fontWeight = if (g.contains("月") && g.contains("周")) FontWeight.Medium else FontWeight.Normal,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                )
+                            }
+                        }
                         if (msg.role == "user") {
                             val imgPath = remember(msg.id) {
                                 if (msg.attachmentKind == "image") {
@@ -906,7 +927,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             // 思考链（文档 4.1）：在气泡上方、弱样式、默认折叠、随消息持久化
                             if (com.aion.chat.compose.data.StyleSettings.showThinking(context)) {
                                 var think by remember(msg.requestId) { mutableStateOf("") }
-                                var open by remember(msg.requestId) { mutableStateOf(false) }
+                                // 滚走再回来还是展开的（文档功能二：状态要记住）——rememberSaveable+消息键
+                                var open by androidx.compose.runtime.saveable.rememberSaveable(msg.requestId) { mutableStateOf(false) }
                                 LaunchedEffect(msg.requestId) {
                                     if (msg.requestId.isNotBlank()) {
                                         think = kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -1420,6 +1442,22 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
 
 // ── 分条冒泡：把一段回复拆成多条小气泡 ──
 
+/** 功能三：相邻消息时间差 → 灰字提示；<30 分钟不显示，跨天显示日期（比间隔更直观）。 */
+private fun gapLabel(prevMs: Long, curMs: Long): String? {
+    val diff = curMs - prevMs
+    if (diff < 30 * 60_000L) return null
+    val zone = ZoneId.systemDefault()
+    val prevDay = Instant.ofEpochMilli(prevMs).atZone(zone).toLocalDate()
+    val curDay = Instant.ofEpochMilli(curMs).atZone(zone).toLocalDate()
+    val days = diff / 86_400_000L
+    return when {
+        days >= 7 -> "隔了 $days 天"
+        prevDay != curDay -> curDay.format(DateTimeFormatter.ofPattern("M月d日 E", Locale.CHINA))
+        diff >= 2 * 3_600_000L -> "隔了 ${diff / 3_600_000L} 小时"
+        else -> "隔了 1 小时"
+    }
+}
+
 internal fun splitBubbles(text: String): List<String> {
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return emptyList()
@@ -1655,23 +1693,23 @@ fun ThinkingFoldRow(
     opacity: Float,
     live: Boolean = false,
 ) {
-    var open by remember { mutableStateOf(expanded) }
+    // 展开态完全由调用方持有（双份状态会在 LazyColumn 复用时错乱——审计发现）
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFFEFECE4).copy(alpha = 0.75f * opacity))
-            .clickable { onToggle(); open = !open }
+            .clickable { onToggle() }
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
-            (if (live) "他正在想…" else "他在想") + (if (open) " ▾" else " ▸"),
+            (if (live) "他正在想…" else "他在想") + (if (expanded) " ▾" else " ▸"),
             fontSize = 10.sp,
             color = Color(0xFF8A8172),
             fontStyle = FontStyle.Italic,
             fontWeight = FontWeight.Medium
         )
-        if (open) {
+        if (expanded) {
             Spacer(Modifier.height(3.dp))
             Text(
                 thinking,
