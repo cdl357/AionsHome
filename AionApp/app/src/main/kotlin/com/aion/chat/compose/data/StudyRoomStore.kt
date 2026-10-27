@@ -25,7 +25,7 @@ object StudyRoomStore {
     )
 
     /** 玩偶总数（study_fig_00..46）。 */
-    const val FIG_COUNT = 47
+    const val FIG_COUNT = 48
 
     /** 花的样式数（study_flower_00..18，00 是图一原花）。 */
     const val FLOWER_COUNT = 19
@@ -34,19 +34,20 @@ object StudyRoomStore {
     data class DefaultPos(val xf: Float, val yf: Float, val h: Float)
 
     val DEFAULTS: Map<String, DefaultPos> = mapOf(
-        "laptop" to DefaultPos(0.760f, 0.700f, 0.205f),
-        "notebook" to DefaultPos(0.470f, 0.865f, 0.150f),
-        "books" to DefaultPos(0.140f, 0.735f, 0.165f),
-        "pencup" to DefaultPos(0.575f, 0.720f, 0.125f),
-        "flower" to DefaultPos(0.400f, 0.640f, 0.230f),
-        // 图一原班玩偶的默认落座
-        "fig_00" to DefaultPos(0.115f, 0.660f, 0.080f),
-        "fig_01" to DefaultPos(0.245f, 0.800f, 0.080f),
-        "fig_02" to DefaultPos(0.330f, 0.760f, 0.085f),
-        "fig_03" to DefaultPos(0.430f, 0.805f, 0.075f),
-        "fig_04" to DefaultPos(0.505f, 0.775f, 0.080f),
-        "fig_05" to DefaultPos(0.665f, 0.800f, 0.080f),
-        "fig_06" to DefaultPos(0.720f, 0.840f, 0.075f)
+        "laptop" to DefaultPos(0.775f, 0.700f, 0.205f),
+        "notebook" to DefaultPos(0.455f, 0.880f, 0.150f),
+        "books" to DefaultPos(0.130f, 0.735f, 0.165f),
+        "pencup" to DefaultPos(0.595f, 0.715f, 0.125f),
+        "flower" to DefaultPos(0.375f, 0.645f, 0.230f),
+        // 图一原班玩偶的默认落座（本子周围留空，不压任何东西）
+        "fig_00" to DefaultPos(0.095f, 0.660f, 0.080f),
+        "fig_01" to DefaultPos(0.215f, 0.805f, 0.080f),
+        "fig_02" to DefaultPos(0.290f, 0.750f, 0.085f),
+        "fig_03" to DefaultPos(0.350f, 0.820f, 0.075f),
+        "fig_04" to DefaultPos(0.560f, 0.790f, 0.080f),
+        "fig_05" to DefaultPos(0.660f, 0.820f, 0.080f),
+        "fig_06" to DefaultPos(0.830f, 0.860f, 0.075f),
+        "fig_07" to DefaultPos(0.640f, 0.720f, 0.075f)
     )
 
     fun defaultHeight(key: String): Float = when {

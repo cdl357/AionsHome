@@ -77,6 +77,10 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.collectAsState
@@ -144,7 +148,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val prefs = remember {
         context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
     }
-    val skin = remember { mutableStateOf(prefs.getInt("bubble_skin", 0)) }
+    // 0.3.58 起默认仿TG（Yuri 定稿）；老用户显式选过的皮肤保留
+    val skin = remember { mutableStateOf(prefs.getInt("bubble_skin", 3)) }
     // 气泡不透明度（0.3~1.0，默认 1.0=现状；聊天设置抽屉里调，所有气泡统一乘算）
     val bubbleAlpha = remember { mutableStateOf(prefs.getFloat("bubble_alpha", 1f)) }
     val showSkinDialog = remember { mutableStateOf(false) }
@@ -917,7 +922,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     com.aion.chat.compose.data.HomecomingChatImageStore.pathFor(context, msg.id)
                                 } else null
                             }
-                            UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value, alpha = bubbleAlpha.value)
+                            UserBubbles(text = msg.text, imagePath = imgPath, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt)
                         } else {
                             val cleanText = remember(msg.id) {
                                 com.aion.chat.compose.data.StudyRoomStore.strip(
@@ -946,7 +951,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     )
                                 }
                             }
-                            AssistantBubbles(text = cleanText, skin = skin.value, alpha = bubbleAlpha.value)
+                            AssistantBubbles(text = cleanText, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt)
                         }
                     }
                     // 生成中：思维链（实时）+ 工具状态行 + 温和提示（网关后端）
@@ -1038,7 +1043,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     // 戳一戳回显行：先上屏（教程第四步），他回话后消失
                     pendingSegments.forEachIndexed { index, seg ->
                         item(key = "pending_$index") {
-                            AssistantBubbleSingle(text = seg, skin = skin.value, alpha = bubbleAlpha.value)
+                            AssistantBubbleSingle(text = seg, skin = skin.value, alpha = bubbleAlpha.value, timeText = timeText(System.currentTimeMillis()))
                         }
                     }
                 }
@@ -1486,7 +1491,8 @@ data class BubbleSkinDef(val name: String, val preview: String)
 private val BUBBLE_SKINS = listOf(
     BubbleSkinDef("冰蓝", "🫧"),
     BubbleSkinDef("水晶", "💎"),
-    BubbleSkinDef("墨蓝", "🌊")
+    BubbleSkinDef("墨蓝", "🌊"),
+    BubbleSkinDef("仿TG", "✈️")
 )
 
 private data class UserStyle(val fill: Color, val textColor: Color, val shape: RoundedCornerShape)
@@ -1499,8 +1505,9 @@ private fun userStyle(skin: Int, alpha: Float): UserStyle = when (skin) {
 
 /** 用户气泡组（一条消息渲染为多条小气泡）。 */
 @Composable
-fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f) {
+fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f, timeMs: Long = 0L) {
     val segments = splitBubbles(text)
+    val timeText = if (timeMs > 0) timeText(timeMs) else ""
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1512,22 +1519,28 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f) 
             val shown = bmp
             if (shown != null) {
                 if (isSticker) {
-                    // 表情：无气泡底，直接一张大图
-                    Image(
-                        bitmap = shown.asImageBitmap(),
-                        contentDescription = "表情",
-                        modifier = Modifier.size(120.dp)
-                    )
+                    // 表情：无气泡底，直接一张大图；TG 式时间胶囊叠右下角
+                    Box {
+                        Image(
+                            bitmap = shown.asImageBitmap(),
+                            contentDescription = "表情",
+                            modifier = Modifier.size(120.dp)
+                        )
+                        if (skin == 3) TgTimePill(timeText, Modifier.align(Alignment.BottomEnd).padding(6.dp))
+                    }
                 } else {
-                    Image(
-                        bitmap = shown.asImageBitmap(),
-                        contentDescription = "图片",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .widthIn(max = 240.dp)
-                            .heightIn(max = 320.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                    )
+                    Box {
+                        Image(
+                            bitmap = shown.asImageBitmap(),
+                            contentDescription = "图片",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .widthIn(max = 240.dp)
+                                .heightIn(max = 320.dp)
+                                .clip(RoundedCornerShape(if (skin == 3) 14.dp else 12.dp))
+                        )
+                        if (skin == 3) TgTimePill(timeText, Modifier.align(Alignment.BottomEnd).padding(6.dp))
+                    }
                 }
                 Spacer(Modifier.height(2.dp))
             } else {
@@ -1542,21 +1555,42 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f) 
                 )
             }
         }
-        segments.forEach { seg ->
-            val style = userStyle(skin, alpha)
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                CopyOnLongPress(text = seg) {
-                    Box(
-                        modifier = Modifier
-                            .widthIn(max = 280.dp)
-                            .clip(style.shape)
-                            .background(style.fill)
-                            .let { m ->
-                                if (skin == 1) m.border(1.dp, Color.White.copy(alpha = (0.6f * alpha).coerceIn(0.15f, 1f)), style.shape) else m
-                            }
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Text(seg, fontSize = 15.sp, color = style.textColor)
+        segments.forEachIndexed { segIdx, seg ->
+            if (skin == 3) {
+                // 仿TG：浅绿气泡、时间+✓✓ 内嵌右下、右下角小圆角
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    CopyOnLongPress(text = seg) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
+                                .background(Color(0xFFEFFDDE).copy(alpha = (0.96f * alpha).coerceIn(0.3f, 1f)))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                tgInline(text = seg, time = timeText, check = true, isLast = segIdx == segments.lastIndex),
+                                fontSize = 15.sp, color = Color(0xFF1F2C1A),
+                                lineHeight = 21.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                val style = userStyle(skin, alpha)
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    CopyOnLongPress(text = seg) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .clip(style.shape)
+                                .background(style.fill)
+                                .let { m ->
+                                    if (skin == 1) m.border(1.dp, Color.White.copy(alpha = (0.6f * alpha).coerceIn(0.15f, 1f)), style.shape) else m
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(seg, fontSize = 15.sp, color = style.textColor)
+                        }
                     }
                 }
             }
@@ -1567,10 +1601,13 @@ fun UserBubbles(text: String, imagePath: String?, skin: Int, alpha: Float = 1f) 
 
 /** Sean 气泡组（一条消息渲染为多条小气泡）。 */
 @Composable
-fun AssistantBubbles(text: String, skin: Int, alpha: Float = 1f) {
+fun AssistantBubbles(text: String, skin: Int, alpha: Float = 1f, timeMs: Long = 0L) {
     val segments = splitBubbles(text)
+    val timeText = if (timeMs > 0) timeText(timeMs) else ""
     Column(modifier = Modifier.fillMaxWidth()) {
-        segments.forEach { seg -> AssistantBubbleSingle(text = seg, skin = skin, alpha = alpha) }
+        segments.forEachIndexed { i, seg ->
+            AssistantBubbleSingle(text = seg, skin = skin, alpha = alpha, timeText = timeText, isLast = i == segments.lastIndex)
+        }
     }
 }
 
@@ -1595,22 +1632,70 @@ private fun CopyOnLongPress(text: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun AssistantBubbleSingle(text: String, skin: Int, alpha: Float = 1f) {
+private fun AssistantBubbleSingle(
+    text: String, skin: Int, alpha: Float = 1f,
+    timeText: String = "", isLast: Boolean = true,
+) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         CopyOnLongPress(text = text) {
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = (0.92f * alpha).coerceIn(0.15f, 1f)))
-                    .border(1.dp, Color.White.copy(alpha = (0.85f * alpha).coerceIn(0.2f, 1f)), RoundedCornerShape(18.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(text, fontSize = 15.sp, color = HomecomingColors.Ink)
+            if (skin == 3) {
+                // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
+                        .background(Color.White.copy(alpha = (0.97f * alpha).coerceIn(0.3f, 1f)))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        tgInline(text = text, time = timeText, check = false, isLast = isLast),
+                        fontSize = 15.sp, color = Color(0xFF242018),
+                        lineHeight = 21.sp
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.White.copy(alpha = (0.92f * alpha).coerceIn(0.15f, 1f)))
+                        .border(1.dp, Color.White.copy(alpha = (0.85f * alpha).coerceIn(0.2f, 1f)), RoundedCornerShape(18.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(text, fontSize = 15.sp, color = HomecomingColors.Ink)
+                }
             }
         }
     }
 }
+
+/** 仿TG：正文 + 右下角小号灰字时间（发出的多一对✓✓），内嵌在最后一个字后面。 */
+private fun tgInline(text: String, time: String, check: Boolean, isLast: Boolean) =
+    if (time.isBlank() || !isLast) AnnotatedString(text)
+    else buildAnnotatedString {
+        append(text)
+        withStyle(SpanStyle(fontSize = 10.sp, color = Color(0xFF9AA394), fontWeight = FontWeight.Normal)) {
+            append("  " + time + if (check) " ✓✓" else "")
+        }
+    }
+
+/** 时间胶囊（叠在图片/表情右下角）：深色半透明底、白字。 */
+@Composable
+private fun TgTimePill(time: String, modifier: Modifier) {
+    if (time.isBlank()) return
+    Text(
+        time,
+        fontSize = 10.sp, color = Color.White,
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
+
+private fun timeText(ms: Long): String =
+    java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 
 
 /** 聊天图片落盘：sticker=true 存表情包库（压到 ~256px），否则存聊天图片（~1024px）。失败返回空串。 */
