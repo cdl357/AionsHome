@@ -166,8 +166,7 @@ fun HomecomingApp() {
                     Box(Modifier.fillMaxSize()) {
                         HomeScreen(
                             onOpenAlbum = { navController.navigate("album") },
-                            onOpenMusic = { navController.navigate("love") },
-                            onOpenStudy = { navController.navigate("study") }
+                            onOpenMusic = { navController.navigate("love") }
                         )
                     }
                 }
@@ -182,7 +181,12 @@ fun HomecomingApp() {
                 composable(HomeTab.Us.route) {
                     Box(Modifier.fillMaxSize()) { UsScreen() }
                 }
-                composable("settings") { SettingsScreen(onOpenHerState = { navController.navigate("herstate") }) }
+                composable("settings") {
+                    SettingsScreen(
+                        onOpenHerState = { navController.navigate("herstate") },
+                        onOpenStyleHub = { navController.navigate("stylehub") }
+                    )
+                }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
                 composable("diarybox") { DiaryBoxScreen(onBack = { navController.popBackStack() }) }
                 composable("memories") { MemoriesScreen(onBack = { navController.popBackStack() }) }
@@ -220,7 +224,7 @@ fun HomecomingApp() {
                             onOpenReminders = { navController.navigate("reminders") },
                             onOpenCall = { navController.navigate("call") },
                             onOpenHeartTide = { navController.navigate("hearttide") },
-                            onOpenStyleHub = { navController.navigate("stylehub") },
+                            onOpenStudy = { navController.navigate("study") },
                             onOpenToday = { navController.navigate("today") }
                         )
                     }

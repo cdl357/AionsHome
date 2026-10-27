@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -227,6 +227,22 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}) {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("恢复默认") }
+            }
+        }
+
+        // ── 样式中心（从更多页收进来：聊天长什么样在这里调） ──
+        FrostCard {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenStyleHub() }
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("样式中心", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("气泡透明度 · 颜色 · 字体 · 气泡背景图，都在这", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }
         }
 

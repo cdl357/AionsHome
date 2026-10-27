@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material.icons.filled.Water
 import androidx.compose.material3.Icon
@@ -57,12 +58,12 @@ fun MoreScreen(
     onOpenReminders: () -> Unit = {},
     onOpenCall: () -> Unit = {},
     onOpenHeartTide: () -> Unit = {},
-    onOpenStyleHub: () -> Unit = {},
+    onOpenStudy: () -> Unit = {},
     onOpenToday: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val entries = listOf(
-        MoreEntry(Icons.Filled.Palette, "样式中心", "聊天长什么样，这里说了算"),
+        MoreEntry(Icons.Outlined.MenuBook, "书房", "你们的桌子 · 花和玩偶一起挑"),
         MoreEntry(Icons.Outlined.Today, "Today", "他这段时间在做什么"),
         MoreEntry(Icons.Filled.Drafts, "日记信盒", "翻页手账 · 一月一页回忆"),
         MoreEntry(Icons.Filled.Person, "记忆库", "看 · 搜 · 加 · 改 · 删"),
@@ -84,7 +85,7 @@ fun MoreScreen(
         entries.forEach { entry ->
             FrostCard(modifier = Modifier.padding(vertical = 6.dp), onClick = {
                 when (entry.name) {
-                    "样式中心" -> onOpenStyleHub()
+                    "书房" -> onOpenStudy()
                     "Today" -> onOpenToday()
                     "日记信盒" -> onOpenDiaryBox()
                     "记忆库" -> onOpenMemories()
