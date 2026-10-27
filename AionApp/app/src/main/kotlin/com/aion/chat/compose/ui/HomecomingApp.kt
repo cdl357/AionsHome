@@ -202,6 +202,9 @@ fun HomecomingApp() {
                 composable("stylehub") {
                     com.aion.chat.compose.ui.style.StyleHubScreen(onBack = { navController.popBackStack() })
                 }
+                composable("today") {
+                    com.aion.chat.compose.ui.today.TodayScreen(onBack = { navController.popBackStack() })
+                }
                 composable("music") { MusicScreen(onBack = { navController.popBackStack() }) }
                 composable("love") {
                     ListenTogetherScreen(onExit = { navController.popBackStack() })
@@ -217,7 +220,8 @@ fun HomecomingApp() {
                             onOpenReminders = { navController.navigate("reminders") },
                             onOpenCall = { navController.navigate("call") },
                             onOpenHeartTide = { navController.navigate("hearttide") },
-                            onOpenStyleHub = { navController.navigate("stylehub") }
+                            onOpenStyleHub = { navController.navigate("stylehub") },
+                            onOpenToday = { navController.navigate("today") }
                         )
                     }
                 }
