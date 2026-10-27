@@ -69,6 +69,9 @@ private fun loadManifest(context: android.content.Context): Map<String, PetAnim>
 
 private val stripCache = mutableMapOf<String, ImageBitmap?>()
 
+/** 播放节奏系数：1.0 = 按 manifest 原速；1.8 ≈ idle 160ms→288ms，动作从容不抽搐。 */
+private const val PET_PACE = 1.8f
+
 private fun loadStrip(context: android.content.Context, src: String): ImageBitmap? =
     stripCache.getOrPut(src) {
         runCatching {
@@ -132,7 +135,8 @@ fun PetSprite(
         if (a.frameCount <= 0) return@LaunchedEffect
         frameIndex = frameIndex.coerceIn(0, a.frameCount - 1)
         while (true) {
-            val d = a.durationsMs.getOrElse(frameIndex) { 140L }
+            // 节奏系数：manifest 的帧速（idle 160ms）播起来太急，看着像抽风；统一放慢到接近呼吸的节奏
+            val d = (a.durationsMs.getOrElse(frameIndex) { 140L } * PET_PACE).toLong().coerceAtLeast(120L)
             delay(d)
             if (frozen) { frameIndex = 0; continue }
             val next = frameIndex + 1
