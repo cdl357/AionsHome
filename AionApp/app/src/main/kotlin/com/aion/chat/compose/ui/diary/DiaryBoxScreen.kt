@@ -274,8 +274,10 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
             ReplyEditor(
                 initial = target?.reply ?: "",
                 onDismiss = { editingId.value = null },
-                onConfirm = { text ->
+                onConfirm = fun(text: String) {
                     editingId.value = null
+                    // 乐观更新，但记住旧值：贴失败回滚，别给她"贴上了"的假象
+                    val prev = letters.value.firstOrNull { it.cloudId == id } ?: return
                     letters.value = letters.value.map {
                         if (it.cloudId == id)
                             it.copy(reply = text.trim(), repliedAtMs = System.currentTimeMillis())
@@ -284,6 +286,9 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                     scope.launch {
                         val ok = SeanDiaryStore.saveReply(id, text.trim())
                         if (!ok) withContext(Dispatchers.Main) {
+                            letters.value = letters.value.map {
+                                if (it.cloudId == id) it.copy(reply = prev.reply, repliedAtMs = prev.repliedAtMs) else it
+                            }
                             Toast.makeText(context, "没贴上，网络一会儿再点一次重贴", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -701,7 +706,7 @@ private suspend fun loadFoldLetters(context: android.content.Context): List<Fold
             seenDates.add(k)
             list.add(
                 FoldLetter(
-                    key = "lo" + d.createdAt, cloudId = 0L, dateMs = d.createdAt,
+                    key = "lo" + d.id + "_" + d.createdAt, cloudId = 0L, dateMs = d.createdAt,
                     title = d.title, meta = "", content = d.content, reply = "", repliedAtMs = 0L
                 )
             )

@@ -102,6 +102,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -149,17 +151,22 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                     cloudSyncTotal.value = rows.size
                     cloudSyncDone.value = 0
                     val lock = Any()
+                    val insertMutex = kotlinx.coroutines.sync.Mutex()
                     coroutineScope {
                         rows.map { cp ->
                             async {
                                 val bytes = decodeCloudImage(context, cp.image)
                                 if (bytes != null) {
                                     val date = cp.date.take(10).ifBlank { java.time.LocalDate.now().toString() }
-                                    HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
-                                    // 立刻持久化标记：退出/断网都不重导
-                                    synchronized(lock) {
-                                        imported.add(cp.id)
-                                        boardPrefs.edit().putStringSet("cloud_imported", imported).apply()
+                                    // 解码并行、入库串行：SQLite 并发写会锁异常；失败不写标记（否则照片永久丢）
+                                    val id = insertMutex.withLock {
+                                        HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
+                                    }
+                                    if (id >= 0) {
+                                        synchronized(lock) {
+                                            imported.add(cp.id)
+                                            boardPrefs.edit().putStringSet("cloud_imported", imported).apply()
+                                        }
                                     }
                                 }
                                 synchronized(lock) { cloudSyncDone.value++ }
@@ -873,7 +880,9 @@ private fun TinBox(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val boxContext = LocalContext.current
     val tinBmp = remember {
-        android.graphics.BitmapFactory.decodeResource(boxContext.resources, R.drawable.tin_box).asImageBitmap()
+        runCatching {
+            android.graphics.BitmapFactory.decodeResource(boxContext.resources, R.drawable.tin_box)?.asImageBitmap()
+        }.getOrNull()
     }
     BoxWithConstraints(
         modifier
@@ -885,11 +894,13 @@ private fun TinBox(
         val tinH = tinW * 421f / 480f
         Box(modifier = Modifier.align(Alignment.TopCenter).size(width = tinW, height = tinH)) {
             // ① 盒体素材（底层，含开盖）
-            Image(
-                bitmap = tinBmp,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-            )
+            tinBmp?.let { tb ->
+                Image(
+                    bitmap = tb,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             if (photos.isEmpty()) {
                 Text(
                     "都钉在墙上了 · 新照片先放这儿，长按就能钉上毛毡板",
@@ -942,7 +953,7 @@ private fun TinBox(
             }
             // ③ 前唇：把盒体图底部裁出来压在卡片上（真实遮挡 = 放进去了）+ 唇沿阴影
             Canvas(modifier = Modifier.matchParentSize()) {
-                val src = tinBmp
+                val src = tinBmp ?: return@Canvas
                 val lipTopFrac = 0.62f
                 val srcW = src.width
                 val srcH = src.height

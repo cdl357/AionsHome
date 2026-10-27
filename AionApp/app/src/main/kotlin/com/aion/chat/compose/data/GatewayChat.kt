@@ -20,9 +20,9 @@ import java.util.concurrent.TimeUnit
  * 自建网关 SSE 事件流（交接文档《前端改造交接-GLM.md》）。
  *
  * 铁律（文档 3.2）：result 才是本轮结束的唯一信号；未知 type 记日志忽略不崩；
- * text_delta 是增量，assistant_done 是全量校正（不一致以它为准）。
- * 纪律（文档 5.x）：断开不取消生成（跑在 App 级 scope，切后台不断流）；流式过程中随时可落库；
- * 单 chatId 单并发由聊天页 busy 态保证；空回复不当沉默。
+ * text_delta 是增量，assistant_done 是全量校正（不一致以它为准，UI 走 onCorrected 重建）。
+ * 纪律（文档 5.x）：断开不取消生成（跑在 App 级 scope，切后台不断流）；user/assistant 消息
+ * 都落本地库（断流保住已收内容）；单 chatId 单并发由聊天页 busy 态保证；空回复不当沉默。
  */
 
 // ── 事件（sealed + 未知兜底） ──
@@ -86,6 +86,8 @@ object GatewayChat {
         fun onTool(toolName: String, done: Boolean?) {}
         /** text_delta 增量（追加渲染，别再做字符级延迟）。 */
         fun onChunk(delta: String) {}
+        /** assistant_done 校正：UI 应清空累计、用全量重建（别当增量追加）。 */
+        fun onCorrected(full: String) {}
         /** 温和提示：compact「他整理了一次记忆」/ retry「被限流了在重试」。 */
         fun onNotice(text: String) {}
         /** 本轮正文（assistant_done 校正后；可能为空=丢件）与思维链全文。 */
@@ -94,50 +96,57 @@ object GatewayChat {
     }
 
     /**
-     * 发一轮：先落 user 消息（纪律 5.2），再开 SSE 读流。
-     * 流中每收一段就增量回调；断了把已收到的部分提交落库（保住已收内容）；
-     * result 到达才回调 onComplete 并提交最终正文+思维链。
+     * 发一轮：user 消息在 IO 落库存她说的原文（promptText 只发给模型），随后开 SSE 读流。
+     * call 在 launch 外同步注册——send 后几毫秒内点停止也能取消到。
      */
     fun send(
         chatId: String,
         requestId: String,
-        text: String,
+        displayText: String,
+        promptText: String,
         imageDataUrl: String,
         context: android.content.Context,
         repo: com.aion.chat.homecoming.HomecomingChatRepository,
         responderOwnerId: String,
         observer: Observer,
     ) {
-        // ① user 先落库（含图片占位标记，图片文件由聊天页按消息 id 另存）
-        runCatching {
-            repo.commitUserMessage(
-                requestId, chatId, "user", text,
-                if (imageDataUrl.isNotBlank()) "image" else "", System.currentTimeMillis()
-            )
-        }
-        // ② SSE 流
+        // ① user 落库在 IO（主线程写库会 ANR）：存她说的原文，不带元指令前缀
         scope.launch {
-            val body = JSONObject().apply {
-                put("chatId", chatId)
-                put("text", text)
-                if (imageDataUrl.isNotBlank()) {
-                    put("images", JSONArray().put(JSONObject()
-                        .put("mediaType", imageDataUrl.substringAfter("data:").substringBefore(";base64").ifBlank { "image/jpeg" })
-                        .put("data", imageDataUrl.substringAfter(";base64,"))))
-                }
+            runCatching {
+                repo.commitUserMessage(
+                    requestId, chatId, "user", displayText,
+                    if (imageDataUrl.isNotBlank()) "image" else "", System.currentTimeMillis()
+                )
             }
+        }
+        // ② 请求体 + call 在此同步建好并注册（stop 竞态修复）
+        val body = JSONObject().apply {
+            put("chatId", chatId)
+            put("text", promptText)
+            if (imageDataUrl.isNotBlank()) {
+                put(
+                    "images", JSONArray().put(
+                        JSONObject()
+                            .put("mediaType", imageDataUrl.substringAfter("data:").substringBefore(";base64").ifBlank { "image/jpeg" })
+                            .put("data", imageDataUrl.substringAfter(";base64,"))
+                    )
+                )
+            }
+        }
+        val call = client.newCall(
+            Request.Builder()
+                .url("$BASE/chat")
+                .header("Accept", "text/event-stream")
+                .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+        )
+        activeCalls[chatId] = call
+        // ③ SSE 读流
+        scope.launch {
             val textSb = StringBuilder()
             val thinkSb = StringBuilder()
             var assistantDone: String? = null
             var finished = false
-            val call = client.newCall(
-                Request.Builder()
-                    .url("$BASE/chat")
-                    .header("Accept", "text/event-stream")
-                    .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
-            )
-            activeCalls[chatId] = call
             try {
                 call.execute().use { resp ->
                     if (!resp.isSuccessful || resp.body == null) {
@@ -158,11 +167,11 @@ object GatewayChat {
                             is GatewayEvent.ToolStart -> observer.onTool(ev.toolName, null)
                             is GatewayEvent.ToolDone -> observer.onTool(ev.toolName, ev.ok)
                             is GatewayEvent.AssistantDone -> {
-                                // 全量校正：不一致以 assistant_done 为准
+                                // 全量校正：不一致以 assistant_done 为准（UI 整体重建，别当增量）
                                 assistantDone = ev.content
                                 if (textSb.toString() != ev.content) {
                                     textSb.setLength(0); textSb.append(ev.content)
-                                    observer.onChunk(ev.content)
+                                    observer.onCorrected(ev.content)
                                 }
                             }
                             is GatewayEvent.Retry -> observer.onNotice("被限流了，稍等（第 ${ev.attempt} 次）…")
@@ -181,9 +190,7 @@ object GatewayChat {
                                         requestId, chatId, responderOwnerId,
                                         full, System.currentTimeMillis()
                                     )
-                                    if (thinking.isNotBlank()) {
-                                        ThinkingStore.save(context, requestId, thinking)
-                                    }
+                                    if (thinking.isNotBlank()) ThinkingStore.save(context, requestId, thinking)
                                 }
                                 observer.onComplete(full, thinking)
                             }
@@ -225,17 +232,18 @@ object GatewayChat {
                     observer.onFailure("network:${e.javaClass.simpleName}")
                 }
             } finally {
-                activeCalls.remove(chatId)
+                activeCalls.remove(chatId, call)
             }
         }
     }
 
-    /** 用户主动暂停：POST /chat/stop + 本地断开读流。 */
+    /** 用户主动暂停：POST /chat/stop + 本地断开读流。stop 用带超时的独立 client，防挂起堆积。 */
     fun stop(chatId: String) {
         activeCalls.remove(chatId)?.cancel()
+        val stopClient = client.newBuilder().readTimeout(5, TimeUnit.SECONDS).build()
         scope.launch {
             runCatching {
-                client.newCall(
+                stopClient.newCall(
                     Request.Builder()
                         .url("$BASE/chat/stop")
                         .post("""{"chatId":"$chatId"}""".toRequestBody("application/json".toMediaType()))

@@ -284,9 +284,16 @@ private fun SwitchRow(title: String, sub: String, checked: Boolean, onChange: (B
 
 @Composable
 private fun SliderRow(title: String, value: Float, from: Float, to: Float, onChange: (Float) -> Unit) {
+    // 拖动只改本地态，松手才落库（每帧写 prefs + bump 会让整页重组，拖起来卡）
+    var local by remember(value) { mutableStateOf(value) }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)) {
         Text(title, fontSize = 14.sp, color = Color(0xFF4E4638))
-        Slider(value = value, onValueChange = onChange, valueRange = from..to)
+        Slider(
+            value = local,
+            onValueChange = { local = it },
+            onValueChangeFinished = { onChange(local) },
+            valueRange = from..to
+        )
     }
 }
 
@@ -354,7 +361,15 @@ private fun ImageRow(title: String, sub: String, slot: String) {
         // 当前图预览（有则显示）
         if (StyleSettings.hasImage(context, slot)) {
             val bmp = remember(slot, StyleSettings.rev) {
-                runCatching { BitmapFactory.decodeFile(StyleSettings.imageFile(context, slot).absolutePath) }.getOrNull()
+                runCatching {
+                    val f = StyleSettings.imageFile(context, slot)
+                    if (!f.exists()) return@runCatching null
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(f.absolutePath, bounds)
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 128) sample *= 2
+                    BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+                }.getOrNull()
             }
             bmp?.let {
                 Image(

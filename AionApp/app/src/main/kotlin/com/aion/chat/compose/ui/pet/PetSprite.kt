@@ -60,7 +60,7 @@ private fun loadManifest(context: android.content.Context): Map<String, PetAnim>
             frameCount = a.getInt("frameCount"),
             frameWidth = a.getInt("frameWidth"),
             frameHeight = a.getInt("frameHeight"),
-            durationsMs = if (durations.isEmpty()) List(a.getInt("frameCount")) { a.getLong("frameDurationMs") } else durations,
+            durationsMs = if (durations.isEmpty()) List(a.getInt("frameCount")) { a.optLong("frameDurationMs", 160L) } else durations,
             loop = a.optBoolean("loop", true)
         )
     }
@@ -82,17 +82,23 @@ private fun loadStrip(context: android.content.Context, src: String): ImageBitma
  * 帧 1/3 实踩 y=207。逐帧取「实心像素底行」（该行存在 alpha>=0.5 的像素），绘制时据此
  * 裁 src 高度并钉底，等价于把可见内容整体下移补齐踩底，消除 160ms/帧的「踩地↔悬空12px」抖动。
  */
-private val idleSolidBottomCache = mutableMapOf<String, IntArray>()
+private val idleSolidBottomCache = mutableMapOf<String, IntArray?>()
 
-private fun idleSolidBottomRows(bmp: ImageBitmap, a: PetAnim): IntArray =
+private fun idleSolidBottomRows(bmp: ImageBitmap, a: PetAnim): IntArray? =
     idleSolidBottomCache.getOrPut(a.src) {
-        val pm = bmp.toPixelMap()
-        IntArray(a.frameCount) { f ->
-            val x0 = f * a.frameWidth
-            (a.frameHeight - 1 downTo 0).firstOrNull { y ->
-                (0 until a.frameWidth).any { x -> (pm[x0 + x, y].toArgb() ushr 24) >= 0x80 }
-            } ?: -1
-        }
+        runCatching {
+            // 素材与 manifest 漂移防护：数值对不上直接放弃补偿（回原样绘制），别在组合期炸
+            if (a.frameCount <= 0 || a.frameWidth <= 0 || a.frameHeight <= 0 ||
+                bmp.width < a.frameCount * a.frameWidth || bmp.height < a.frameHeight
+            ) return@runCatching null
+            val pm = bmp.toPixelMap()
+            IntArray(a.frameCount) { f ->
+                val x0 = f * a.frameWidth
+                (a.frameHeight - 1 downTo 0).firstOrNull { y ->
+                    (0 until a.frameWidth).any { x -> (pm[x0 + x, y].toArgb() ushr 24) >= 0x80 }
+                } ?: -1
+            }
+        }.getOrNull()
     }
 
 @Composable
@@ -106,7 +112,7 @@ fun PetSprite(
     onTap: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val manifest = remember { loadManifest(context) }
+    val manifest = remember { runCatching { loadManifest(context) }.getOrDefault(emptyMap()) }
     val idleAnim = remember { manifest["idle"] }
     var frameIndex by remember { mutableIntStateOf(0) }
 
@@ -123,6 +129,7 @@ fun PetSprite(
         val a = anim ?: return@LaunchedEffect
         // 钳制防越界：换条瞬间 frameIndex 可能超过新条帧数（如 idle 第 6 帧 → waving 4 帧），
         // 否则 drawImage 的 srcOffset 会越界。必须与「删除 wanted 硬清帧」同批生效。
+        if (a.frameCount <= 0) return@LaunchedEffect
         frameIndex = frameIndex.coerceIn(0, a.frameCount - 1)
         while (true) {
             val d = a.durationsMs.getOrElse(frameIndex) { 140L }

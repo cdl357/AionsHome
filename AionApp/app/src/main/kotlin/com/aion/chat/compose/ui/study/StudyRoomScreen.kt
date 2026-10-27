@@ -148,19 +148,18 @@ fun StudyRoomScreen(onBack: () -> Unit = {}, onOpenDiaryWrite: () -> Unit = {}) 
 
             placedOrder.forEach { key ->
                 val placed = state.placed[key] ?: return@forEach
-                val res = resId(context, "study_" + key)
+                // 花 = 当前选中的花色（study_flower.png 不存在，只有 study_flower_00..18）
+                val resName = if (key == "flower") "study_flower_%02d".format(state.flowerStyle) else "study_" + key
+                val res = resId(context, resName)
                 if (res == 0) return@forEach
-                val bmp = remember(key) { BitmapFactory.decodeResource(context.resources, res) }
+                val bmp = remember(key) { runCatching { BitmapFactory.decodeResource(context.resources, res) }.getOrNull() }
+                if (bmp == null) return@forEach
                 val ratio = bmp.width.toFloat() / bmp.height
                 val baseH = StudyRoomStore.defaultHeight(key)
                 val hPx = maxHpx * baseH * placed.scale
                 val wPx = hPx * ratio
                 val xPx = maxWpx * placed.xf
                 val yPx = maxHpx * placed.yf
-
-                var panAcc by remember(key) { mutableStateOf(0f) }
-                var zoomAcc by remember(key) { mutableStateOf(1f) }
-                var rotAcc by remember(key) { mutableStateOf(0f) }
 
                 Box(
                     modifier = Modifier
@@ -252,9 +251,8 @@ fun StudyRoomScreen(onBack: () -> Unit = {}, onOpenDiaryWrite: () -> Unit = {}) 
                     items((0 until StudyRoomStore.FLOWER_COUNT).toList()) { i ->
                         val sel = state.flowerStyle == i
                         val bmp = remember(i) {
-                            BitmapFactory.decodeResource(
-                                context.resources, resId(context, "study_flower_%02d".format(i))
-                            )
+                            val rid = resId(context, "study_flower_%02d".format(i))
+                            if (rid == 0) null else runCatching { BitmapFactory.decodeResource(context.resources, rid) }.getOrNull()
                         }
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -272,12 +270,14 @@ fun StudyRoomScreen(onBack: () -> Unit = {}, onOpenDiaryWrite: () -> Unit = {}) 
                                 }
                                 .padding(6.dp)
                         ) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxWidth().height(92.dp),
-                                contentScale = ContentScale.Fit
-                            )
+                            bmp?.let {
+                                Image(
+                                    bitmap = it.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxWidth().height(92.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
                         }
                     }
                 }
@@ -345,7 +345,8 @@ private fun PickerSheet(
                 items(ids) { id ->
                     val sel = id in picked
                     val bmp = remember(id) {
-                        BitmapFactory.decodeResource(context.resources, resId(context, resName(id)))
+                        val rid = resId(context, resName(id))
+                        if (rid == 0) null else runCatching { BitmapFactory.decodeResource(context.resources, rid) }.getOrNull()
                     }
                     Box(
                         modifier = Modifier
@@ -361,12 +362,14 @@ private fun PickerSheet(
                             }
                             .padding(5.dp)
                     ) {
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth().height(64.dp),
-                            contentScale = ContentScale.Fit
-                        )
+                        bmp?.let {
+                            Image(
+                                bitmap = it.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth().height(64.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
                     }
                 }
             }

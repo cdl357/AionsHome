@@ -19,14 +19,17 @@ object AppCrashLog {
 
     fun file(context: Context): File = File(context.filesDir, FILE)
 
+    @Synchronized
     fun write(context: Context, text: String) {
         try {
             val f = file(context)
+            // 追加模式：面包屑在 IO 线程、崩溃在主线程，整读整写会互相覆盖
+            if (f.exists() && f.length() > MAX_BYTES) f.delete()
             val stamp = SimpleDateFormat("MM-dd HH:mm:ss", Locale.CHINA)
                 .format(System.currentTimeMillis())
-            val line = "[$stamp] $text\n"
-            val old = if (f.exists() && f.length() > MAX_BYTES) "" else f.readText()
-            f.writeText(old + line)
+            java.io.FileOutputStream(f, true).use {
+                it.write(("[$stamp] $text\n").toByteArray())
+            }
             // 同时镜像到外部应用目录：App 起不来时用文件管理器也能拿到
             runCatching {
                 val ext = context.getExternalFilesDir(null)

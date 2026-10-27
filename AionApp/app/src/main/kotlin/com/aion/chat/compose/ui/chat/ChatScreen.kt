@@ -339,6 +339,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             return
         }
         sending.value = true
+        stopping = false   // 跨轮复位：否则停止后无回调时，下一轮 onComplete 被吞、发送键两段式卡死
         input.value = ""
         pendingImage.value = ""
         pendingImagePath.value = ""
@@ -387,7 +388,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             val prompt = if (prefix != null) prefix + "\n" + text else text
             val acc = StringBuilder()
             com.aion.chat.compose.data.GatewayChat.send(
-                HomecomingChatWiring.TIMELINE, requestId, prompt, image, context, w.chats,
+                HomecomingChatWiring.TIMELINE, requestId, text, prompt, image, context, w.chats,
                 HomecomingChatWiring.RESPONDER,
                 object : com.aion.chat.compose.data.GatewayChat.Observer {
                     override fun onThinking(delta: String) {
@@ -404,6 +405,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             acc.append(delta)
                             pendingSegments.clear()
                             pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(acc.toString()))))
+                        }
+                    }
+                    override fun onCorrected(full: String) {
+                        main.post {
+                            acc.setLength(0)
+                            acc.append(full)
+                            pendingSegments.clear()
+                            pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(full))))
                         }
                     }
                     override fun onNotice(t: String) { main.post { noticeText.value = t } }
@@ -433,10 +442,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 if (text.contains("晚安")) {
                                     runCatching { generateTonightDiary(context) }
                                 }
-                                if (preSong != null) {
-                                    com.aion.chat.compose.data.MusicCardStore.add(context, preSong)
-                                    main.post { musicCardsReload.value++ }
-                                }
+                                // 音乐卡在搜歌路径已入库（这里重复 add 会出双卡）
                             }
                         }
                     }
@@ -482,7 +488,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         }
 
                         override fun onComplete(messageId: String, completeText: String) {
-                            main.post { sending.value = false }
+                            main.post {
+                                if (stopping) { stopping = false; return@post }
+                                sending.value = false
+                            }
+                            if (stopping) return
                             speakReply(completeText)
                             scope.launch(Dispatchers.IO) {
                                 reloadNow()
@@ -502,16 +512,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 if (text.contains("晚安")) {
                                     runCatching { generateTonightDiary(context) }
                                 }
-                                // AI 点歌成功：播放卡落库
-                                if (preSong != null) {
-                                    com.aion.chat.compose.data.MusicCardStore.add(context, preSong)
-                                    main.post { musicCardsReload.value++ }
-                                }
+                                // 音乐卡在搜歌路径已入库（这里重复 add 会出双卡）
                             }
                         }
 
                         override fun onFailure(code: String) {
                             main.post {
+                                if (stopping) { stopping = false; return@post }
                                 sending.value = false
                                 errorText.value = "回复失败（$code）。检查云线路后重试。"
                                 Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
@@ -956,7 +963,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         }
                     }
                     // AI 点歌的播放卡（真实可播，点卡片用全局唯一播放器）
-                    items(musicCards, key = { "music_" + it.createdAt }) { card ->
+                    items(musicCards, key = { "music_" + it.createdAt + "_" + it.songId }) { card ->
                         val playerState = MusicPlayer.state.collectAsState().value
                         val playingThis = playerState.song?.id == card.songId && playerState.playing
                         Row(
