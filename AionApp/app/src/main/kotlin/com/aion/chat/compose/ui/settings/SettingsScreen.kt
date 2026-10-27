@@ -142,7 +142,11 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             }.getOrDefault(false)
             if (ok) {
                 SettingsBg.bump()
-                Toast.makeText(context, "背景已换好，马上生效", Toast.LENGTH_SHORT).show()
+                // 同步备份到 Downloads：卸载重装背景不丢
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    SettingsBg.backupToDownloads(context)
+                }
+                Toast.makeText(context, "背景已换好（重装也不丢）", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "没读出这张图，换一张试试", Toast.LENGTH_SHORT).show()
             }
@@ -220,6 +224,7 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                         val f = SettingsBg.backgroundFile(context)
                         if (f.exists() && f.delete()) {
                             SettingsBg.bump()
+                            SettingsBg.deleteBackup(context)
                             Toast.makeText(context, "已恢复默认背景", Toast.LENGTH_SHORT).show()
                         } else {
                             Toast.makeText(context, "现在用的就是默认背景", Toast.LENGTH_SHORT).show()

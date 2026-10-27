@@ -197,4 +197,93 @@ object SettingsBg {
     fun loadChatBitmap(context: Context): android.graphics.Bitmap? = decode(chatFile(context)) ?: decode(backgroundFile(context))
 
     fun loadLoveBitmap(context: Context): android.graphics.Bitmap? = decode(loveFile(context))
+
+    // ── 背景图跨卸载持久化：app 私有目录会被卸载清空，备份到公共 Downloads，重装自动找回 ──
+
+    private const val BG_BACKUP_NAME = "aionshome-bg-backup.jpg"
+
+    /** 选完背景后调用：把 home_bg.jpg 备份到 Downloads（同名覆盖，不堆积）。 */
+    fun backupToDownloads(context: Context) {
+        runCatching {
+            val f = backgroundFile(context)
+            if (!f.exists()) return
+            val bytes = f.readBytes()
+            val resolver = context.contentResolver
+            deleteBackup(context)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, BG_BACKUP_NAME)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, "image/jpeg")
+                }
+                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: return
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            } else {
+                val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                )
+                dir.mkdirs()
+                java.io.File(dir, BG_BACKUP_NAME).writeBytes(bytes)
+            }
+        }
+    }
+
+    /** 重装后自动找回：私有目录没有而 Downloads 有 → 恢复并返回 true。 */
+    fun restoreFromDownloads(context: Context): Boolean = runCatching {
+        if (backgroundFile(context).exists()) return false
+        val resolver = context.contentResolver
+        var bytes: ByteArray? = null
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            resolver.query(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(android.provider.MediaStore.Downloads._ID),
+                android.provider.MediaStore.Downloads.DISPLAY_NAME + " = ?",
+                arrayOf(BG_BACKUP_NAME), null
+            )?.use { cur ->
+                if (cur.moveToFirst()) {
+                    val uri = android.content.ContentUris.withAppendedId(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cur.getLong(0)
+                    )
+                    bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                }
+            }
+        } else {
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS
+            )
+            val bf = java.io.File(dir, BG_BACKUP_NAME)
+            if (bf.exists()) bytes = bf.readBytes()
+        }
+        val b = bytes ?: return false
+        backgroundFile(context).writeBytes(b)
+        true
+    }.getOrDefault(false)
+
+    /** 恢复默认背景时把 Downloads 备份一并清掉。 */
+    fun deleteBackup(context: Context) {
+        runCatching {
+            val resolver = context.contentResolver
+            resolver.query(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(android.provider.MediaStore.Downloads._ID),
+                android.provider.MediaStore.Downloads.DISPLAY_NAME + " = ?",
+                arrayOf(BG_BACKUP_NAME), null
+            )?.use { cur ->
+                while (cur.moveToNext()) {
+                    resolver.delete(
+                        android.content.ContentUris.withAppendedId(
+                            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cur.getLong(0)
+                        ), null, null
+                    )
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+                java.io.File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS
+                    ), BG_BACKUP_NAME
+                ).delete()
+            }
+        }
+    }
 }

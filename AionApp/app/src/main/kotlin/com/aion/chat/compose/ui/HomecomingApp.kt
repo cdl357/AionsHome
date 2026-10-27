@@ -109,6 +109,14 @@ fun HomecomingApp() {
             SettingsBg.loadBitmap(appContext)?.asImageBitmap()
         }
     }
+    // 重装后自动找回背景图：私有目录没有而 Downloads 有备份 → 恢复并刷新
+    LaunchedEffect(Unit) {
+        val restored = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            SettingsBg.restoreFromDownloads(appContext)
+        }
+        if (restored) SettingsBg.bump()
+    }
+
     // 键盘弹出时收起底部胶囊，别浮在聊天输入框上
     val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
