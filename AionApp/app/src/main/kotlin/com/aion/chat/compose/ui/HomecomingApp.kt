@@ -222,9 +222,10 @@ fun HomecomingApp() {
                     }
                 }
             }
-            // 即时指令药丸：全 App 最上层（任何页面都能看到、都能左滑完成）
+            // 即时指令药丸：全 App 最上层。装饰性功能——它自己出问题不能带走整个 App
             if (current != "splash") {
-                com.aion.chat.compose.ui.command.CommandPillHost()
+                runCatching { com.aion.chat.compose.ui.command.CommandPillHost() }
+                    .onFailure { com.aion.chat.compose.data.AppCrashLog.write(appContext, "CommandPill 跳过: ${it.javaClass.name}: ${it.message ?: ""}（App 继续运行）") }
             }
             }
         }

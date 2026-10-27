@@ -44,8 +44,20 @@ class MainActivity : ComponentActivity() {
         // 全局崩溃捕获：写日志 + 打崩溃标记（下次启动进安全模式），设置页也可查看
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            AppCrashLog.write(this, "CRASH] 未捕获 @ ${thread.name}: ${throwable.javaClass.name}")
-            AppCrashLog.write(this, android.util.Log.getStackTraceString(throwable).take(1500))
+            // 根因链前置：ExceptionInInitializerError 这类异常的 Caused by 在栈尾，1500 字符截断会把它砍掉
+            val causeChain = buildString {
+                var t: Throwable? = throwable
+                var depth = 0
+                while (t != null && depth < 6) {
+                    append("由 ").append(t.javaClass.name)
+                    if (!t.message.isNullOrBlank()) append(": ").append(t.message)
+                    append("\n")
+                    t = t.cause
+                    depth++
+                }
+            }
+            AppCrashLog.write(this, "CRASH] 未捕获 @ ${thread.name}\n$causeChain")
+            AppCrashLog.write(this, android.util.Log.getStackTraceString(throwable).take(9000))
             AppCrashLog.markCrashed(this)
             previous?.uncaughtException(thread, throwable)
         }
