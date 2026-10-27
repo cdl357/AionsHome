@@ -135,9 +135,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
 
     // ── 线路配置戳：设置里改线路后回到聊天页即重建运行时 ──
     val routeStamp = HomecomingRouteConfig.stamp(context)
+    // 加载失败时把真实原因带给界面（“未配置”三个字解决不了任何问题）
+    var wiringError by remember(routeStamp) { mutableStateOf<String?>(null) }
     val wiring = remember(routeStamp) {
         runCatching { HomecomingChatWiring(context) }
-            .onFailure { com.aion.chat.compose.data.AppCrashLog.write(context, it) }
+            .onFailure {
+                com.aion.chat.compose.data.AppCrashLog.write(context, it)
+                wiringError = it.javaClass.simpleName + (it.message?.let { m -> ": ${m.take(80)}" } ?: "")
+            }
             .getOrNull()
     }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
@@ -794,8 +799,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     )
                             )
                             Text(
-                                if (connected) "  已连接 · ${route?.optString("label", "我的线路")}"
-                                else "  线路未配置 · 点这里去设置",
+                                if (connected && useGateway) "  已连接 · 网关SSE（实验模式）"
+                                else if (connected) "  已连接 · ${route?.optString("label", "我的线路")}"
+                                else if (wiringError != null) "  线路加载失败：$wiringError · 点这里去设置"
+                                else if (route == null) "  还没有线路配置 · 点这里去设置"
+                                else "  线路未生效 · 点这里去设置",
                                 fontSize = 11.sp,
                                 color = if (connected) HomecomingColors.InkSoft else HomecomingColors.Accent,
                                 modifier = Modifier

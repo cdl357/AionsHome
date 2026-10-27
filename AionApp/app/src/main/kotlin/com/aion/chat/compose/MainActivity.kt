@@ -62,6 +62,8 @@ class MainActivity : ComponentActivity() {
             previous?.uncaughtException(thread, throwable)
         }
         AppCrashLog.breadcrumb(this, "Activity onCreate")
+        // 线路配置跨卸载：私有 routes.json 被清而 Downloads 备份在 → 组合前先恢复
+        runCatching { com.aion.chat.compose.data.HomecomingRouteConfig.restoreFromDownloads(this) }
         setContent {
             HomecomingThemeState.load(this)
             HomecomingTheme {

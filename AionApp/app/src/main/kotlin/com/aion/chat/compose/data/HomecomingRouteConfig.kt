@@ -26,6 +26,42 @@ object HomecomingRouteConfig {
         true
     } catch (e: Exception) { false }
 
+    private const val BACKUP_NAME = "aionshome-routes-backup.json"
+
+    /**
+     * 线路配置跨卸载：私有 routes.json 不在而 Downloads 备份在（每次保存都写了一份）→ 自动恢复。
+     * 返回是否发生了恢复。在 MainActivity.onCreate 里、任何组合之前调用。
+     */
+    fun restoreFromDownloads(context: Context): Boolean = runCatching {
+        if (file(context).exists() && file(context).length() > 0) return false
+        val resolver = context.contentResolver
+        var text: String? = null
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            resolver.query(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(android.provider.MediaStore.Downloads._ID),
+                android.provider.MediaStore.Downloads.DISPLAY_NAME + " = ?",
+                arrayOf(BACKUP_NAME), null
+            )?.use { cur ->
+                if (cur.moveToFirst()) {
+                    val uri = android.content.ContentUris.withAppendedId(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cur.getLong(0)
+                    )
+                    text = resolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                }
+            }
+        } else {
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS
+            )
+            val bf = java.io.File(dir, BACKUP_NAME)
+            if (bf.exists()) text = bf.readText()
+        }
+        val t = text?.takeIf { it.isNotBlank() } ?: return false
+        JSONObject(t)  // 校验是合法 JSON 再落盘
+        save(context, org.json.JSONObject(t))
+    }.getOrDefault(false)
+
     /** 首个线路（route_id=main）；未配置返回 null。 */
     fun mainRoute(context: Context): JSONObject? = try {
         val root = load(context) ?: return null
