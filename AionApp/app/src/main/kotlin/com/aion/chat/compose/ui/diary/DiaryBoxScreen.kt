@@ -105,7 +105,7 @@ import kotlin.math.roundToInt
 
 private const val MAX_TILT_DEG = 66f
 private const val CAMERA_DISTANCE = 10f
-private const val THICKNESS_LAYERS = 4
+private const val THICKNESS_LAYERS = 0
 private const val CREASE_DARKNESS = 0.16f
 
 // ============ 色值 ============
@@ -203,7 +203,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val ease = smooth(unfold.value)
         // 折叠段高度：屏高 36%，夹紧 200~260dp——卡片完整可见不顶满
-        val segH = (maxHeight * 0.36f).coerceIn(200.dp, 260.dp)
+        val segH = (maxHeight * 0.38f).coerceIn(210.dp, 270.dp)
 
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -381,57 +381,41 @@ private fun ZFoldCard(
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp)   // 左右留边：四角完整可见
             .height(segH)
             .graphicsLayer {
                 // 方向（Yuri 指出反了）：上面的卡顶边往屏幕里倒=正角度，下面的卡底边往里倒=负角度
                 rotationX = -tilt
                 transformOrigin = TransformOrigin(0.5f, pivotY)
                 cameraDistance = CAMERA_DISTANCE * density.density
-                // 倒得越狠稍微缩一点，加强纵深
-                val shrink = 1f - abs(progress) * 0.06f
-                scaleX = shrink
-                scaleY = shrink
             }
             .onGloballyPositioned { onGeometry(it.positionInRoot(), it.size) }
     ) {
-        // 纸面：渐变 + 折痕暗带 + 纸叠厚度层
+        // 纸面：薄纸渐变 + 细折痕线（像邮票不是厚块）
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(3.dp))
                 .drawBehind {
-                    val darken = abs(progress).coerceIn(0f, 1f) * 0.55f
+                    val darken = abs(progress).coerceIn(0f, 1f) * 0.22f
                     drawRect(
                         Brush.verticalGradient(
                             0f to lerpColor(PaperLight, PaperDark, darken),
-                            0.45f to lerpColor(PaperMid, PaperDark, darken),
-                            1f to lerpColor(PaperMid, PaperDark, darken * 1.2f)
+                            0.5f to lerpColor(PaperMid, PaperDark, darken),
+                            1f to lerpColor(PaperMid, PaperDark, darken * 1.15f)
                         )
                     )
-                    val creaseH = 12.dp.toPx()
-                    drawRect(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = CREASE_DARKNESS)
-                        ),
-                        topLeft = Offset(0f, size.height - creaseH),
-                        size = Size(size.width, creaseH)
+                    // 底部细折痕线
+                    drawLine(
+                        Color.Black.copy(alpha = CREASE_DARKNESS),
+                        Offset(0f, size.height - 1f),
+                        Offset(size.width, size.height - 1f),
+                        strokeWidth = 1.5f
                     )
-                    for (i in 1..THICKNESS_LAYERS) {
-                        val layerH = 1.5.dp.toPx()
-                        drawRect(
-                            color = lerpColor(PaperEdge, Color(0xFFBFB4A0), i / THICKNESS_LAYERS.toFloat()),
-                            topLeft = Offset(0f, size.height - creaseH + (i - 1) * layerH),
-                            size = Size(size.width, layerH)
-                        )
-                    }
                 }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) { onOpen() }
-                .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 18.dp)
+                .padding(start = 22.dp, end = 22.dp, top = 12.dp, bottom = 12.dp)
         ) {
             Row(
                 Modifier.fillMaxWidth(),
