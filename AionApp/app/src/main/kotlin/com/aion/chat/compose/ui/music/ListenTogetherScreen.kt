@@ -159,9 +159,11 @@ fun ListenTogetherScreen(onExit: () -> Unit = {}) {
     }
     DisposableEffect(Unit) {
         onDispose {
-            scope.launch {
-                runCatching {
-                    MusicClient.postEvent("together_leave", "user", player.song?.let { MusicClient.Song(it.id, it.name, it.artist) })
+            kotlin.concurrent.thread {
+                kotlinx.coroutines.runBlocking {
+                    runCatching {
+                        MusicClient.postEvent("together_leave", "user", player.song?.let { MusicClient.Song(it.id, it.name, it.artist) })
+                    }
                 }
             }
         }

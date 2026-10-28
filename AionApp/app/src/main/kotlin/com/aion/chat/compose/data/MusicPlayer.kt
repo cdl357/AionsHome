@@ -75,8 +75,11 @@ object MusicPlayer {
     /** 播放一首（直接点播）。keepQueue=true 时保留外部设好的队列（歌单连播）。 */
     fun play(context: android.content.Context, song: MusicClient.Song, keepQueue: Boolean = false) {
         init(context)
-        if (current?.id == song.id && prepared && mediaPlayer?.isPlaying == true) {
-            pause()
+        if (current?.id == song.id && prepared) {
+            if (mediaPlayer?.isPlaying == true) {
+                pause()
+            }
+            // 已暂停的同一首：续播而不是整首重播
             return
         }
         releasePlayer()
@@ -107,12 +110,15 @@ object MusicPlayer {
             it.start()
             emit { it.copy(playing = true, loading = false, durationSec = it.durationSec, error = null) }
             postEvent("play", local)
+            appContext?.let { MusicNotification.show(it, local, true) }
             startProgressLoop()
         }
         mp.setOnCompletionListener {
             prepared = false
             emit { it.copy(playing = false) }
             postEvent("finish", local)
+            appContext?.let { MusicNotification.cancel(it) }
+            appContext?.let { MusicNotification.cancel(it) }
             val ctx = appContext
             if (ctx != null && queue.isNotEmpty()) playNext(ctx)   // 队列自动连播
         }
@@ -170,13 +176,27 @@ object MusicPlayer {
         play(context, songs[i], keepQueue = true)
     }
 
-    fun skip() {
+    fun skip() = skipDirection(1)
+
+    fun skipBack() = skipDirection(-1)
+
+    private fun skipDirection(direction: Int) {
         val ctx = appContext
         val s = current
         releasePlayer()
         emit { PlayerState(song = s, playing = false) }
         postEvent("skip", s)
-        if (ctx != null && queue.isNotEmpty()) playNext(ctx)
+        if (ctx != null && queue.isNotEmpty()) {
+            // direction=-1 时取当前歌的前一首
+            val next = if (direction < 0) {
+                val idx = queue.indexOfFirst { it.id == s?.id }
+                if (idx > 0) queue[idx - 1] else queue.lastOrNull()
+            } else {
+                playNext(ctx)
+                return
+            }
+            if (next != null && next.id != s?.id) play(ctx, MusicClient.Song(next.id, next.name, next.artist), keepQueue = true)
+        }
     }
 
     fun seekTo(sec: Int) {

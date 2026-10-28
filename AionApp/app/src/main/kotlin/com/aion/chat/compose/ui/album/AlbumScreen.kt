@@ -634,7 +634,7 @@ private fun FeltBoard(
             val W = maxWidth
             val H = maxHeight
             // ── 照片（最近 10 张，可长按拖动；在下层） ──
-            photos.take(10).forEachIndexed { i, photo ->
+            photos.forEachIndexed { i, photo ->
                 val key = "photo_" + photo.id
                 val d = PHOTO_DEFAULT[i % PHOTO_DEFAULT.size]
                 Movable(
