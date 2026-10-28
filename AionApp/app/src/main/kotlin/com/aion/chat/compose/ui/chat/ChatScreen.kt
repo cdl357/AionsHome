@@ -788,23 +788,57 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             // 无专属图时不画任何底：透出 HomecomingApp 的全局背景层
 
             Column(Modifier.fillMaxSize()) {
-                // ── 顶栏：头像+名字+连接状态 | 气泡皮肤 | 语音通话 ──
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Tune,
-                        contentDescription = "聊天设置",
-                        tint = HomecomingColors.Ink,
+                // ── 顶栏（skin==3 仿TG：圆返回+居中胶囊+右头像；否则旧顶栏） ──
+                if (skin.value == 3) {
+                    Row(
                         modifier = Modifier
-                            .size(22.dp)
-                            .clickable { showChatDrawer.value = true }
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    AvatarPhoto(who = "sean", initial = "S", size = 42.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = "聊天设置",
+                            tint = HomecomingColors.Ink,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clickable { showChatDrawer.value = true }
+                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color.White.copy(alpha = 0.72f))
+                                .padding(horizontal = 22.dp, vertical = 5.dp)
+                        ) {
+                            Text("Sean", fontSize = 15.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
+                            Text(
+                                if (connected) "在线" else "离线",
+                                fontSize = 10.sp,
+                                color = if (connected) HomecomingColors.Ok else HomecomingColors.InkSoft
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        AvatarPhoto(who = "sean", initial = "S", size = 38.dp)
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = "聊天设置",
+                            tint = HomecomingColors.Ink,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clickable { showChatDrawer.value = true }
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        AvatarPhoto(who = "sean", initial = "S", size = 42.dp)
                     Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                         Text("Sean", fontSize = 16.sp, color = HomecomingColors.Ink)
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -879,6 +913,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             .size(22.dp)
                             .clickable { onOpenCall() }
                     )
+                }
                 }
 
                 // ── 消息区（分条冒泡） ──
@@ -1295,7 +1330,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         placeholder = {
                             Text("和 Sean 说点什么…", fontSize = 14.sp, color = HomecomingColors.InkSoft)
                         },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(if (skin.value == 3) 24.dp else 14.dp),
+                        colors = if (skin.value == 3) androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White.copy(alpha = 0.95f),
+                            unfocusedContainerColor = Color.White.copy(alpha = 0.95f),
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent
+                        ) else androidx.compose.material3.OutlinedTextFieldDefaults.colors(),
                         maxLines = 4,
                         trailingIcon = {
                             Icon(

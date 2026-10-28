@@ -146,10 +146,43 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     val editingId = remember { mutableStateOf<Long?>(null) }
     val cardGeo = remember { mutableMapOf<String, Pair<Offset, IntSize>>() }
 
+    // 缓存秒显（橘瓣式）：上次数据先显示，后台拉完覆盖
     LaunchedEffect(Unit) {
-        loading.value = true
-        letters.value = loadFoldLetters(context)
-        loading.value = false
+        val cached = runCatching {
+            val f = java.io.File(context.filesDir, "diary_cache.json")
+            if (!f.exists()) return@runCatching null
+            val arr = org.json.JSONArray(f.readText())
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                FoldLetter(
+                    key = o.getString("key"), cloudId = o.getLong("cloudId"),
+                    dateMs = o.getLong("dateMs"), title = o.getString("title"),
+                    meta = o.getString("meta"), content = o.getString("content"),
+                    reply = o.optString("reply"), repliedAtMs = o.optLong("repliedAtMs", 0L)
+                )
+            }
+        }.getOrNull()
+        if (!cached.isNullOrEmpty()) {
+            letters.value = cached
+            loading.value = false
+        }
+        // 后台拉真数据
+        val fresh = kotlinx.coroutines.withContext(Dispatchers.IO) { loadFoldLetters(context) }
+        if (fresh.isNotEmpty()) {
+            letters.value = fresh
+            // 写缓存
+            runCatching {
+                val arr = org.json.JSONArray()
+                fresh.forEach { l ->
+                    arr.put(org.json.JSONObject()
+                        .put("key", l.key).put("cloudId", l.cloudId).put("dateMs", l.dateMs)
+                        .put("title", l.title).put("meta", l.meta).put("content", l.content)
+                        .put("reply", l.reply).put("repliedAtMs", l.repliedAtMs))
+                }
+                java.io.File(context.filesDir, "diary_cache.json").writeText(arr.toString())
+            }
+        }
+        if (cached.isNullOrEmpty()) loading.value = false
     }
     LaunchedEffect(overlayKey.value) {
         if (overlayKey.value != null && !closeReq.value) {
