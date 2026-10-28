@@ -34,20 +34,21 @@ object StudyRoomStore {
     data class DefaultPos(val xf: Float, val yf: Float, val h: Float)
 
     val DEFAULTS: Map<String, DefaultPos> = mapOf(
-        "laptop" to DefaultPos(0.775f, 0.700f, 0.205f),
-        "notebook" to DefaultPos(0.455f, 0.880f, 0.150f),
-        "books" to DefaultPos(0.130f, 0.735f, 0.165f),
-        "pencup" to DefaultPos(0.595f, 0.715f, 0.125f),
-        "flower" to DefaultPos(0.375f, 0.645f, 0.230f),
-        // 图一原班玩偶的默认落座（本子周围留空，不压任何东西）
-        "fig_00" to DefaultPos(0.095f, 0.660f, 0.080f),
-        "fig_01" to DefaultPos(0.215f, 0.805f, 0.080f),
-        "fig_02" to DefaultPos(0.290f, 0.750f, 0.085f),
-        "fig_03" to DefaultPos(0.350f, 0.820f, 0.075f),
-        "fig_04" to DefaultPos(0.560f, 0.790f, 0.080f),
-        "fig_05" to DefaultPos(0.660f, 0.820f, 0.080f),
-        "fig_06" to DefaultPos(0.830f, 0.860f, 0.075f),
-        "fig_07" to DefaultPos(0.640f, 0.720f, 0.075f)
+        // 按参考图（图一）的尺寸和位置：电脑右、本子中前、书堆左、笔筒中、花后、白猫坐书上
+        "laptop" to DefaultPos(0.790f, 0.690f, 0.185f),
+        "notebook" to DefaultPos(0.545f, 0.875f, 0.150f),
+        "books" to DefaultPos(0.125f, 0.740f, 0.145f),
+        "pencup" to DefaultPos(0.415f, 0.730f, 0.105f),
+        "flower" to DefaultPos(0.285f, 0.640f, 0.215f),
+        // 玩偶：白猫坐书上、黑猫/小姑娘/恐龙在中排、鸭子对/耳机猫/企鹅在右排
+        "fig_00" to DefaultPos(0.130f, 0.615f, 0.065f),
+        "fig_01" to DefaultPos(0.495f, 0.790f, 0.065f),
+        "fig_02" to DefaultPos(0.330f, 0.755f, 0.070f),
+        "fig_03" to DefaultPos(0.475f, 0.815f, 0.065f),
+        "fig_04" to DefaultPos(0.545f, 0.775f, 0.065f),
+        "fig_05" to DefaultPos(0.620f, 0.810f, 0.065f),
+        "fig_06" to DefaultPos(0.865f, 0.850f, 0.065f),
+        "fig_07" to DefaultPos(0.705f, 0.865f, 0.065f)
     )
 
     fun defaultHeight(key: String): Float = when {
