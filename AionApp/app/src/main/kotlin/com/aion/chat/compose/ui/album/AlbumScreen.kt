@@ -881,10 +881,10 @@ private fun FilmStrip(
     BoxWithConstraints(
         modifier
             .padding(horizontal = 12.dp)
-            .height(184.dp)
+            .height(128.dp)
     ) {
         val stripW = maxWidth
-        val stripH = 170.dp
+        val stripH = 118.dp
         val frameH = stripH * 0.58f          // 照片格高（竖版）
         val frameW = frameH * 0.68f          // 竖版宽 = 高 × 0.68
         val padSide = stripW * 0.03f
