@@ -191,7 +191,7 @@ object CommandStore {
 
     private fun save(context: Context, cmds: List<Cmd>) {
         val arr = JSONArray()
-        cmds.take(40).forEach { c ->
+        cmds.sortedByDescending { it.issuedMs }.take(40).forEach { c ->
             arr.put(
                 JSONObject()
                     .put("id", c.id)

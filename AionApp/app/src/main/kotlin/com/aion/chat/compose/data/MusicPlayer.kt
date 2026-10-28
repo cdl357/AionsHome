@@ -140,6 +140,12 @@ object MusicPlayer {
 
     fun resume() {
         runCatching {
+            // 审计#5：播完后 prepared=false，resume() 静默空转——重 play 当前歌
+            if (!prepared && current != null) {
+                val ctx = appContext ?: return
+                play(ctx, MusicClient.Song(current!!.id, current!!.name, current!!.artist), keepQueue = true)
+                return
+            }
             if (prepared && mediaPlayer?.isPlaying != true) {
                 mediaPlayer?.start()
                 emit { it.copy(playing = true) }

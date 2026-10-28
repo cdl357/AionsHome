@@ -152,7 +152,7 @@ fun StudyRoomScreen(onBack: () -> Unit = {}, onOpenDiaryWrite: () -> Unit = {}) 
                 val resName = if (key == "flower") "study_flower_%02d".format(state.flowerStyle) else "study_" + key
                 val res = resId(context, resName)
                 if (res == 0) return@forEach
-                val bmp = remember(key) { runCatching { BitmapFactory.decodeResource(context.resources, res) }.getOrNull() }
+                val bmp = remember(key, state.flowerStyle) { runCatching { BitmapFactory.decodeResource(context.resources, res) }.getOrNull() }
                 if (bmp == null) return@forEach
                 val ratio = bmp.width.toFloat() / bmp.height
                 val baseH = StudyRoomStore.defaultHeight(key)

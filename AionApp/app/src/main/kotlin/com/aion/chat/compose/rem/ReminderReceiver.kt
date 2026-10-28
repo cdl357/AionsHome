@@ -100,11 +100,13 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_ID = "reminder_id"
 
         fun ensureChannel(context: Context) {
+if (android.os.Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(
                 CHANNEL_ID, "提醒", NotificationManagerCompat.IMPORTANCE_HIGH
             )
             NotificationManagerCompat.from(context).createNotificationChannel(channel)
         }
+}
 
         fun pendingIntent(context: Context, id: Long, text: String): PendingIntent {
             ensureChannel(context)

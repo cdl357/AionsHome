@@ -107,8 +107,10 @@ internal suspend fun supabaseRequest(
             }
             Log.w(SupabaseClient.TAG, "[HTTP $code] $method /$path -> $kind" +
                 " body=" + runCatching { conn.errorStream?.bufferedReader()?.readText()?.take(200) }.getOrNull())
-            // 权限/表结构问题是线路无关的，换线也一样
-            return@withContext CloudReply(error = kind)
+            // 401/403 是线路无关的语义性失败（权限/表结构），换线也一样；4xx/5xx 都换线再试
+            if (code in 401..403) return@withContext CloudReply(error = kind)
+            lastError = kind
+            continue
         } catch (e: UnknownHostException) {
             Log.w(SupabaseClient.TAG, "[NET/DNS] $method $base/$path 域名解析失败: ${e.message}")
             lastError = CloudErrorKind.NETWORK

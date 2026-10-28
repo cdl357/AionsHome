@@ -1427,6 +1427,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         )
     }
 
+    // ── 图片查看器（审计#4：之前写了 130 行但从未挂载） ──
+    if (viewerPaths.isNotEmpty()) {
+        ChatImageViewer(
+            paths = viewerPaths,
+            index = viewerIndex,
+            onIndex = { viewerIndex = it },
+            onClose = { viewerPaths = emptyList(); viewerIndex = 0 }
+        )
+    }
+
     // ── 聊天设置抽屉：气泡不透明度 + 聊天背景（从主设置搬来） ──
     AnimatedVisibility(
         visible = showChatDrawer.value,

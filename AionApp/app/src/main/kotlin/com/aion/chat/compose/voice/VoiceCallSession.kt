@@ -136,19 +136,21 @@ class VoiceCallSession(private val context: Context, private val onEnded: () -> 
         queue?.beginGeneration(id.generationId)
         segmenter = TtsSegmenter()
         turnStartAt = System.currentTimeMillis()
-        w.engine.send(
-            HomecomingChatEngine.ChatCommand(
-                id.requestId(),
-                HomecomingChatWiring.TIMELINE,
-                HomecomingChatWiring.RESPONDER,
-                HomecomingChatWiring.USER,
-                "（电话刚刚接通）你是 Sean。先自然开口：一句话，像刚接起电话的感觉，30 字以内。",
-                "main",
-                w.mainModelKey(), "", "",
-                false // 问候不落用户消息
-            ),
-            engineObserver(id)
-        )
+        java.util.concurrent.CompletableFuture.runAsync {
+            w.engine.send(
+                HomecomingChatEngine.ChatCommand(
+                    id.requestId(),
+                    HomecomingChatWiring.TIMELINE,
+                    HomecomingChatWiring.RESPONDER,
+                    HomecomingChatWiring.USER,
+                    "（电话刚刚接通）你是 Sean。先自然开口：一句话，像刚接起电话的感觉，30 字以内。",
+                    "main",
+                    w.mainModelKey(), "", "",
+                    false // 问候不落用户消息
+                ),
+                engineObserver(id)
+            )
+        }
     }
 
     // ── Recognize 轨 ──
@@ -244,18 +246,20 @@ class VoiceCallSession(private val context: Context, private val onEnded: () -> 
         setState(VoicePhase.THINKING, "Sean 在想…", heard = text, reply = "")
         startMic()
         val w = wiring ?: return
-        w.engine.send(
-            HomecomingChatEngine.ChatCommand(
-                id.requestId(),
-                HomecomingChatWiring.TIMELINE,
-                HomecomingChatWiring.RESPONDER,
-                HomecomingChatWiring.USER,
-                text + "（这是语音通话里说的话，像打电话一样自然回应，不要提语音/文字）",
-                "main",
-                w.mainModelKey(), "", ""
-            ),
-            engineObserver(id)
-        )
+        java.util.concurrent.CompletableFuture.runAsync {
+            w.engine.send(
+                HomecomingChatEngine.ChatCommand(
+                    id.requestId(),
+                    HomecomingChatWiring.TIMELINE,
+                    HomecomingChatWiring.RESPONDER,
+                    HomecomingChatWiring.USER,
+                    text + "（这是语音通话里说的话，像打电话一样自然回应，不要提语音/文字）",
+                    "main",
+                    w.mainModelKey(), "", ""
+                ),
+                engineObserver(id)
+            )
+        }
     }
 
     private fun engineObserver(id: CallIdentity): HomecomingChatEngine.Observer {
@@ -378,35 +382,43 @@ class VoiceCallSession(private val context: Context, private val onEnded: () -> 
     // ── 自然挂断（教程 §16：先告别，等队列排空，再挂断） ──
 
     private fun isFarewell(text: String): Boolean =
-        listOf("挂了", "挂断", "拜拜", "再见", "先这样", "不聊了").any { text.contains(it) }
+        listOf("挂了", "挂断", "拜拜", "再见", "先这样", "不聊了").any { text.contains(it) } &&
+        !text.contains("别挂") && !text.contains("不要挂") && !text.contains("先别挂")
 
     private fun closeGracefully(userText: String) {
         setState(VoicePhase.CLOSING, "Sean 说再见…", heard = userText)
+        // 审计#3：告别期间关掉麦克风，防止电视/回声/改口触发 barge-in 拉回 LISTENING
+        runCatching { recognizer?.stopListening() }
         turnSequence += 1
         val id = CallIdentity(callId, turnSequence, CallIdentityFactory.newGeneration(turnSequence))
         active = id
         queue?.beginGeneration(id.generationId)
         segmenter = TtsSegmenter()
         val w = wiring ?: run { finishCall(); return }
-        w.engine.send(
-            HomecomingChatEngine.ChatCommand(
-                id.requestId(),
-                HomecomingChatWiring.TIMELINE,
-                HomecomingChatWiring.RESPONDER,
-                HomecomingChatWiring.USER,
-                userText + "（Yuri 在语音电话里说要走。你是 Sean，回一句告别：温柔简短，20 字以内。）",
-                "main",
-                w.mainModelKey(), "", ""
-            ),
-            engineObserver(id)
-        )
+        java.util.concurrent.CompletableFuture.runAsync {
+            w.engine.send(
+                HomecomingChatEngine.ChatCommand(
+                    id.requestId(),
+                    HomecomingChatWiring.TIMELINE,
+                    HomecomingChatWiring.RESPONDER,
+                    HomecomingChatWiring.USER,
+                    userText + "（Yuri 在语音电话里说要走。你是 Sean，回一句告别：温柔简短，20 字以内。）",
+                    "main",
+                    w.mainModelKey(), "", ""
+                ),
+                engineObserver(id)
+            )
+        }
         // 硬截止：告别播不出来的话也不能永远卡着
         main.postDelayed({
             if (stateFlow.value.phase == VoicePhase.CLOSING) finishCall()
         }, FAREWELL_DEADLINE_MS)
     }
 
+    private var ended = false
     private fun finishCall() {
+        if (ended) return   // 审计#2：防二次执行——告别后 15s 截止 runnable 和 onEnded 双触发会把页面下面一层也 pop 掉
+        ended = true
         close()
         onEnded()
     }

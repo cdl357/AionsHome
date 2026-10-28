@@ -2,14 +2,10 @@ package com.aion.chat.compose.ui.diary
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,16 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -71,10 +63,10 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.aion.chat.compose.data.HomecomingDayStore
 import com.aion.chat.compose.data.SeanDiaryStore
 import com.aion.chat.compose.data.SupabaseMomentsStore
@@ -86,51 +78,33 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
- * 日记 · Z 字折叠的信（交接文档《日记页-Z字折叠信》，修复版）：
- * 一长条纸折成 Z 字——中间那封摊平正对屏幕，上面的往屏幕里倒（轴心在底边）、
- * 下面的往里倒（轴心在顶边），相邻两封绕同一条折痕，滑动像手风琴连续折叠展开。
- * 0.3.43 曾整页换成平放卡片（方向擅自改了，已回退）；本版修掉 Z 版首发的三个问题：
- * ①左右留边+高度收进屏内——四角完整可见；②点卡片→折信展开成整封浮层（能展开、能读全文）；
- * ③方向按文档：上方往里倒轴心底边、下方轴心顶边。
- *
- * 数据：sean_diary（他的信+回应）为主，旧 diary_entries/本地按天去重兜底。
- * 回应：一篇一句，没回应显示邮戳「留一句」，贴上后成歪贴暖色小纸条带完整时间戳。
+ * 日记 · 信件页（参考图：小红书 Letters 页）。
+ * 中间的信平面对着屏幕，上面的往里倒一点、下面的往里倒一点，
+ * 缝隙紧密像连着的一张长纸。翻开某封 → 全屏信纸（撕边、大字、邮戳）。
+ * 排版靠优雅字体（大号衬线日期、花体 from、虚线分隔、邮戳），不靠 3D 厚度。
  */
 
-// ============ 可调参数 ============
-
-private const val MAX_TILT_DEG = 66f
-private const val CAMERA_DISTANCE = 10f
-private const val THICKNESS_LAYERS = 0
-private const val CREASE_DARKNESS = 0.16f
-
-// ============ 色值 ============
-
-private val PaperLight = Color(0xFFFBF7EE)
-private val PaperMid = Color(0xFFF4EEE1)
-private val PaperDark = Color(0xFFE6DECF)
-private val PaperEdge = Color(0xFFD8CFBD)
-private val InkMain = Color(0xFF5A4A38)
-private val InkSub = Color(0xFF9A8A74)
+private const val MAX_TILT = 14f
+private const val CAMERA_DIST = 40f
+private val PaperLight = Color(0xFFFAF5EE)
+private val PaperMid = Color(0xFFF5EFE6)
+private val PaperDark = Color(0xFFEDE5D8)
+private val InkDark = Color(0xFF5C3D2E)
+private val InkBrown = Color(0xFF7A5C48)
+private val InkSub = Color(0xFFA08878)
+private val Accent = Color(0xFF8B6348)
 private val ReplyPaper = Color(0xFFFDF0D8)
 private val ReplyInk = Color(0xFF8A6A48)
-private val StampColor = Color(0xFFC4A882)
-
-// ============ 数据模型 ============
 
 data class FoldLetter(
-    val key: String,
-    val cloudId: Long,      // sean_diary 行 id；0 = 旧信（不可回应）
-    val dateMs: Long,
-    val title: String,
-    val meta: String,
-    val content: String,
-    val reply: String,
-    val repliedAtMs: Long
+    val key: String, val cloudId: Long, val dateMs: Long,
+    val title: String, val meta: String, val content: String,
+    val reply: String, val repliedAtMs: Long
 )
 
 @Composable
@@ -140,77 +114,31 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     val letters = remember { mutableStateOf<List<FoldLetter>>(emptyList()) }
     val loading = remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
-    val overlayKey = remember { mutableStateOf<String?>(null) }
-    val closeReq = remember { mutableStateOf(false) }
-    val unfold = remember { Animatable(0f) }
+    val openLetter = remember { mutableStateOf<FoldLetter?>(null) }
     val editingId = remember { mutableStateOf<Long?>(null) }
-    val cardGeo = remember { mutableMapOf<String, Pair<Offset, IntSize>>() }
 
-    // 缓存秒显（橘瓣式）：上次数据先显示，后台拉完覆盖
     LaunchedEffect(Unit) {
-        val cached = runCatching {
-            val f = java.io.File(context.filesDir, "diary_cache.json")
-            if (!f.exists()) return@runCatching null
-            val arr = org.json.JSONArray(f.readText())
-            (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                FoldLetter(
-                    key = o.getString("key"), cloudId = o.getLong("cloudId"),
-                    dateMs = o.getLong("dateMs"), title = o.getString("title"),
-                    meta = o.getString("meta"), content = o.getString("content"),
-                    reply = o.optString("reply"), repliedAtMs = o.optLong("repliedAtMs", 0L)
-                )
-            }
-        }.getOrNull()
-        if (!cached.isNullOrEmpty()) {
-            letters.value = cached
-            loading.value = false
-        }
-        // 后台拉真数据
-        val fresh = kotlinx.coroutines.withContext(Dispatchers.IO) { loadFoldLetters(context) }
+        loading.value = true
+        val cached = readDiaryCache(context)
+        if (!cached.isNullOrEmpty()) { letters.value = cached; loading.value = false }
+        val fresh = withContext(Dispatchers.IO) { loadFoldLetters(context) }
         if (fresh.isNotEmpty()) {
             letters.value = fresh
-            // 写缓存
-            runCatching {
-                val arr = org.json.JSONArray()
-                fresh.forEach { l ->
-                    arr.put(org.json.JSONObject()
-                        .put("key", l.key).put("cloudId", l.cloudId).put("dateMs", l.dateMs)
-                        .put("title", l.title).put("meta", l.meta).put("content", l.content)
-                        .put("reply", l.reply).put("repliedAtMs", l.repliedAtMs))
-                }
-                java.io.File(context.filesDir, "diary_cache.json").writeText(arr.toString())
-            }
+            writeDiaryCache(context, fresh)
         }
         if (cached.isNullOrEmpty()) loading.value = false
     }
-    LaunchedEffect(overlayKey.value) {
-        if (overlayKey.value != null && !closeReq.value) {
-            unfold.animateTo(1f, tween(780, easing = FastOutSlowInEasing))
-        }
-    }
-    LaunchedEffect(closeReq.value) {
-        if (closeReq.value && overlayKey.value != null) {
-            unfold.animateTo(0f, tween(560, easing = FastOutSlowInEasing))
-            overlayKey.value = null
-            closeReq.value = false
-        }
-    }
-    BackHandler(enabled = overlayKey.value != null || editingId.value != null) {
-        if (editingId.value != null) editingId.value = null else closeReq.value = true
+
+    BackHandler(enabled = openLetter.value != null || editingId.value != null) {
+        if (editingId.value != null) editingId.value = null else openLetter.value = null
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val ease = smooth(unfold.value)
-        // 折叠段高度：屏高 36%，夹紧 200~260dp——卡片完整可见不顶满
-        val segH = (maxHeight * 0.38f).coerceIn(210.dp, 270.dp)
-
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // 顶栏
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 14.dp, end = 14.dp, top = 12.dp)
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -221,101 +149,40 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                         .clickable { onBack() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = HomecomingColors.Ink,
-                        modifier = Modifier.size(19.dp)
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回",
+                        tint = HomecomingColors.Ink, modifier = Modifier.size(19.dp))
                 }
-                Text(
-                    "日记 · Z字折叠的信",
+                Text("日记 · 信",
                     fontSize = 16.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .padding(start = 10.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.45f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
-                )
+                        .padding(horizontal = 12.dp, vertical = 5.dp))
                 Spacer(Modifier.weight(1f))
-                Text(
-                    "${letters.value.size} 封",
-                    fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                Text("${letters.value.size} 封", fontSize = 11.sp, color = HomecomingColors.InkSoft,
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color.White.copy(alpha = 0.4f))
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
-                )
+                        .padding(horizontal = 9.dp, vertical = 4.dp))
             }
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    loading.value -> Text(
-                        "展开信纸…", fontSize = 12.sp, color = InkSub,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                    loading.value -> Text("展开信纸…", fontSize = 12.sp, color = InkSub,
+                        modifier = Modifier.align(Alignment.Center))
                     letters.value.isEmpty() -> Text(
                         "还没有信——和他说上一段话，晚安之后就会有第一封",
                         fontSize = 13.sp, color = InkSub, lineHeight = 22.sp,
-                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp)
-                    )
-                    else -> LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 0.dp),
-                        // 必须是 0：纸是连着的一条，不是分开的卡片
-                        verticalArrangement = Arrangement.spacedBy(0.dp),
-                    ) {
-                        itemsIndexed(letters.value, key = { _, it -> it.key }) { index, letter ->
-                            ZFoldCard(
-                                letter = letter,
-                                index = index,
-                                listState = listState,
-                                segH = segH,
-                                onGeometry = { pos, size -> cardGeo[letter.key] = pos to size },
-                                onOpen = {
-                                    if (overlayKey.value == letter.key) {
-                                        closeReq.value = true
-                                    } else {
-                                        overlayKey.value = letter.key
-                                        closeReq.value = false
-                                    }
-                                },
-                                onStampClick = { if (letter.cloudId > 0) editingId.value = letter.cloudId }
-                            )
-                        }
-                    }
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp))
+                    else -> LettersList(letters.value, listState,
+                        onOpen = { openLetter.value = it },
+                        onStampClick = { l -> if (l.cloudId > 0) editingId.value = l.cloudId })
                 }
             }
         }
 
-        // ── 展开的信：遮罩 + 信纸浮层（点空白收起；遮罩挡住列表滚动） ──
-        overlayKey.value?.let { key ->
-            val letter = letters.value.firstOrNull { it.key == key } ?: return@let
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = 0.34f * ease }
-                    .background(Color(0x99000000))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { closeReq.value = true }
-                    .pointerInput(Unit) { detectDragGestures { _, _ -> } }
-            )
-            LetterOverlay(
-                letter = letter,
-                geo = cardGeo[key],
-                ease = ease,
-                maxH = maxHeight - 150.dp,
-                screenW = maxWidth,
-                screenH = maxHeight,
-                onClickCollapse = { closeReq.value = true },
-                onStampClick = { if (letter.cloudId > 0) editingId.value = letter.cloudId }
-            )
-        }
-
-        // 回应输入弹窗
+        // 回应弹窗
         editingId.value?.let { id ->
             val target = letters.value.firstOrNull { it.cloudId == id }
             ReplyEditor(
@@ -325,9 +192,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                     editingId.value = null
                     val prev = letters.value.firstOrNull { it.cloudId == id } ?: return
                     letters.value = letters.value.map {
-                        if (it.cloudId == id)
-                            it.copy(reply = text.trim(), repliedAtMs = System.currentTimeMillis())
-                        else it
+                        if (it.cloudId == id) it.copy(reply = text.trim(), repliedAtMs = System.currentTimeMillis()) else it
                     }
                     scope.launch {
                         val ok = SeanDiaryStore.saveReply(id, text.trim())
@@ -335,408 +200,316 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                             letters.value = letters.value.map {
                                 if (it.cloudId == id) it.copy(reply = prev.reply, repliedAtMs = prev.repliedAtMs) else it
                             }
-                            Toast.makeText(context, "没贴上，网络一会儿再点一次重贴", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "没贴上，再试一次", Toast.LENGTH_SHORT).show()
                         }
                     }
-                },
+                }
             )
         }
     }
 }
 
-private fun smooth(t: Float) = t * t * (3f - 2f * t)
-
-// ============ Z 折叠卡：手风琴核心 ============
+// ════════ 列表 ════════
 
 @Composable
-private fun ZFoldCard(
-    letter: FoldLetter,
-    index: Int,
+private fun LettersList(
+    letters: List<FoldLetter>,
     listState: LazyListState,
-    segH: androidx.compose.ui.unit.Dp,
-    onGeometry: (Offset, IntSize) -> Unit,
-    onOpen: () -> Unit,
-    onStampClick: () -> Unit,
+    onOpen: (FoldLetter) -> Unit,
+    onStampClick: (FoldLetter) -> Unit,
 ) {
-    val density = LocalDensity.current
-    val segHpx = with(density) { segH.toPx() }
-
-    // progress：-1 = 视口上方一屏（完全倒进去） 0 = 视口中间（摊平） +1 = 下方一屏
-    val progress by remember {
-        derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
-                ?: return@derivedStateOf if (index < listState.firstVisibleItemIndex) -1f else 1f
-            val viewportCenter =
-                (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
-            val itemCenter = item.offset + item.size / 2f
-            ((itemCenter - viewportCenter) / segHpx).coerceIn(-1.4f, 1.4f)
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = 0.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        itemsIndexed(letters, key = { _, it -> it.key }) { index, letter ->
+            LetterCard(letter, index, listState, { onOpen(letter) }, { onStampClick(letter) })
         }
     }
-    val tilt = (progress * MAX_TILT_DEG).coerceIn(-MAX_TILT_DEG, MAX_TILT_DEG)
-    // 关键：轴心跟着倾斜方向变——上方（往里倒）轴心在底边，下方轴心在顶边。
-    // 相邻两封绕同一条折痕，看起来才是连着的一张纸。
+}
+
+// ════════ 单封信卡：薄纸 + 微透视 + 排版 ════════
+
+@Composable
+private fun LetterCard(
+    letter: FoldLetter, index: Int, listState: LazyListState,
+    onOpen: () -> Unit, onStampClick: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val cardH = 280.dp
+    val cardHpx = with(density) { cardH.toPx() }
+    val progress by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+                ?: return@derivedStateOf if (index < listState.firstVisibleItemIndex) -1f else 1f
+            val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+            ((item.offset + item.size / 2f - center) / cardHpx).coerceIn(-1f, 1f)
+        }
+    }
+    val absP = abs(progress)
+    val tilt = progress * MAX_TILT
     val pivotY = if (tilt < 0f) 1f else 0f
 
-    Box(
-        Modifier
+    Column(
+        modifier = Modifier
             .fillMaxWidth()
-            .height(segH)
+            .height(cardH)
             .graphicsLayer {
-                // 方向（Yuri 指出反了）：上面的卡顶边往屏幕里倒=正角度，下面的卡底边往里倒=负角度
                 rotationX = -tilt
                 transformOrigin = TransformOrigin(0.5f, pivotY)
-                cameraDistance = CAMERA_DISTANCE * density.density
+                cameraDistance = CAMERA_DIST * density.density
             }
-            .onGloballyPositioned { onGeometry(it.positionInRoot(), it.size) }
     ) {
-        // 纸面：薄纸渐变 + 细折痕线（像邮票不是厚块）
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .drawBehind {
-                    val darken = abs(progress).coerceIn(0f, 1f) * 0.22f
-                    drawRect(
-                        Brush.verticalGradient(
-                            0f to lerpColor(PaperLight, PaperDark, darken),
-                            0.5f to lerpColor(PaperMid, PaperDark, darken),
-                            1f to lerpColor(PaperMid, PaperDark, darken * 1.15f)
-                        )
+                .background(
+                    Brush.verticalGradient(
+                        0f to PaperLight,
+                        0.5f to lerpPaper(PaperMid, PaperDark, absP * 0.3f),
+                        1f to lerpPaper(PaperMid, PaperDark, absP * 0.35f)
                     )
-                    // 底部细折痕线
-                    drawLine(
-                        Color.Black.copy(alpha = CREASE_DARKNESS),
-                        Offset(0f, size.height - 1f),
-                        Offset(size.width, size.height - 1f),
-                        strokeWidth = 1.5f
-                    )
-                }
+                )
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) { onOpen() }
-                .padding(start = 22.dp, end = 22.dp, top = 12.dp, bottom = 12.dp)
+                .padding(horizontal = 28.dp, vertical = 14.dp)
         ) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.Top
             ) {
                 Column {
-                    Text(
-                        letter.dateMs.fmt("M月d日"),
-                        fontSize = 21.sp, fontWeight = FontWeight.Light, color = InkMain
-                    )
-                    Row {
-                        Text(letter.dateMs.fmt("yyyy · EEEE"), fontSize = 9.sp, color = InkSub)
-                        if (letter.meta.isNotBlank()) Text(" · " + letter.meta, fontSize = 9.sp, color = InkSub, maxLines = 1)
-                    }
+                    Text(letter.dateMs.fmt("d"),
+                        fontSize = 36.sp, fontWeight = FontWeight.Bold,
+                        color = InkDark, fontFamily = FontFamily.Serif)
+                    Text(letter.dateMs.fmt("MMM", Locale("en")),
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = InkDark, fontFamily = FontFamily.Serif, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("from 沈聿淮",
+                        fontSize = 14.sp, color = InkBrown,
+                        fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic)
+                    Text(letter.dateMs.fmt("yyyy-MM-dd · HH:mm"),
+                        fontSize = 10.sp, color = InkSub)
                 }
-                StampOrReply(
-                    reply = letter.reply,
-                    repliedAtMs = letter.repliedAtMs,
-                    enabled = letter.cloudId > 0,
-                    onClick = onStampClick
-                )
+                Spacer(Modifier.weight(1f))
+                StampOrReply(letter.reply, letter.repliedAtMs, letter.cloudId > 0, onStampClick)
             }
-            Spacer(Modifier.height(7.dp))
-            Box(Modifier.width(28.dp).height(1.dp).background(InkSub.copy(alpha = 0.4f)))
-            Spacer(Modifier.height(7.dp))
-            Text(
-                letter.content.replace("\n", " ").trim(),
-                fontSize = 12.sp, lineHeight = 18.sp, color = InkMain,
-                maxLines = 3, overflow = TextOverflow.Ellipsis
-            )
+            Spacer(Modifier.height(8.dp))
+            DashedLine()
+            Spacer(Modifier.height(10.dp))
+            Text(letter.content.replace("\n", " ").trim(),
+                fontSize = 13.sp, lineHeight = 22.sp, color = InkBrown,
+                maxLines = 3, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.weight(1f))
-            Text(
-                "点开这封 ›", fontSize = 10.sp, color = InkSub.copy(alpha = 0.9f),
-                fontStyle = FontStyle.Italic,
-                modifier = Modifier.align(Alignment.End)
-            )
+            Text("再读一遍 →", fontSize = 11.sp, color = Accent,
+                fontFamily = FontFamily.Serif, modifier = Modifier.align(Alignment.End))
         }
     }
 }
 
-// ============ 展开的信：从卡片位置折信展开成整页 ============
+// ════════ 展开的信：全屏撕边信纸 ════════
 
 @Composable
-private fun LetterOverlay(
+private fun LetterOpenOverlay(
     letter: FoldLetter,
-    geo: Pair<Offset, IntSize>?,
-    ease: Float,
-    maxH: androidx.compose.ui.unit.Dp,
-    screenW: androidx.compose.ui.unit.Dp,
-    screenH: androidx.compose.ui.unit.Dp,
-    onClickCollapse: () -> Unit,
-    onStampClick: () -> Unit
+    onClose: () -> Unit,
+    onStampClick: () -> Unit,
 ) {
-    val dens = LocalDensity.current
-    var measuredH by remember { mutableStateOf(0) }
-    val startPos = geo?.first ?: Offset(120f, 620f)
-    val geoSize = geo?.second?.let { IntSize(it.width.coerceAtLeast(1), it.height.coerceAtLeast(1)) }
-        ?: IntSize(420, 300)
-    val fullW = with(dens) { (geoSize.width * 1.15f).toDp() }.coerceAtMost(430.dp)
-    val fullWPx = with(dens) { fullW.toPx() }
-    val startSx = (geoSize.width / fullWPx).coerceIn(0.3f, 1f)
-    val startSy = if (measuredH > 0) (geoSize.height / measuredH.toFloat()).coerceIn(0.05f, 1f) else 1f
-    val textAlpha = ((ease - 0.12f) / 0.55f).coerceIn(0f, 1f)
-    // 展开过程中从卡片位置飞向屏幕中央：展开完成后全文必然完整在屏内
-    val screenWpx = with(dens) { screenW.toPx() }
-    val screenHpx = with(dens) { screenH.toPx() }
-    val maxHpx = with(dens) { maxH.toPx() }
-    val contentHPx = if (measuredH > 0) minOf(measuredH.toFloat(), maxHpx) else maxHpx
-    val targetXPx = ((screenWpx - fullWPx) / 2f).coerceAtLeast(with(dens) { 8.dp.toPx() })
-    val targetYPx = ((screenHpx - contentHPx) / 2f).coerceIn(with(dens) { 110.dp.toPx() }, (screenHpx - contentHPx - with(dens) { 16.dp.toPx() }).coerceAtLeast(with(dens) { 110.dp.toPx() }))
-    val curX = startPos.x + (targetXPx - startPos.x) * ease
-    val curY = startPos.y + (targetYPx - startPos.y) * ease
-
-    Column(
-        modifier = Modifier
-            .offset { IntOffset(curX.roundToInt(), curY.roundToInt()) }
-            .graphicsLayer {
-                rotationX = 8f * (1f - ease)
-                transformOrigin = TransformOrigin(0.5f, 1f)
-                cameraDistance = 30f * density
-            }
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box {
-            Box(
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF5EFE6).copy(alpha = 0.97f))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onClose() }
+        ) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { measuredH = it.height }
-                    .graphicsLayer {
-                        if (measuredH == 0) alpha = 0f
-                        scaleX = startSx + (1f - startSx) * ease
-                        scaleY = startSy + (1f - startSy) * ease
-                        transformOrigin = TransformOrigin(0f, 0f)
-                    }
-                    .clip(RoundedCornerShape(3.dp))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onClickCollapse() }
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 48.dp, bottom = 40.dp)
             ) {
-                // 纸面 + 展开中的折痕
-                Canvas(modifier = Modifier.matchParentSize()) {
-                    drawRect(
-                        Brush.verticalGradient(
-                            0f to PaperLight, 0.5f to PaperMid, 1f to PaperMid
-                        )
-                    )
-                    val c1 = (1f - ease / 0.5f).coerceIn(0f, 1f)
-                    val c2 = (1f - (ease - 0.42f) / 0.5f).coerceIn(0f, 1f)
-                    listOf(size.height / 3f to c1, size.height * 2f / 3f to c2).forEach { (y, a) ->
-                        if (a > 0.01f) {
-                            drawRect(
-                                Brush.verticalGradient(
-                                    listOf(Color(0x00000000), Color(0x2E000000).copy(alpha = 0.55f * a), Color(0x00000000)),
-                                    startY = y - size.height * 0.03f, endY = y + size.height * 0.03f
-                                ),
-                                topLeft = Offset(0f, y - size.height * 0.03f),
-                                size = Size(size.width, size.height * 0.06f)
-                            )
-                            drawLine(
-                                Color(0x33000000).copy(alpha = a),
-                                Offset(0f, y), Offset(size.width, y), strokeWidth = 1.2f
-                            )
-                        }
-                    }
-                    drawRect(PaperEdge, size = size, style = Stroke(1f))
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = maxH)
-                        .verticalScroll(rememberScrollState())
-                        .graphicsLayer { alpha = textAlpha }
-                        .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 18.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
+                TornPaper(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 26.dp, vertical = 28.dp)
                     ) {
-                        Column {
-                            Text(
-                                letter.dateMs.fmt("M月d日"),
-                                fontSize = 32.sp, fontWeight = FontWeight.Light, color = InkMain
-                            )
-                            Row {
-                                Text(letter.dateMs.fmt("yyyy · EEEE"), fontSize = 10.sp, color = InkSub)
-                                if (letter.meta.isNotBlank()) Text(" · " + letter.meta, fontSize = 10.sp, color = InkSub)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Column {
+                                Text(letter.dateMs.fmt("d"),
+                                    fontSize = 44.sp, fontWeight = FontWeight.Bold,
+                                    color = InkDark, fontFamily = FontFamily.Serif)
+                                Text(letter.dateMs.fmt("MMM", Locale("en")),
+                                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                    color = InkDark, fontFamily = FontFamily.Serif, letterSpacing = 3.sp)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("from 沈聿淮",
+                                    fontSize = 18.sp, color = InkBrown,
+                                    fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic)
+                                Text(letter.dateMs.fmt("yyyy-MM-dd · HH:mm"),
+                                    fontSize = 11.sp, color = InkSub)
                             }
                         }
-                        StampOrReply(
-                            reply = letter.reply,
-                            repliedAtMs = letter.repliedAtMs,
-                            enabled = letter.cloudId > 0,
-                            onClick = onStampClick
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Canvas(modifier = Modifier.fillMaxWidth().height(2.dp)) {
-                        var x = 0f
-                        while (x < size.width) {
-                            drawLine(
-                                Color(0x429A8A74),
-                                Offset(x, size.height / 2f),
-                                Offset(x + 7.dp.toPx(), size.height / 2f),
-                                strokeWidth = 1.4f
-                            )
-                            x += 13.dp.toPx()
+                        // 邮戳/回应
+                        if (letter.cloudId > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            StampOrReply(letter.reply, letter.repliedAtMs, true, onStampClick)
                         }
+                        Spacer(Modifier.height(12.dp))
+                        DashedLine()
+                        Spacer(Modifier.height(18.dp))
+                        if (letter.title.isNotBlank()) {
+                            Text(letter.title, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                                color = InkBrown, modifier = Modifier.padding(bottom = 12.dp))
+                        }
+                        Text(letter.content,
+                            fontSize = 15.sp, lineHeight = 30.sp,
+                            color = Color(0xFF4A3828), fontFamily = FontFamily.Serif)
+                        Spacer(Modifier.height(20.dp))
+                        Text("—— 沈聿淮", fontSize = 13.sp, color = InkSub,
+                            fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
+                            modifier = Modifier.align(Alignment.End))
                     }
-                    Spacer(Modifier.height(14.dp))
-                    if (letter.title.isNotBlank()) {
-                        Text(
-                            letter.title, fontSize = 14.sp, color = InkMain,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                    }
-                    Text(
-                        letter.content,
-                        fontSize = 13.sp, lineHeight = 24.sp, color = InkMain
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        "— 沈聿淮", fontSize = 11.sp, color = InkSub,
-                        fontStyle = FontStyle.Italic,
-                        modifier = Modifier.align(Alignment.End)
-                    )
                 }
             }
+            Text("✕", fontSize = 20.sp, color = InkDark,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 48.dp, end = 20.dp)
+                    .clickable { onClose() })
         }
-        Text(
-            "再点一下，把信折回去",
-            fontSize = 10.sp, color = Color.White.copy(alpha = 0.85f),
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer { alpha = ease }
-                .padding(top = 10.dp)
-        )
     }
 }
 
-// ============ 右上角：邮戳 or 回应纸条 ============
+// ════════ 撕边信纸 ════════
+
+@Composable
+private fun TornPaper(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier.drawBehind {
+            val w = size.width
+            val h = size.height
+            val edge = 6.dp.toPx()
+            val paper = Path().apply {
+                moveTo(0f, edge)
+                var x = 0f
+                while (x < w) {
+                    val j = sin(x / w * 25f + 2f) * 3f + sin(x / w * 8f) * 2f
+                    lineTo(x, edge + j.coerceIn(0f, edge))
+                    x += 14f
+                }
+                lineTo(w, h - edge)
+                x = w
+                while (x > 0) {
+                    val j = sin(x / w * 20f + 4f) * 3f
+                    lineTo(x, h - edge - j.coerceIn(0f, edge))
+                    x -= 14f
+                }
+                close()
+            }
+            drawPath(paper, PaperLight)
+            drawPath(paper, Color(0xFFDDD5C8), style = Stroke(1.5f))
+        }
+    ) { content() }
+}
+
+// ════════ 邮戳 / 回应 ════════
 
 @Composable
 private fun StampOrReply(
-    reply: String,
-    repliedAtMs: Long,
-    enabled: Boolean,
-    onClick: () -> Unit,
+    reply: String, repliedAtMs: Long, enabled: Boolean, onClick: () -> Unit,
 ) {
     if (!enabled) return
     if (reply.isBlank()) {
         Box(
             Modifier
-                .size(46.dp)
+                .size(52.dp)
                 .graphicsLayer { rotationZ = -8f }
                 .clickable { onClick() },
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.Center
         ) {
             Box(
-                Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        drawCircle(StampColor.copy(alpha = 0.55f), size.minDimension / 2f, style = Stroke(1.5.dp.toPx()))
-                        drawCircle(
-                            StampColor.copy(alpha = 0.35f),
-                            size.minDimension / 2f - 4.dp.toPx(), style = Stroke(1.dp.toPx())
-                        )
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("留一句", fontSize = 9.sp, color = StampColor)
-            }
+                Modifier.fillMaxSize().drawBehind {
+                    drawCircle(Accent.copy(alpha = 0.5f), size.minDimension / 2f, style = Stroke(1.5f))
+                    drawCircle(Accent.copy(alpha = 0.3f), size.minDimension / 2f - 4.dp.toPx(), style = Stroke(1f))
+                },
+                contentAlignment = Alignment.Center
+            ) { Text("留一句", fontSize = 9.sp, color = Accent) }
         }
     } else {
-        Box(
-            Modifier
+        Column(
+            modifier = Modifier
                 .widthIn(max = 130.dp)
                 .graphicsLayer { rotationZ = 4f }
                 .clickable { onClick() }
-                .drawBehind {
-                    drawRect(
-                        Color.Black.copy(alpha = 0.10f),
-                        topLeft = Offset(2.dp.toPx(), 3.dp.toPx()), size = size
-                    )
-                    drawRect(ReplyPaper)
-                }
-                .padding(horizontal = 9.dp, vertical = 7.dp)
+                .background(ReplyPaper)
+                .border(1.dp, Color(0xFFE8D5B8), RoundedCornerShape(2.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            Column {
-                Text(reply, fontSize = 11.sp, lineHeight = 16.sp, color = ReplyInk, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                if (repliedAtMs > 0) {
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        repliedAtMs.fmt("yyyy.M.d HH:mm"),
-                        fontSize = 8.sp, color = ReplyInk.copy(alpha = 0.55f)
-                    )
-                }
+            Text(reply, fontSize = 11.sp, lineHeight = 16.sp, color = ReplyInk,
+                maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (repliedAtMs > 0) {
+                Spacer(Modifier.height(3.dp))
+                Text(repliedAtMs.fmt("yyyy.M.d HH:mm"), fontSize = 8.sp, color = ReplyInk.copy(alpha = 0.5f))
             }
         }
     }
 }
 
-// ============ 回应输入弹窗 ============
+// ════════ 回应编辑 ════════
 
 @Composable
 private fun ReplyEditor(
-    initial: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf(initial) }
-
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center,
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).clickable { onDismiss() },
+        contentAlignment = Alignment.Center
     ) {
         Column(
-            Modifier
-                .fillMaxWidth(0.84f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(ReplyPaper)
-                .clickable(enabled = false) {}
-                .padding(18.dp)
+            Modifier.fillMaxWidth(0.84f).clip(RoundedCornerShape(14.dp))
+                .background(ReplyPaper).clickable(enabled = false) {}.padding(18.dp)
         ) {
             Text("留一句", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = ReplyInk)
-            Spacer(Modifier.height(4.dp))
             Text("一篇只留一句。想改就再点一次。", fontSize = 10.sp, color = ReplyInk.copy(alpha = 0.6f))
             Spacer(Modifier.height(14.dp))
             BasicTextField(
-                value = text,
-                onValueChange = { if (it.length <= 120) text = it },
+                value = text, onValueChange = { if (it.length <= 120) text = it },
                 textStyle = TextStyle(fontSize = 13.sp, lineHeight = 22.sp, color = ReplyInk),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 70.dp)
-                    .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                    .padding(10.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp)
+                    .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(10.dp)
             )
             Spacer(Modifier.height(6.dp))
-            Text(
-                "${text.length} / 120",
-                fontSize = 9.sp, color = ReplyInk.copy(alpha = 0.45f),
-                modifier = Modifier.align(Alignment.End)
-            )
+            Text("${text.length} / 120", fontSize = 9.sp, color = ReplyInk.copy(alpha = 0.45f),
+                modifier = Modifier.align(Alignment.End))
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) {
-                    Text("算了", fontSize = 12.sp, color = ReplyInk.copy(alpha = 0.6f))
-                }
+                TextButton(onClick = onDismiss) { Text("算了", fontSize = 12.sp, color = ReplyInk.copy(alpha = 0.6f)) }
                 Spacer(Modifier.width(8.dp))
-                TextButton(
-                    onClick = { if (text.isNotBlank()) onConfirm(text.trim()) },
-                    enabled = text.isNotBlank(),
-                ) {
+                TextButton(onClick = { if (text.isNotBlank()) onConfirm(text.trim()) }, enabled = text.isNotBlank()) {
                     Text("贴上去", fontSize = 12.sp, color = ReplyInk)
                 }
             }
@@ -744,77 +517,97 @@ private fun ReplyEditor(
     }
 }
 
-// ============ 数据合并（sean_diary 为主，旧云端/本地按天去重兜底） ============
+// ════════ 共用小组件 ════════
+
+@Composable
+private fun DashedLine() {
+    Canvas(Modifier.fillMaxWidth().height(1.dp)) {
+        val dash = 6.dp.toPx(); val gap = 5.dp.toPx()
+        var x = 0f
+        while (x < size.width) {
+            drawLine(InkSub.copy(alpha = 0.35f), Offset(x, 0f), Offset(x + dash, 0f), 1f)
+            x += dash + gap
+        }
+    }
+}
+
+// ════════ 数据 ════════
+
+private fun readDiaryCache(context: android.content.Context): List<FoldLetter>? = runCatching {
+    val f = java.io.File(context.filesDir, "diary_cache.json")
+    if (!f.exists()) return null
+    val arr = org.json.JSONArray(f.readText())
+    (0 until arr.length()).map { i ->
+        val o = arr.getJSONObject(i)
+        FoldLetter(o.getString("key"), o.getLong("cloudId"), o.getLong("dateMs"),
+            o.getString("title"), o.getString("meta"), o.getString("content"),
+            o.optString("reply"), o.optLong("repliedAtMs", 0L))
+    }.sortedByDescending { it.dateMs }
+}.getOrNull()
+
+private fun writeDiaryCache(context: android.content.Context, list: List<FoldLetter>) {
+    runCatching {
+        val arr = org.json.JSONArray()
+        list.forEach { l ->
+            arr.put(org.json.JSONObject()
+                .put("key", l.key).put("cloudId", l.cloudId).put("dateMs", l.dateMs)
+                .put("title", l.title).put("meta", l.meta).put("content", l.content)
+                .put("reply", l.reply).put("repliedAtMs", l.repliedAtMs))
+        }
+        java.io.File(context.filesDir, "diary_cache.json").writeText(arr.toString())
+    }
+}
 
 private suspend fun loadFoldLetters(context: android.content.Context): List<FoldLetter> {
     val list = mutableListOf<FoldLetter>()
-    val seenDates = mutableSetOf<String>()
-
+    val seen = mutableSetOf<String>()
     val rows = runCatching { SeanDiaryStore.fetchAll() }
         .getOrNull()?.takeIf { it.error == null }?.data.orEmpty()
     rows.forEach { r ->
-        list.add(
-            FoldLetter(
-                key = "sd" + r.id, cloudId = r.id, dateMs = r.createdAtMs,
-                title = "", meta = "", content = r.content,
-                reply = r.replyContent, repliedAtMs = r.repliedAtMs
-            )
-        )
-        seenDates.add(dayKey(r.createdAtMs))
+        list.add(FoldLetter("sd${r.id}", r.id, r.createdAtMs, "", "", r.content, r.replyContent, r.repliedAtMs))
+        seen.add(dayKey(r.createdAtMs))
     }
-
     val old = runCatching { SupabaseMomentsStore.fetchSeanDiaries() }
         .getOrNull()?.takeIf { it.error == null }?.data.orEmpty()
     old.forEach { d ->
         val ms = if (d.createdAtMs > 0) d.createdAtMs else parseSupabaseTime(d.createdAt)
         if (ms <= 0) return@forEach
         val k = dayKey(ms)
-        if (k in seenDates) return@forEach
-        seenDates.add(k)
-        list.add(
-            FoldLetter(
-                key = "de" + d.id, cloudId = 0L, dateMs = ms, title = d.title,
-                meta = listOf(d.weather, d.mood).filter { it.isNotBlank() }.joinToString(" · "),
-                content = d.content, reply = "", repliedAtMs = 0L
-            )
-        )
+        if (k in seen) return@forEach
+        seen.add(k)
+        list.add(FoldLetter("de${d.id}", 0L, ms, d.title,
+            listOf(d.weather, d.mood).filter { it.isNotBlank() }.joinToString(" · "),
+            d.content, "", 0L))
     }
-
     runCatching { HomecomingDayStore.diaries(context).filter { it.author == "sean" } }
         .getOrDefault(emptyList()).forEach { d ->
             if (d.createdAt <= 0) return@forEach
             val k = dayKey(d.createdAt)
-            if (k in seenDates) return@forEach
-            seenDates.add(k)
-            list.add(
-                FoldLetter(
-                    key = "lo" + d.id + "_" + d.createdAt, cloudId = 0L, dateMs = d.createdAt,
-                    title = d.title, meta = "", content = d.content, reply = "", repliedAtMs = 0L
-                )
-            )
+            if (k in seen) return@forEach
+            seen.add(k)
+            list.add(FoldLetter("lo${d.id}_${d.createdAt}", 0L, d.createdAt, d.title, "", d.content, "", 0L))
         }
-
     return list.sortedByDescending { it.dateMs }
 }
 
-private fun dayKey(ms: Long): String =
+private fun dayKey(ms: Long) =
     Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate().toString()
 
-// ============ 工具 ============
+// ════════ 工具 ════════
 
-private fun lerpColor(a: Color, b: Color, t: Float): Color {
+private fun lerpPaper(a: Color, b: Color, t: Float): Color {
     val tt = t.coerceIn(0f, 1f)
     return Color(
-        red = a.red + (b.red - a.red) * tt,
-        green = a.green + (b.green - a.green) * tt,
-        blue = a.blue + (b.blue - a.blue) * tt,
-        alpha = a.alpha + (b.alpha - a.alpha) * tt,
+        a.red + (b.red - a.red) * tt,
+        a.green + (b.green - a.green) * tt,
+        a.blue + (b.blue - a.blue) * tt,
+        a.alpha + (b.alpha - a.alpha) * tt
     )
 }
 
-private fun Long.fmt(pattern: String): String {
+private fun Long.fmt(pattern: String, locale: java.util.Locale? = null): String {
     if (this <= 0) return ""
-    return DateTimeFormatter.ofPattern(pattern)
-        .withZone(ZoneId.systemDefault())
-        .format(Instant.ofEpochMilli(this))
+    val fmt = DateTimeFormatter.ofPattern(pattern)
+    return if (locale != null) fmt.withLocale(locale).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(this))
+    else fmt.withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(this))
 }

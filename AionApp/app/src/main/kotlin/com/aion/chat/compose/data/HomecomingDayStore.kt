@@ -158,7 +158,7 @@ object HomecomingDayStore {
         val list = mutableListOf<MemorySummary>()
         while (cur.moveToNext()) {
             val time = cur.getLong(2)
-            if (dayKey(time) != key) continue
+            if (key.isNotBlank() && dayKey(time) != key) continue
             val content = runCatching {
                 JSONObject(cur.getString(0)).optString("content")
             }.getOrDefault("")
