@@ -30,6 +30,11 @@ object AppCrashLog {
             java.io.FileOutputStream(f, true).use {
                 it.write(("[$stamp] $text\n").toByteArray())
             }
+            // 保留最近 30 条（按行数裁剪，参考原作者系统日志设计）
+            val lines = f.readText().lines()
+            if (lines.size > 120) {  // 每条可能多行（堆栈），30 条 ≈ 120 行
+                f.writeText(lines.takeLast(120).joinToString("\n"))
+            }
             // 同时镜像到外部应用目录：App 起不来时用文件管理器也能拿到
             runCatching {
                 val ext = context.getExternalFilesDir(null)

@@ -110,6 +110,10 @@ object StyleSettings {
     fun fontScale(context: Context) = p(context).getFloat("font_scale", 1f)
     fun setFontScale(context: Context, v: Float) { p(context).edit().putFloat("font_scale", v.coerceIn(0.8f, 1.4f)).apply(); bump(context) }
 
+    /** 聊天字体是否跟随系统字体大小设置（关 = 固定不做系统缩放）。 */
+    fun fontFollowSystem(context: Context) = p(context).getBoolean("font_follow_system", true)
+    fun setFontFollowSystem(context: Context, v: Boolean) { p(context).edit().putBoolean("font_follow_system", v).apply(); bump(context) }
+
     /** 思维链字体大小比例 0.8~1.4。 */
     fun thinkingFontScale(context: Context) = p(context).getFloat("think_font_scale", 1f)
     fun setThinkingFontScale(context: Context, v: Float) { p(context).edit().putFloat("think_font_scale", v.coerceIn(0.8f, 1.4f)).apply(); bump(context) }

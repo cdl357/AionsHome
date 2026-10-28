@@ -198,6 +198,9 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
                 StyleSettings.setThinkingFontScale(context, v / 100f)
             }
             Percent(StyleSettings.thinkingFontScale(context))
+            SwitchRow("字体跟随系统", "聊天字号自动响应系统字体大小设置", StyleSettings.fontFollowSystem(context)) {
+                StyleSettings.setFontFollowSystem(context, it)
+            }
         }
 
         // ══════ 插图素材 ══════
