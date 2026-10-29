@@ -161,13 +161,18 @@ fun MomentsScreen() {
         }
     }.getOrNull()
 
+    // 防旧协程反超：连续 reload 时，只有最新一轮有权写回界面
+    val reloadVersion = remember { java.util.concurrent.atomic.AtomicInteger(0) }
+
     fun reload() {
+        val myRun = reloadVersion.incrementAndGet()
         scope.launch(Dispatchers.IO) {
             // ① 缓存先行：页面一打开就看到上次的动态（不等网络）
             if (feed.isEmpty()) {
                 val cached = readCache()
                 if (!cached.isNullOrEmpty()) {
                     main.post {
+                        if (reloadVersion.get() != myRun) return@post
                         feed.clear()
                         feed.addAll(cached)
                     }
@@ -196,6 +201,7 @@ fun MomentsScreen() {
             if (remote == null) {
                 // 网络 / 权限 / 解析失败分种提示；保留现有内容（含缓存），可重试
                 main.post {
+                    if (reloadVersion.get() != myRun) return@post
                     cloudError.value = kind ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
                     isRefreshing.value = false
                 }
@@ -249,6 +255,7 @@ fun MomentsScreen() {
             val all = (merged + localOnly).sortedByDescending { it.createdAt }
             writeCache(all)
             main.post {
+                if (reloadVersion.get() != myRun) return@post
                 cloudError.value = null
                 feed.clear()
                 feed.addAll(all)
@@ -527,51 +534,62 @@ fun MomentsScreen() {
                 moment = moment,
                 commentOpen = commentTarget.value == moment.id,
                 onToggleLike = {
-                    val liked = HomecomingMomentsStore.toggleLike(context, moment.id, "user")
-                    // 乐观更新：立刻在界面上反映，不等网络刷新
+                    // 乐观更新：主线程只翻转本地状态，落库挪到 IO 线程
                     val idx = feed.indexOfFirst { it.id == moment.id }
+                    var liked = false
                     if (idx >= 0) {
                         val m = feed[idx]
+                        liked = "user" !in m.likes
                         feed[idx] = m.copy(
                             likes = if (liked) (m.likes + "user").distinct() else m.likes - "user"
                         )
                     }
-                    // 云端动态的赞同步写回 yuri_liked（赞/取消都回写；best-effort）
-                    if (moment.remoteId != null) {
-                        scope.launch(Dispatchers.IO) {
+                    scope.launch(Dispatchers.IO) {
+                        val real = runCatching {
+                            HomecomingMomentsStore.toggleLike(context, moment.id, "user")
+                        }.getOrDefault(liked)
+                        // 云端动态的赞同步写回 yuri_liked（赞/取消都回写；best-effort）
+                        if (moment.remoteId != null) {
                             runCatching {
-                                com.aion.chat.compose.data.XinchaoClient.likeMomentViaXinchao(moment.remoteId, liked)
+                                com.aion.chat.compose.data.XinchaoClient.likeMomentViaXinchao(moment.remoteId, real)
                             }
                         }
+                        if (real) askSeanReply(moment.id, moment.content, "")
+                        // 落库完成后再对一次真值（不阻塞界面）
+                        reload()
                     }
-                    if (liked) askSeanReply(moment.id, moment.content, "")
-                    // 后台再对一次真值（不阻塞界面）
-                    reload()
                 },
                 onComment = {
                     commentTarget.value =
                         if (commentTarget.value == moment.id) null else moment.id
                 },
                 onSendComment = { text ->
-                    if (HomecomingMomentsStore.addComment(context, moment.id, "user", text)) {
-                        commentTarget.value = null
-                        reload()
+                    // 落库挪 IO 线程：写成功才收起输入框并触发后续动作
+                    scope.launch(Dispatchers.IO) {
+                        val ok = runCatching {
+                            HomecomingMomentsStore.addComment(context, moment.id, "user", text)
+                        }.getOrDefault(false)
+                        if (!ok) return@launch
                         // 评论同步到 moment_comments（尽力而为，失败已存本地）
                         if (moment.remoteId != null) {
-                            scope.launch(Dispatchers.IO) {
-                                runCatching {
-                                    com.aion.chat.compose.data.SupabaseMomentsStore.postComment(
-                                        moment.remoteId, "yuri", text
-                                    )
-                                }
+                            runCatching {
+                                com.aion.chat.compose.data.SupabaseMomentsStore.postComment(
+                                    moment.remoteId, "yuri", text
+                                )
                             }
                         }
                         askSeanReply(moment.id, moment.content, text)
+                        main.post {
+                            commentTarget.value = null
+                            reload()
+                        }
                     }
                 },
                 onDeleteComment = { cid ->
-                    HomecomingMomentsStore.deleteComment(context, cid)
-                    reload()
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { HomecomingMomentsStore.deleteComment(context, cid) }
+                        main.post { reload() }
+                    }
                 },
                 onDeleteMoment = {
                     scope.launch(Dispatchers.IO) {

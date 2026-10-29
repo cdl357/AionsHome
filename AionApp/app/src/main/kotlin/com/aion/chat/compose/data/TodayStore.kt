@@ -46,7 +46,7 @@ object TodayStore {
 
     /** 时间倒序取全部（分页留给以后）。首访空表时种一批假数据。 */
     fun list(context: Context): List<TodayEntry> = runCatching {
-        val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
         ensure(db)
         val out = mutableListOf<TodayEntry>()
         db.rawQuery(

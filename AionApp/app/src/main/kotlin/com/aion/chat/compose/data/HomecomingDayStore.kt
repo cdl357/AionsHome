@@ -15,7 +15,7 @@ import java.time.LocalDate
 object HomecomingDayStore {
 
     private fun db(context: Context): SQLiteDatabase =
-        com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
 
     private fun ensure(db: SQLiteDatabase) {
         db.execSQL(

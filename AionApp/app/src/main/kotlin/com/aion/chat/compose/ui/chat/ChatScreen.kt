@@ -1369,15 +1369,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     // ── 聊天记录搜索 ──
     if (showSearch.value) {
         val q = remember { mutableStateOf("") }
-        val results = remember(q.value) {
+        val results = remember { mutableStateOf(emptyList<HomecomingChatRepository.Message>()) }
+        // 防抖 300ms 再去 IO 线程查：每敲一个字符同步查 500 条会卡主线程
+        LaunchedEffect(q.value) {
             val key = q.value.trim()
-            val w = wiring
-            if (key.isEmpty() || w == null) emptyList()
-            else runCatching {
-                w.listMessages(HomecomingChatWiring.TIMELINE, 500)
-                    .filter { it.text.contains(key) }
-                    .take(30)
-            }.getOrDefault(emptyList())
+            if (key.isEmpty()) {
+                results.value = emptyList()
+                return@LaunchedEffect
+            }
+            kotlinx.coroutines.delay(300)
+            val w = wiring ?: return@LaunchedEffect
+            results.value = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching {
+                    w.listMessages(HomecomingChatWiring.TIMELINE, 500)
+                        .filter { it.text.contains(key) }
+                        .take(30)
+                }.getOrDefault(emptyList())
+            }
         }
         AlertDialog(
             onDismissRequest = { showSearch.value = false },
@@ -1393,7 +1401,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     )
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                        items(results, key = { it.id }) { m ->
+                        items(results.value, key = { it.id }) { m ->
                             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                                 Text(
                                     if (m.role == "user") "你" else "Sean",
@@ -1408,7 +1416,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 )
                             }
                         }
-                        if (results.isEmpty() && q.value.isNotBlank()) {
+                        if (results.value.isEmpty() && q.value.isNotBlank()) {
                             item {
                                 Text(
                                     "没找到",

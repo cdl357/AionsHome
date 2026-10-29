@@ -92,7 +92,7 @@ object ReadingStore {
     fun deleteBook(context: Context, bookId: String): Boolean = try {
         File(booksDir(context), bookId + ".txt").delete()
         saveBooks(context, listBooks(context).filter { it.id != bookId })
-        val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
         db.execSQL("DELETE FROM reading_comment_local WHERE book_id = ?", arrayOf(bookId))
         db.close()
         true
@@ -110,7 +110,7 @@ object ReadingStore {
     }
 
     fun comments(context: Context, bookId: String, paraKey: String): List<Comment> = try {
-        val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
         ensure(db)
         val out = mutableListOf<Comment>()
         val cur = db.rawQuery(
@@ -126,7 +126,7 @@ object ReadingStore {
     } catch (e: Exception) { emptyList() }
 
     fun addComment(context: Context, bookId: String, paraKey: String, author: String, content: String): Boolean = try {
-        val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
         ensure(db)
         db.execSQL(
             "INSERT INTO reading_comment_local(book_id, para_key, author, content, created_at) VALUES(?,?,?,?,?)",

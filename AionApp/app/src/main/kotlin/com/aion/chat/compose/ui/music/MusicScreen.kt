@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -158,6 +160,7 @@ fun MusicScreen(onBack: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 112.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -453,8 +456,8 @@ fun MusicScreen(onBack: () -> Unit = {}) {
         searchError.value?.let {
             Text(it, fontSize = 12.sp, color = HomecomingColors.Danger, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), textAlign = TextAlign.Center)
         }
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(results, key = { it.id }) { song ->
+        Column(modifier = Modifier.fillMaxWidth()) {
+            results.forEach { song ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier

@@ -152,7 +152,7 @@ object CommandStore {
 
     fun ensureIssuerKnowledge(context: Context) {
         runCatching {
-            val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+            val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
             db.rawQuery(
                 "SELECT payload_json FROM identity_snapshot WHERE identity_id='identity'", null
             ).use { c ->

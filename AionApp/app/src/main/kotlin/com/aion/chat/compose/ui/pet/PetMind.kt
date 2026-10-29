@@ -27,9 +27,11 @@ object PetMind {
     private val _state = MutableStateFlow(Mind("idle", false, "duty"))
     val state: StateFlow<Mind> = _state
 
-    /** 拉一次心潮并更新动作；失败静默保持上一个（文档：不要闪回 idle）。 */
+    /** 拉一次心潮并更新动作；失败静默保持上一个（文档：不要闪回 idle）。网络必须离开主线程。 */
     suspend fun refresh() {
-        val st = runCatching { XinchaoClient.fetchState() }.getOrNull() ?: return
+        val st = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { XinchaoClient.fetchState() }.getOrNull()
+        } ?: return
         _state.value = map(st)
     }
 

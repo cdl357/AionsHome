@@ -12,7 +12,7 @@ import java.io.File
 object HomecomingAlbumStore {
 
     private fun db(context: Context) =
-        com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
 
     private fun ensure(db: android.database.sqlite.SQLiteDatabase) {
         db.execSQL(

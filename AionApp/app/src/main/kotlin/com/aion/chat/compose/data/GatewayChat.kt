@@ -174,11 +174,32 @@ object GatewayChat {
                                     observer.onCorrected(ev.content)
                                 }
                             }
-                            is GatewayEvent.Retry -> observer.onNotice("被限流了，稍等（第 ${ev.attempt} 次）…")
+                            is GatewayEvent.Retry -> {
+                                // 服务端重试＝从零重生成：已收的半截内容作废，不然新旧两段会拼在一起
+                                if (textSb.isNotEmpty() || thinkSb.isNotEmpty() || assistantDone != null) {
+                                    textSb.setLength(0); thinkSb.setLength(0)
+                                    assistantDone = null
+                                    observer.onCorrected("")
+                                }
+                                observer.onNotice("被限流了，稍等（第 ${ev.attempt} 次）…")
+                            }
                             GatewayEvent.Compact -> observer.onNotice("他整理了一次记忆")
                             is GatewayEvent.Error -> {
                                 finished = true
-                                observer.onFailure(ev.message.ifBlank { "gateway_error" })
+                                // 出错也保住已收到的部分，不让已经打的字凭空消失
+                                val partial = (assistantDone ?: textSb.toString())
+                                if (partial.isNotBlank()) {
+                                    runCatching {
+                                        repo.commitAssistantMessage(
+                                            requestId, chatId, responderOwnerId,
+                                            partial, System.currentTimeMillis()
+                                        )
+                                        if (thinkSb.isNotBlank()) ThinkingStore.save(context, requestId, thinkSb.toString())
+                                    }
+                                    observer.onComplete(partial, thinkSb.toString())
+                                } else {
+                                    observer.onFailure(ev.message.ifBlank { "gateway_error" })
+                                }
                             }
                             GatewayEvent.Result -> {
                                 finished = true
@@ -273,7 +294,7 @@ object ThinkingStore {
 
     fun save(context: android.content.Context, requestId: String, thinking: String) {
         runCatching {
-            val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+            val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
             ensure(db)
             db.execSQL(
                 "INSERT OR REPLACE INTO message_thinking(request_id, thinking, created_at) VALUES(?,?,?)",
@@ -283,7 +304,7 @@ object ThinkingStore {
     }
 
     fun get(context: android.content.Context, requestId: String): String = runCatching {
-        val db = com.aion.chat.homecoming.HomecomingDatabase(context).readableDatabase
+        val db = com.aion.chat.homecoming.HomecomingDatabase.sharedReadable(context)
         ensure(db)
         db.rawQuery(
             "SELECT thinking FROM message_thinking WHERE request_id=?",

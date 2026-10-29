@@ -43,7 +43,7 @@ object HomecomingData {
     fun loadRecent(context: Context): List<FeedItem> {
         val items = mutableListOf<FeedItem>()
         try {
-            val db = com.aion.chat.homecoming.HomecomingDatabase(context).readableDatabase
+            val db = com.aion.chat.homecoming.HomecomingDatabase.sharedReadable(context)
             val msgCur = db.rawQuery(
                 "SELECT role, text_content, created_at FROM chat_message " +
                     "WHERE role IN ('user','assistant') ORDER BY created_at DESC LIMIT 3",
@@ -104,7 +104,7 @@ object HomecomingData {
     /** 顶部情话：优先读本地 home_quote 表（用户/后台改过的），没存过返回默认轮换句。 */
     fun loadQuote(context: Context): String {
         return try {
-            val db = com.aion.chat.homecoming.HomecomingDatabase(context).readableDatabase
+            val db = com.aion.chat.homecoming.HomecomingDatabase.sharedReadable(context)
             db.execSQL("CREATE TABLE IF NOT EXISTS home_quote(id INTEGER PRIMARY KEY, content TEXT NOT NULL)")
             val cur = db.rawQuery("SELECT content FROM home_quote WHERE id = 1", null)
             val saved = if (cur.moveToFirst()) cur.getString(0) else null
@@ -119,7 +119,7 @@ object HomecomingData {
     /** 保存顶部情话到本地；远程 Supabase 同步由 SupabaseQuoteSync 负责。 */
     fun saveQuote(context: Context, content: String): Boolean {
         return try {
-            val db = com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+            val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
             db.execSQL("CREATE TABLE IF NOT EXISTS home_quote(id INTEGER PRIMARY KEY, content TEXT NOT NULL)")
             db.execSQL("INSERT OR REPLACE INTO home_quote(id, content) VALUES(1, ?)", arrayOf(content))
             db.close()

@@ -143,6 +143,32 @@ public final class HomecomingDatabase extends SQLiteOpenHelper {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
     }
 
+    // 进程内共享一个连接：各 Store 每次调用都 new 一个 helper 会把句柄越攒越多
+    private static volatile HomecomingDatabase shared;
+    private static final Object SHARED_LOCK = new Object();
+
+    public static SQLiteDatabase sharedWritable(Context context) {
+        return shared(context).getWritableDatabase();
+    }
+
+    public static SQLiteDatabase sharedReadable(Context context) {
+        return shared(context).getReadableDatabase();
+    }
+
+    private static HomecomingDatabase shared(Context context) {
+        HomecomingDatabase helper = shared;
+        if (helper == null) {
+            synchronized (SHARED_LOCK) {
+                helper = shared;
+                if (helper == null) {
+                    helper = new HomecomingDatabase(context.getApplicationContext());
+                    shared = helper;
+                }
+            }
+        }
+        return helper;
+    }
+
     @Override
     public void onCreate(SQLiteDatabase database) {
         for (String statement : SNAPSHOT_SQL) {

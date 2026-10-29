@@ -9,7 +9,7 @@ object ReminderStore {
     data class Reminder(val id: Long, val triggerAt: Long, val content: String)
 
     private fun db(context: Context) =
-        com.aion.chat.homecoming.HomecomingDatabase(context).writableDatabase
+        com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
 
     private fun ensure(db: android.database.sqlite.SQLiteDatabase) {
         db.execSQL(

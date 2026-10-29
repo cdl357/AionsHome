@@ -137,7 +137,7 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
     val boardIds = remember { mutableStateOf(HashSet<String>()) }
     LaunchedEffect(Unit) {
         photos.clear()
-        photos.addAll(HomecomingAlbumStore.list(context))
+        photos.addAll(withContext(Dispatchers.IO) { HomecomingAlbumStore.list(context) })
         version.value++
         // ── 云端相册导入（album_photos）：没导过的行 6 路并行解码入库，导一张标记一张
         //    （中途退出不会重复导入；之前串行要一两分钟、标记只在全部结束时写，等不及退出就白导） ──
