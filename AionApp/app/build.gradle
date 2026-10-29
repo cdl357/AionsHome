@@ -4,6 +4,17 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+// ── 固定签名 ──
+// 从 AionApp/keystore.properties 读取（该文件不入库，见 keystore.properties.example）
+// debug 与 release 共用同一 keystore，覆盖安装不再要求先卸载
+// （签名不一致会报 INSTALL_FAILED_UPDATE_INCOMPATIBLE）。
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+def hasKeystore = keystorePropsFile.exists()
+if (hasKeystore) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace 'com.aion.chat'
     compileSdk 36
@@ -16,10 +27,27 @@ android {
         versionName "0.3.76"
     }
 
+    signingConfigs {
+        aion {
+            if (hasKeystore) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (hasKeystore) {
+                signingConfig signingConfigs.aion
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig hasKeystore ? signingConfigs.aion : signingConfigs.debug
         }
     }
 

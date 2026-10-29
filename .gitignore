@@ -166,3 +166,6 @@ docs/superpowers/specs/2026-07-29-seven-day-data-backup-design.md
 
 # ── 临时迁移脚本 ──
 AionApp/*.mjs
+
+# 签名配置文件（含密码，不入库）
+AionApp/keystore.properties
