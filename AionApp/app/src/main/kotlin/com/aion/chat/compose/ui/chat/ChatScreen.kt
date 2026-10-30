@@ -50,10 +50,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Palette
@@ -106,6 +108,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -262,6 +265,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val pendingImages = remember { mutableStateListOf<Pair<String, String>>() }  // (dataUrl, path)
     var viewerPaths by remember { mutableStateOf<List<String>>(emptyList()) }
     var viewerIndex by remember { mutableStateOf(0) }
+    // 视频消息：抽帧给他看，气泡可点播
+    var pendingVideo by remember { mutableStateOf<VideoDraft?>(null) }
+    var playerVideo by remember { mutableStateOf<String?>(null) }
     // 图片消息的本地文件（气泡渲染真图/表情用），发送完成后挂到消息 id 上
     val pendingImagePath = remember { mutableStateOf("") }
     val showStickerPanel = remember { mutableStateOf(false) }
@@ -350,8 +356,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
 
     fun send(forcedText: String? = null, promptPrefix: String? = null, preSong: com.aion.chat.compose.data.MusicClient.Song? = null) {
         val text = (forcedText ?: input.value).trim()
-        val image = pendingImage.value.ifBlank { pendingImages.firstOrNull()?.first ?: "" }
-        val imagePath = pendingImagePath.value.ifBlank { pendingImages.firstOrNull()?.second ?: "" }
+        // 视频优先：抽帧给他看，气泡播本地 mp4
+        val pv = pendingVideo
+        val image = pv?.frames?.firstOrNull()
+            ?: pendingImage.value.ifBlank { pendingImages.firstOrNull()?.first ?: "" }
+        val imagePath = pv?.path
+            ?: pendingImagePath.value.ifBlank { pendingImages.firstOrNull()?.second ?: "" }
+        val extraImagesForModel = pv?.frames?.drop(1) ?: emptyList()
         val extraImagePaths = pendingImages.drop(1).map { it.second }
         if (text.isEmpty() && image.isEmpty()) return
         val w = wiring ?: return
@@ -369,6 +380,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         input.value = ""
         pendingImage.value = ""
         pendingImagePath.value = ""
+        pendingVideo = null
         val imagesForBubble = listOf(imagePath) + extraImagePaths
         pendingImages.clear()
         // ── AI 点歌（教程 §13）：说想听歌 → 搜真歌+验证 → Sean 知道结果 → 聊天里生成真实播放卡 ──
@@ -411,12 +423,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         // ── 网关 SSE 后端（开关打开时走这里；旧中转站分支原样保留在后面） ──
         if (useGateway) {
             val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
-            val prefix = listOfNotNull(promptPrefix, cmdFeedback?.let { "[$it]" })
+            val videoNote = pv?.let {
+                "（Yuri 发来一段视频，约 ${it.durationMs / 1000} 秒。images 里是按时间顺序抽的 ${it.frames.size} 帧，请当作看过这段视频来回应她。）"
+            }
+            val prefix = listOfNotNull(promptPrefix, cmdFeedback?.let { "[$it]" }, videoNote)
                 .joinToString("\n").ifBlank { null }
             val prompt = if (prefix != null) prefix + "\n" + text else text
             val acc = StringBuilder()
             com.aion.chat.compose.data.GatewayChat.send(
-                HomecomingChatWiring.TIMELINE, requestId, text, prompt, image, context, w.chats,
+                HomecomingChatWiring.TIMELINE, requestId, text, prompt, image, extraImagesForModel, context, w.chats,
                 HomecomingChatWiring.RESPONDER,
                 object : com.aion.chat.compose.data.GatewayChat.Observer {
                     override fun onThinking(delta: String) {
@@ -733,6 +748,61 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // ── 视频选择：本地存 mp4，抽 6 帧按时间顺序发给他看（任何多模态模型都看得懂帧序列） ──
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                val draft = runCatching {
+                    val dir = java.io.File(context.filesDir, "chat_videos").apply { mkdirs() }
+                    val base = "vid_" + System.currentTimeMillis()
+                    val dst = java.io.File(dir, "$base.mp4")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        dst.outputStream().use { input.copyTo(it) }
+                    } ?: return@runCatching null
+                    if (dst.length() > 200L * 1024 * 1024) { dst.delete(); return@runCatching null }
+                    val r = android.media.MediaMetadataRetriever()
+                    val frames = mutableListOf<String>()
+                    var thumbPath = ""
+                    var durMs = 0L
+                    try {
+                        r.setDataSource(dst.absolutePath)
+                        durMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            ?.toLongOrNull() ?: 0L
+                        // 封面：10% 处一帧，气泡显示用
+                        r.getFrameAtTime(durMs / 10, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { cover ->
+                            val t = java.io.File(dir, "${base}_thumb.jpg")
+                            t.outputStream().use { scaledBitmap(cover, 720).compress(Bitmap.CompressFormat.JPEG, 85, it) }
+                            cover.recycle()
+                            thumbPath = t.absolutePath
+                        }
+                        // 6 帧：每段中点抽一帧，长边压 768
+                        val n = 6
+                        (0 until n).forEach { i ->
+                            val atUs = durMs * 1000L * (i * 2 + 1) / (n * 2)
+                            val f = r.getFrameAtTime(atUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                                ?: return@forEach
+                            val out = ByteArrayOutputStream()
+                            scaledBitmap(f, 768).compress(Bitmap.CompressFormat.JPEG, 78, out)
+                            f.recycle()
+                            frames.add("data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
+                        }
+                    } finally {
+                        r.release()
+                    }
+                    if (frames.isEmpty()) null else VideoDraft(dst.absolutePath, thumbPath, durMs, frames)
+                }.getOrNull()
+                main.post {
+                    if (draft == null) {
+                        Toast.makeText(context, "这个视频读不出来（大小/编码可能不支持）", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingVideo = draft
+                        plusOpen.value = false
+                    }
+                }
+            }
+        }
+    }
+
     // ── 分条冒泡动画：全量段落陆续上屏，冒完读库对齐 ──
     LaunchedEffect(pendingSegments.toList()) {
         if (pendingSegments.isEmpty()) return@LaunchedEffect
@@ -985,14 +1055,19 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             }
                         }
                         if (msg.role == "user") {
-                            val imgPaths = remember(msg.id) {
+                            val mediaPaths = remember(msg.id) {
                                 if (msg.attachmentKind == "image") {
                                     com.aion.chat.compose.data.HomecomingChatImageStore.pathsFor(context, msg.id)
                                 } else emptyList()
                             }
+                            // 视频（.mp4）单独渲染成可点播的气泡，图片走原样
+                            val videoPaths = mediaPaths.filter { it.endsWith(".mp4", true) }
+                            val imgPaths = mediaPaths.filter { !it.endsWith(".mp4", true) }
                             UserBubbles(
-                                text = msg.text, imagePaths = imgPaths, skin = skin.value, alpha = bubbleAlpha.value,
+                                text = msg.text, imagePaths = imgPaths, videoPaths = videoPaths,
+                                skin = skin.value, alpha = bubbleAlpha.value,
                                 timeMs = msg.createdAt,
+                                onPlayVideo = { p -> playerVideo = p },
                                 onViewImage = { idx -> viewerPaths = imgPaths; viewerIndex = idx }
                             )
                         } else {
@@ -1238,6 +1313,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                         )
                                     }),
+                                    Triple(Icons.Outlined.Movie, "视频", {
+                                        plusOpen.value = false
+                                        videoPicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                        )
+                                    }),
                                     Triple(Icons.Outlined.PhotoCamera, "拍照", {
                                         plusOpen.value = false
                                         takePhoto()
@@ -1304,6 +1385,68 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 )
                             }
                         }
+                    }
+                }
+                // 待发视频 chip：封面 + 时长 + 可撤
+                pendingVideo?.let { pv ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, end = 14.dp, bottom = 6.dp)
+                    ) {
+                        Box {
+                            val thumb = remember(pv.thumbPath) {
+                                if (pv.thumbPath.isBlank()) null
+                                else decodeChatImage(java.io.File(pv.thumbPath), 192)
+                            }
+                            if (thumb != null) {
+                                Image(
+                                    bitmap = thumb.asImageBitmap(),
+                                    contentDescription = "待发视频",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .border(1.dp, HomecomingColors.Accent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(HomecomingColors.InkSoft.copy(alpha = 0.2f))
+                                )
+                            }
+                            Icon(
+                                Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(22.dp)
+                                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            )
+                            Text(
+                                "%d:%02d".format(pv.durationMs / 60000, (pv.durationMs / 1000) % 60),
+                                fontSize = 9.sp, color = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(3.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 3.dp)
+                            )
+                            Text(
+                                "✕", fontSize = 11.sp, color = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(18.dp)
+                                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                                    .clickable { pendingVideo = null }
+                            )
+                        }
+                        Text(
+                            "视频 · 他会一帧帧看",
+                            fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                            modifier = Modifier.padding(start = 8.dp).align(Alignment.CenterVertically)
+                        )
                     }
                 }
 
@@ -1458,6 +1601,40 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             onIndex = { viewerIndex = it },
             onClose = { viewerPaths = emptyList(); viewerIndex = 0 }
         )
+    }
+
+    // ── 视频播放（她发的视频，点气泡弹出） ──
+    playerVideo?.let { vp ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { playerVideo = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .clickable { playerVideo = null }
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        android.widget.VideoView(ctx).apply {
+                            setVideoPath(vp)
+                            setOnPreparedListener { mp -> mp.isLooping = true; mp.start() }
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.Center).fillMaxSize()
+                )
+                Text(
+                    "✕", color = Color.White, fontSize = 18.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(18.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .padding(6.dp)
+                        .clickable { playerVideo = null }
+                )
+            }
+        }
     }
 
     // ── 聊天设置抽屉：气泡不透明度 + 聊天背景（从主设置搬来） ──
@@ -1650,9 +1827,11 @@ private fun userStyle(skin: Int, alpha: Float): UserStyle = when (skin) {
 fun UserBubbles(
     text: String,
     imagePaths: List<String>,
+    videoPaths: List<String> = emptyList(),
     skin: Int,
     alpha: Float = 1f,
     timeMs: Long = 0L,
+    onPlayVideo: (String) -> Unit = {},
     onViewImage: (Int) -> Unit = {},
 ) {
     val segments = splitBubbles(text)
@@ -1662,6 +1841,10 @@ fun UserBubbles(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.End
     ) {
+        // 视频气泡（她发的视频）：封面 + 时长 + 点按播放
+        videoPaths.forEach { vp ->
+            VideoBubble(path = vp, onPlay = { onPlayVideo(vp) })
+        }
         if (imagePaths.isNotEmpty()) {
             // 多图堆叠卡（原作者 chat-image-group 的 Compose 版）：>1 张折叠成扇形堆，点一下展开
             var stackExpanded by remember(imagePaths) { mutableStateOf(imagePaths.size == 1) }
@@ -1919,6 +2102,88 @@ private fun timeText(ms: Long): String =
     java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 
+
+// ── 视频消息（她发视频 → 抽帧给他看 + 本地可回放） ──
+
+/** 待发视频：本地 mp4 + 封面 + 给模型看的按序抽帧。 */
+private data class VideoDraft(
+    val path: String,        // chat_videos/vid_x.mp4（气泡按 .mp4 识别成视频）
+    val thumbPath: String,   // 封面 jpg（命名约定：去掉 .mp4 加 _thumb.jpg）
+    val durationMs: Long,
+    val frames: List<String> // dataUrl，按时间顺序
+)
+
+/** 抽帧/封面通用：等比压到长边 maxEdge 内。 */
+private fun scaledBitmap(bmp: Bitmap, maxEdge: Int): Bitmap {
+    val w = bmp.width
+    val h = bmp.height
+    if (w <= 0 || h <= 0) return bmp
+    val s = maxEdge.toFloat() / maxOf(w, h)
+    if (s >= 1f) return bmp
+    return Bitmap.createScaledBitmap(bmp, (w * s).toInt().coerceAtLeast(1), (h * s).toInt().coerceAtLeast(1), true)
+}
+
+/** 气泡显示用：读视频时长（秒）；读不出回落 0（不显示时长）。 */
+private fun videoDurationSec(path: String): Int = runCatching {
+    val r = android.media.MediaMetadataRetriever()
+    try {
+        r.setDataSource(path)
+        ((r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000L).toInt()
+    } finally {
+        r.release()
+    }
+}.getOrDefault(0)
+
+/** 视频气泡：封面 + 中央播放键 + 右下时长，点按弹出播放。 */
+@Composable
+private fun VideoBubble(path: String, onPlay: () -> Unit) {
+    val thumb = remember(path) {
+        runCatching { decodeChatImage(java.io.File(path.removeSuffix(".mp4") + "_thumb.jpg"), 512) }.getOrNull()
+    }
+    val durSec = remember(path) { videoDurationSec(path) }
+    Box(
+        modifier = Modifier
+            .padding(end = 10.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onPlay() }
+    ) {
+        if (thumb != null) {
+            Image(
+                bitmap = thumb.asImageBitmap(),
+                contentDescription = "视频",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.width(180.dp).height(240.dp)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .width(180.dp)
+                    .height(240.dp)
+                    .background(HomecomingColors.InkSoft.copy(alpha = 0.2f))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(44.dp)
+                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = "播放", tint = Color.White, modifier = Modifier.size(28.dp))
+        }
+        if (durSec > 0) {
+            Text(
+                "%d:%02d".format(durSec / 60, durSec % 60),
+                fontSize = 10.sp, color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            )
+        }
+    }
+}
 
 /** 聊天图片落盘：sticker=true 存表情包库（压到 ~256px），否则存聊天图片（~1024px）。失败返回空串。 */
 private fun saveChatImage(context: android.content.Context, bytes: ByteArray, sticker: Boolean): String = runCatching {

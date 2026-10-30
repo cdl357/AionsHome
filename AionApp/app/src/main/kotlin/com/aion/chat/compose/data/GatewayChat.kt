@@ -105,6 +105,7 @@ object GatewayChat {
         displayText: String,
         promptText: String,
         imageDataUrl: String,
+        extraImages: List<String>,
         context: android.content.Context,
         repo: com.aion.chat.homecoming.HomecomingChatRepository,
         responderOwnerId: String,
@@ -120,17 +121,21 @@ object GatewayChat {
             }
         }
         // ② 请求体 + call 在此同步建好并注册（stop 竞态修复）
+        //    多图/视频帧全部随 images 数组上送（原来只发第一张，其余只进气泡显示）
         val body = JSONObject().apply {
             put("chatId", chatId)
             put("text", promptText)
-            if (imageDataUrl.isNotBlank()) {
-                put(
-                    "images", JSONArray().put(
-                        JSONObject()
-                            .put("mediaType", imageDataUrl.substringAfter("data:").substringBefore(";base64").ifBlank { "image/jpeg" })
-                            .put("data", imageDataUrl.substringAfter(";base64,"))
-                    )
-                )
+            val allImages = (listOf(imageDataUrl) + extraImages).filter { it.isNotBlank() }
+            if (allImages.isNotEmpty()) {
+                put("images", JSONArray().apply {
+                    allImages.forEach { du ->
+                        put(
+                            JSONObject()
+                                .put("mediaType", du.substringAfter("data:").substringBefore(";base64").ifBlank { "image/jpeg" })
+                                .put("data", du.substringAfter(";base64,"))
+                        )
+                    }
+                })
             }
         }
         val call = client.newCall(
