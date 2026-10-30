@@ -327,9 +327,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             // 即时指令：扫他的新消息里的 <countdown> 标签（去重过的不会重复入药丸）
             com.aion.chat.compose.data.CommandStore.ensureIssuerKnowledge(context)
             com.aion.chat.compose.data.StudyRoomStore.ensureIssuerKnowledge(context)
+            com.aion.chat.compose.data.SeanAssetStore.ensureIssuerKnowledge(context)
             list.reversed().filter { it.role != "user" }.forEach {
                 com.aion.chat.compose.data.CommandStore.scanMessage(context, it.id, it.text)
                 com.aion.chat.compose.data.StudyRoomStore.scanMessage(context, it.id, it.text)
+                com.aion.chat.compose.data.SeanAssetStore.scanMessage(context, it.id, it.text)
             }
             main.post {
                 messages.clear()
@@ -840,7 +842,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         Spacer(Modifier.width(12.dp))
                         AvatarPhoto(who = "sean", initial = "S", size = 42.dp)
                     Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                        Text("Sean", fontSize = 16.sp, color = HomecomingColors.Ink)
+                        // 他改的备注名（<setname>）实时生效；没改过回落 Sean
+                        val seanRemark = remember(com.aion.chat.compose.data.SeanAssetStore.rev) {
+                            com.aion.chat.compose.data.SeanAssetStore.remark(context).ifBlank { "Sean" }
+                        }
+                        Text(seanRemark, fontSize = 16.sp, color = HomecomingColors.Ink)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -990,9 +996,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 onViewImage = { idx -> viewerPaths = imgPaths; viewerIndex = idx }
                             )
                         } else {
+                            // 他发表情包：消息文本里嵌的 <sticker>名</sticker> 解析成本地文件
+                            val seanSticker = remember(msg.id) {
+                                com.aion.chat.compose.data.SeanAssetStore.stickerFile(context, msg.text)
+                            }
                             val cleanText = remember(msg.id) {
-                                com.aion.chat.compose.data.StudyRoomStore.strip(
-                                    com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                                com.aion.chat.compose.data.SeanAssetStore.strip(
+                                    com.aion.chat.compose.data.StudyRoomStore.strip(
+                                        com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                                    )
                                 )
                             }
                             // 思考链（文档 4.1）：在气泡上方、弱样式、默认折叠、随消息持久化
@@ -1017,7 +1029,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     )
                                 }
                             }
-                            AssistantBubbles(text = cleanText, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt)
+                            AssistantBubbles(
+                                text = cleanText, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt,
+                                stickerPath = seanSticker?.absolutePath
+                            )
                         }
                     }
                     // 生成中：思维链（实时）+ 工具状态行 + 温和提示（网关后端）
@@ -1781,12 +1796,39 @@ private fun TgChatImage(
 
 /** Sean 气泡组（一条消息渲染为多条小气泡）。 */
 @Composable
-fun AssistantBubbles(text: String, skin: Int, alpha: Float = 1f, timeMs: Long = 0L) {
+fun AssistantBubbles(
+    text: String, skin: Int, alpha: Float = 1f, timeMs: Long = 0L,
+    stickerPath: String? = null
+) {
     val segments = splitBubbles(text)
     val timeText = if (timeMs > 0) timeText(timeMs) else ""
     Column(modifier = Modifier.fillMaxWidth()) {
-        segments.forEachIndexed { i, seg ->
-            AssistantBubbleSingle(text = seg, skin = skin, alpha = alpha, timeText = timeText, isLast = i == segments.lastIndex)
+        // 他发的表情包：无气泡边框大图（照 TG 表情的样式），文字为空就只发表情
+        if (stickerPath != null) {
+            val f = remember(stickerPath) { java.io.File(stickerPath) }
+            val bmp = remember(stickerPath) { f.takeIf { it.exists() }?.let { decodeChatImage(it, 256) } }
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "表情包",
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .heightIn(max = 132.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+            }
+        }
+        if (segments.isNotEmpty() || stickerPath == null) {
+            segments.forEachIndexed { i, seg ->
+                AssistantBubbleSingle(text = seg, skin = skin, alpha = alpha, timeText = timeText, isLast = i == segments.lastIndex)
+            }
+        } else if (timeText.isNotEmpty()) {
+            // 纯表情消息：时间戳单独一行小字
+            Text(
+                timeText,
+                fontSize = 9.sp, color = HomecomingColors.InkSoft,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 1.dp)
+            )
         }
     }
 }

@@ -40,6 +40,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -123,6 +125,8 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
     val photos = remember { mutableStateListOf<HomecomingAlbumStore.AlbumPhoto>() }
     val version = remember { mutableStateOf(0L) }
     val boardMode = remember { mutableStateOf(true) }
+    // 素材库：她存图进来，Sean 有权限调用（换壁纸/聊天背景/头像、发表情包）
+    val libMode = remember { mutableStateOf(false) }
 
     // ── 拖动布置：key -> (xf, yf)，持久化到 prefs ──
     val boardPrefs = remember {
@@ -268,11 +272,29 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
                 Text("相册", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
                 Text(
-                    if (boardMode.value) "毛毡板 · 长按照片和小猫可以挪 · 点黑猫看整本"
-                    else "整本相册 · 点黑猫回毛毡板",
+                    when {
+                        libMode.value -> "素材库 · 他能换壁纸/聊天背景/头像 · 能发表情包"
+                        boardMode.value -> "毛毡板 · 长按照片和小猫可以挪 · 点黑猫看整本"
+                        else -> "整本相册 · 点黑猫回毛毡板"
+                    },
                     fontSize = 11.sp, color = HomecomingColors.InkSoft
                 )
             }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (libMode.value) HomecomingColors.Accent else HomecomingColors.Accent.copy(alpha = 0.12f))
+                    .clickable { libMode.value = !libMode.value }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "素材库",
+                    fontSize = 13.sp,
+                    color = if (libMode.value) Color.White else HomecomingColors.Accent
+                )
+            }
+            if (!libMode.value) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
@@ -290,11 +312,14 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                     Text("存照片", fontSize = 13.sp, color = Color.White, modifier = Modifier.padding(start = 4.dp))
                 }
             }
+            }
         }
 
-        // ── 内容：毛毡板 / 整本网格 ──
+        // ── 内容：素材库 / 毛毡板 / 整本网格 ──
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (boardMode.value) {
+            if (libMode.value) {
+                SeanAssetLibraryPanel()
+            } else if (boardMode.value) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1049,4 +1074,281 @@ private fun decodeSampled(f: File, maxEdge: Int): Bitmap? {
     val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
     while (maxDim / (sample * 2) >= maxEdge) sample *= 2
     return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+// ── 素材库：相册里专开的一本，Yuri 存图进来，Sean 有权限调用 ──
+// 他能：<setwall>/<setchatbg>/<setavatar>/<setname> 换外观，<sticker>名 发表情包（见 SeanAssetStore）
+
+@Composable
+private fun SeanAssetLibraryPanel() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val rev = com.aion.chat.compose.data.SeanAssetStore.rev
+    val assets = remember(rev) { com.aion.chat.compose.data.SeanAssetStore.list(context) }
+    var pendingBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var actionFor by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
+    var renaming by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
+    var renameDraft by remember { mutableStateOf("") }
+
+    val libPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                val bytes = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { pendingBytes = bytes }
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            Text(
+                "她存图进来，他自己会挑着用 · 点图可设用途",
+                fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(HomecomingColors.Accent)
+                    .clickable {
+                        libPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Add, contentDescription = "存图", tint = Color.White, modifier = Modifier.size(14.dp))
+                    Text("存图", fontSize = 12.sp, color = Color.White, modifier = Modifier.padding(start = 3.dp))
+                }
+            }
+        }
+        if (assets.isEmpty()) {
+            Text(
+                "素材库还是空的\n存几张图进来：他就能自己换壁纸、换聊天背景、换头像、发表情包",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 46.dp, horizontal = 30.dp)
+            )
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                com.aion.chat.compose.data.SeanAssetStore.Kind.ALL.forEach { kind ->
+                    val group = assets.filter { it.kind == kind }
+                    if (group.isNotEmpty()) {
+                        item(key = "sec_" + kind) {
+                            Text(
+                                com.aion.chat.compose.data.SeanAssetStore.Kind.zh(kind) + " · " + group.size,
+                                fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                                modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(group, key = { it.id }) { a ->
+                            AssetRow(asset = a, onOpen = { actionFor = a })
+                        }
+                    }
+                }
+                item { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+    }
+
+    // 选完图先归档：问用途
+    if (pendingBytes != null) {
+        AlertDialog(
+            onDismissRequest = { pendingBytes = null },
+            title = { Text("存进素材库 · 归到哪类？", fontSize = 16.sp, color = HomecomingColors.Ink) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        com.aion.chat.compose.data.SeanAssetStore.Kind.WALLPAPER,
+                        com.aion.chat.compose.data.SeanAssetStore.Kind.CHATBG,
+                        com.aion.chat.compose.data.SeanAssetStore.Kind.AVATAR,
+                        com.aion.chat.compose.data.SeanAssetStore.Kind.STICKER,
+                        com.aion.chat.compose.data.SeanAssetStore.Kind.MISC
+                    ).chunked(3).forEach { rowKinds ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rowKinds.forEach { k ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(HomecomingColors.Accent.copy(alpha = 0.12f))
+                                        .clickable {
+                                            val bytes = pendingBytes
+                                            pendingBytes = null
+                                            if (bytes != null) {
+                                                scope.launch(Dispatchers.IO) {
+                                                    com.aion.chat.compose.data.SeanAssetStore.add(context, k, bytes, "")
+                                                }
+                                            }
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        com.aion.chat.compose.data.SeanAssetStore.Kind.zh(k),
+                                        fontSize = 13.sp, color = HomecomingColors.Accent
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingBytes = null }) { Text("取消", color = HomecomingColors.InkSoft) }
+            }
+        )
+    }
+
+    // 单张素材的动作
+    actionFor?.let { a ->
+        fun applyTo(target: String) {
+            scope.launch(Dispatchers.IO) {
+                val ok = com.aion.chat.compose.data.SeanAssetStore.applyAs(context, a, target)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        if (ok) "已设为" + com.aion.chat.compose.data.SeanAssetStore.Kind.zh(target)
+                        else "没设成（图文件可能没了）",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            actionFor = null
+        }
+        AlertDialog(
+            onDismissRequest = { actionFor = null },
+            title = { Text(a.name, fontSize = 16.sp, color = HomecomingColors.Ink) },
+            text = {
+                Column {
+                    Text(
+                        com.aion.chat.compose.data.SeanAssetStore.Kind.zh(a.kind) + " · 他也能用这张",
+                        fontSize = 12.sp, color = HomecomingColors.InkSoft
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    listOf(
+                        "设为全局壁纸" to com.aion.chat.compose.data.SeanAssetStore.Kind.WALLPAPER,
+                        "设为聊天背景" to com.aion.chat.compose.data.SeanAssetStore.Kind.CHATBG,
+                        "设为他的头像" to com.aion.chat.compose.data.SeanAssetStore.Kind.AVATAR
+                    ).forEach { pair ->
+                        Text(
+                            pair.first,
+                            fontSize = 14.sp, color = HomecomingColors.Accent,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { applyTo(pair.second) }
+                                .padding(vertical = 10.dp)
+                        )
+                    }
+                    Text(
+                        "改名字",
+                        fontSize = 14.sp, color = HomecomingColors.Ink,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                renaming = a
+                                renameDraft = a.name
+                                actionFor = null
+                            }
+                            .padding(vertical = 10.dp)
+                    )
+                    Text(
+                        "删除",
+                        fontSize = 14.sp, color = HomecomingColors.Danger,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                com.aion.chat.compose.data.SeanAssetStore.delete(context, a.id)
+                                actionFor = null
+                            }
+                            .padding(vertical = 10.dp)
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { actionFor = null }) { Text("关闭", color = HomecomingColors.InkSoft) }
+            }
+        )
+    }
+
+    // 改名（Sean 按 <sticker>名字</sticker> 找表情，名字尽量好叫）
+    renaming?.let { a ->
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("改名字", fontSize = 16.sp, color = HomecomingColors.Ink) },
+            text = {
+                Column {
+                    Text(
+                        "他发表情包时按名字引用，名字尽量简短好叫",
+                        fontSize = 12.sp, color = HomecomingColors.InkSoft
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val n = renameDraft.trim()
+                    if (n.isNotEmpty()) com.aion.chat.compose.data.SeanAssetStore.rename(context, a.id, n)
+                    renaming = null
+                }) { Text("保存", color = HomecomingColors.Accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renaming = null }) { Text("取消", color = HomecomingColors.InkSoft) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AssetRow(asset: com.aion.chat.compose.data.SeanAssetStore.Asset, onOpen: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen() }
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+    ) {
+        val bmp = remember(asset.id, asset.path) {
+            runCatching { decodeSampled(File(asset.path), 128) }.getOrNull()
+        }
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = asset.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(10.dp))
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(HomecomingColors.InkSoft.copy(alpha = 0.15f))
+            )
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
+            Text(asset.name, fontSize = 14.sp, color = HomecomingColors.Ink, maxLines = 1)
+            Text(
+                com.aion.chat.compose.data.SeanAssetStore.Kind.zh(asset.kind) + " · 点按设定用途 / 删除",
+                fontSize = 11.sp, color = HomecomingColors.InkSoft
+            )
+        }
+    }
 }
