@@ -88,6 +88,8 @@ fun MomentsScreen() {
     val main = remember { Handler(Looper.getMainLooper()) }
 
     val feed = remember { mutableStateListOf<Moment>() }
+    // OOM 防护：全量 Column 渲染会把每条配图 bitmap 都持有在组合里，先只画 10 条
+    val visibleCount = remember { mutableStateOf(10) }
     val reloadKey = remember { mutableStateOf(0) }
     val coverVersion = remember { mutableStateOf(0L) }
     val cloudError = remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
@@ -529,7 +531,7 @@ fun MomentsScreen() {
                 textAlign = TextAlign.Center
             )
         }
-        feed.forEach { moment ->
+        feed.take(visibleCount.value).forEach { moment ->
             MomentCard(
                 moment = moment,
                 commentOpen = commentTarget.value == moment.id,
@@ -607,6 +609,19 @@ fun MomentsScreen() {
                     .padding(horizontal = 14.dp)
                     .height(0.5.dp)
                     .background(Color(0xFFEEEEEE))
+            )
+        }
+        // 展开更多：全量渲染会 OOM，分批放行
+        if (feed.size > visibleCount.value) {
+            Text(
+                "展开更多（还有 ${feed.size - visibleCount.value} 条）",
+                fontSize = 13.sp, color = Color(0xFF576B95),
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { visibleCount.value += 10 }
+                    .padding(vertical = 10.dp)
             )
         }
         Spacer(Modifier.height(60.dp))

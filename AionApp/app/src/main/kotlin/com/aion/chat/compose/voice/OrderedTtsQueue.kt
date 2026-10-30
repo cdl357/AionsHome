@@ -39,12 +39,17 @@ class OrderedTtsQueue(context: Context, private val onReady: () -> Unit) {
 
                     override fun onDone(utteranceId: String?) {
                         val gen = utteranceId?.substringBefore('|') ?: return
-                        if (gen in cancelledGenerations) return
+                        // cancelledGenerations 是主线程 cancelAll 可写的集合，onDone 回调
+                        // 现在从后台线程进来（engine.send 已挪后台），读必须在锁内
                         val done = synchronized(completed) {
-                            completed[gen] = (completed[gen] ?: 0) + 1
-                            val e = enqueued[gen]
-                            val c = completed[gen]
-                            e != null && c != null && c >= e
+                            if (gen in cancelledGenerations) {
+                                false
+                            } else {
+                                completed[gen] = (completed[gen] ?: 0) + 1
+                                val e = enqueued[gen]
+                                val c = completed[gen]
+                                e != null && c != null && c >= e
+                            }
                         }
                         if (done) onGenerationDone?.invoke(gen)
                     }

@@ -78,8 +78,10 @@ object MusicPlayer {
         if (current?.id == song.id && prepared) {
             if (mediaPlayer?.isPlaying == true) {
                 pause()
+            } else {
+                // 已暂停的同一首：续播而不是整首重播（原来直接 return，点了没反应）
+                resume()
             }
-            // 已暂停的同一首：续播而不是整首重播
             return
         }
         releasePlayer()
@@ -117,7 +119,6 @@ object MusicPlayer {
             prepared = false
             emit { it.copy(playing = false) }
             postEvent("finish", local)
-            appContext?.let { MusicNotification.cancel(it) }
             appContext?.let { MusicNotification.cancel(it) }
             val ctx = appContext
             if (ctx != null && queue.isNotEmpty()) playNext(ctx)   // 队列自动连播

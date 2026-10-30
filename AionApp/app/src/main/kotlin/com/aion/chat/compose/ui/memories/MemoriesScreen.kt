@@ -225,7 +225,7 @@ fun MemoriesScreen(onBack: () -> Unit = {}) {
                 TextButton(onClick = {
                     val text = draft.value.trim()
                     if (text.isEmpty()) return@TextButton
-                    scopeEdit(context, m.id, text, m.baseHash) { reloadKey.value++ }
+                    scopeEdit(context, m.id, text, m.keywords, m.baseHash) { reloadKey.value++ }
                     showEdit.value = null
                 }) { Text("保存", color = HomecomingColors.Accent) }
             },
@@ -299,11 +299,15 @@ private fun scopeAdd(context: android.content.Context, content: String, keywords
     }
 }
 
-private fun scopeEdit(context: android.content.Context, id: String, content: String, baseHash: String, done: () -> Unit) {
+private fun scopeEdit(
+    context: android.content.Context, id: String, content: String,
+    keywords: String, baseHash: String, done: () -> Unit
+) {
     kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
         try {
             val w = HomecomingChatWiring(context)
-            w.memories.update("main", id, content, baseHash, System.currentTimeMillis())
+            // 显式带上现有关键词：update 是整行 REPLACE，不带会把 keywords 抹成空
+            w.memories.update("main", id, content, keywords, baseHash, System.currentTimeMillis())
         } catch (e: Exception) { AppCrashLog.write(context, e) }
         withContext(Dispatchers.Main) { done() }
     }

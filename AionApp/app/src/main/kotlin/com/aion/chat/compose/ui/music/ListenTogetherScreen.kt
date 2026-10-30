@@ -656,7 +656,7 @@ private fun LoveNowPage(
                     .clip(CircleShape)
                     .background(GlassBg)
                     .border(0.8.dp, GlassBorder, CircleShape)
-                    .clickable { MusicPlayer.skip() },
+                    .clickable { MusicPlayer.skipBack() },
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Filled.SkipPrevious, contentDescription = "上一首", tint = HomecomingColors.Ink, modifier = Modifier.size(26.dp)) }
             Spacer(Modifier.width(26.dp))
@@ -1169,7 +1169,7 @@ private fun TogetherPage(
                     .clip(CircleShape)
                     .background(GlassBg)
                     .border(0.8.dp, GlassBorder, CircleShape)
-                    .clickable { MusicPlayer.skip() },
+                    .clickable { MusicPlayer.skipBack() },
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Filled.SkipPrevious, contentDescription = "上一首", tint = HomecomingColors.Ink, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(16.dp))

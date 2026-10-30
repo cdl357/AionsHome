@@ -66,14 +66,25 @@ fun ReminderScreen() {
             permLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         // 已有提醒重注册（重启后闹钟会丢，进来补一次）
+        // 与 scheduleAt 同款守卫：未授权精确闹钟时降级 setAndAllowWhileIdle，别在这崩
         ReminderReceiver.ensureChannel(context)
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val exactOk = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
         ReminderStore.list(context).forEach { r ->
             if (r.triggerAt > System.currentTimeMillis()) {
-                am.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP, r.triggerAt,
-                    ReminderReceiver.pendingIntent(context, r.id, r.content)
-                )
+                runCatching {
+                    if (exactOk) {
+                        am.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP, r.triggerAt,
+                            ReminderReceiver.pendingIntent(context, r.id, r.content)
+                        )
+                    } else {
+                        am.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP, r.triggerAt,
+                            ReminderReceiver.pendingIntent(context, r.id, r.content)
+                        )
+                    }
+                }
             }
         }
     }

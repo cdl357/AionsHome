@@ -187,7 +187,9 @@ object GatewayChat {
                             is GatewayEvent.Error -> {
                                 finished = true
                                 // 出错也保住已收到的部分，不让已经打的字凭空消失
-                                val partial = (assistantDone ?: textSb.toString())
+                                // assistant_done 为空串时不算全量，回落 textSb（?: 会把空串当有效值）
+                                val snapshot = assistantDone
+                                val partial = if (!snapshot.isNullOrBlank()) snapshot else textSb.toString()
                                 if (partial.isNotBlank()) {
                                     runCatching {
                                         repo.commitAssistantMessage(
@@ -203,17 +205,22 @@ object GatewayChat {
                             }
                             GatewayEvent.Result -> {
                                 finished = true
-                                // result 才是唯一结束信号
-                                val full = (assistantDone ?: textSb.toString())
+                                // result 才是唯一结束信号；assistant_done 为空串时不算全量（否则提交空消息）
+                                val snapshot = assistantDone
+                                val full = if (!snapshot.isNullOrBlank()) snapshot else textSb.toString()
                                 val thinking = thinkSb.toString()
-                                runCatching {
-                                    repo.commitAssistantMessage(
-                                        requestId, chatId, responderOwnerId,
-                                        full, System.currentTimeMillis()
-                                    )
-                                    if (thinking.isNotBlank()) ThinkingStore.save(context, requestId, thinking)
+                                if (full.isNotBlank()) {
+                                    runCatching {
+                                        repo.commitAssistantMessage(
+                                            requestId, chatId, responderOwnerId,
+                                            full, System.currentTimeMillis()
+                                        )
+                                        if (thinking.isNotBlank()) ThinkingStore.save(context, requestId, thinking)
+                                    }
+                                    observer.onComplete(full, thinking)
+                                } else {
+                                    observer.onFailure("gateway_result_empty")
                                 }
-                                observer.onComplete(full, thinking)
                             }
                             is GatewayEvent.Unknown -> Log.i(TAG, "未知事件忽略: ${ev.type}")
                         }
@@ -221,7 +228,8 @@ object GatewayChat {
                     }
                     // 服务端流关闭但没发 result：按纪律当丢件处理，已收的部分保住
                     if (!finished) {
-                        val partial = (assistantDone ?: textSb.toString())
+                        val snapshot = assistantDone
+                        val partial = if (!snapshot.isNullOrBlank()) snapshot else textSb.toString()
                         if (partial.isNotBlank()) {
                             runCatching {
                                 repo.commitAssistantMessage(
@@ -239,7 +247,8 @@ object GatewayChat {
             } catch (e: Exception) {
                 if (finished) return@launch
                 // 断开≠取消生成（服务端继续跑）；已收到的部分先保住
-                val partial = (assistantDone ?: textSb.toString())
+                val snapshot = assistantDone
+                val partial = if (!snapshot.isNullOrBlank()) snapshot else textSb.toString()
                 if (partial.isNotBlank()) {
                     runCatching {
                         repo.commitAssistantMessage(

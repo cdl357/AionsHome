@@ -2,30 +2,33 @@ package com.aion.chat.compose.ui.diary
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,8 +41,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,20 +52,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -79,18 +83,24 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * 日记 · 信件页（参考图：小红书 Letters 页）。
- * 中间的信平面对着屏幕，上面的往里倒一点、下面的往里倒一点，
- * 缝隙紧密像连着的一张长纸。翻开某封 → 全屏信纸（撕边、大字、邮戳）。
- * 排版靠优雅字体（大号衬线日期、花体 from、虚线分隔、邮戳），不靠 3D 厚度。
+ * 日记 · 信件页（参考：小红书 Letters 折叠信）。
+ *
+ * Z 字折叠长纸条：
+ *  - 当前信平铺在中间；读过的在上方仰倒 ~72° 叠成纸堆（底边钉在同一条缝上）；
+ *  - 下一封在下方微仰，下半截压进待读纸堆；
+ *  - 上滑翻信：当前信绕底边向后仰倒并入上堆，下一封被同一道缝带着立起来补位，
+ *    接缝始终粘在一起（下一封顶边 = 上一封底边）。
+ * 点开某封 → 全屏信纸展开（撕边、大字日期、邮戳、unfold 动画）。
  */
+private const val PILE_TILT = 72f        // 读过信的仰倒角
+private const val PILE_TILT_STEP = 2f    // 纸堆每深一层追加的角度
+private const val NEXT_TILT = 16f        // 下一封静置时的微仰角
+private const val CAMERA_DIST = 36f
 
-private const val MAX_TILT = 14f
-private const val CAMERA_DIST = 40f
 private val PaperLight = Color(0xFFFAF5EE)
 private val PaperMid = Color(0xFFF5EFE6)
 private val PaperDark = Color(0xFFEDE5D8)
@@ -98,6 +108,7 @@ private val InkDark = Color(0xFF5C3D2E)
 private val InkBrown = Color(0xFF7A5C48)
 private val InkSub = Color(0xFFA08878)
 private val Accent = Color(0xFF8B6348)
+private val StampRed = Color(0xFF8C3C46)
 private val ReplyPaper = Color(0xFFFDF0D8)
 private val ReplyInk = Color(0xFF8A6A48)
 
@@ -113,7 +124,6 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val letters = remember { mutableStateOf<List<FoldLetter>>(emptyList()) }
     val loading = remember { mutableStateOf(true) }
-    val listState = rememberLazyListState()
     val openLetter = remember { mutableStateOf<FoldLetter?>(null) }
     val editingId = remember { mutableStateOf<Long?>(null) }
 
@@ -135,7 +145,7 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 顶栏
+            // 顶栏：返回 + 花体标题 + 封数
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp)
@@ -152,15 +162,17 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回",
                         tint = HomecomingColors.Ink, modifier = Modifier.size(19.dp))
                 }
-                Text("日记 · 信",
-                    fontSize = 16.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .padding(start = 10.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.45f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Letters",
+                        fontSize = 26.sp, color = InkDark,
+                        fontFamily = FontFamily.Cursive, fontStyle = FontStyle.Italic)
+                    Text("信件 · 慢一点的话",
+                        fontSize = 10.sp, color = InkSub, letterSpacing = 3.sp)
+                }
                 Spacer(Modifier.weight(1f))
-                Text("${letters.value.size} 封", fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                Text("${letters.value.size} LETTERS",
+                    fontSize = 10.sp, color = InkSub, letterSpacing = 2.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color.White.copy(alpha = 0.4f))
@@ -175,11 +187,20 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
                         "还没有信——和他说上一段话，晚安之后就会有第一封",
                         fontSize = 13.sp, color = InkSub, lineHeight = 22.sp,
                         modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp))
-                    else -> LettersList(letters.value, listState,
+                    else -> LettersStrip(letters.value,
                         onOpen = { openLetter.value = it },
                         onStampClick = { l -> if (l.cloudId > 0) editingId.value = l.cloudId })
                 }
             }
+        }
+
+        // 展开读信
+        openLetter.value?.let { l ->
+            LetterOpenOverlay(
+                letter = l,
+                onClose = { openLetter.value = null },
+                onStampClick = { if (l.cloudId > 0) editingId.value = l.cloudId }
+            )
         }
 
         // 回应弹窗
@@ -209,112 +230,334 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
     }
 }
 
-// ════════ 列表 ════════
+// ════════ Z 字折叠信带 ════════
 
 @Composable
-private fun LettersList(
+private fun LettersStrip(
     letters: List<FoldLetter>,
-    listState: LazyListState,
     onOpen: (FoldLetter) -> Unit,
     onStampClick: (FoldLetter) -> Unit,
 ) {
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 0.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        itemsIndexed(letters, key = { _, it -> it.key }) { index, letter ->
-            LetterCard(letter, index, listState, { onOpen(letter) }, { onStampClick(letter) })
+    val scope = rememberCoroutineScope()
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val totalH = maxHeight
+        val cardH = totalH * 0.40f          // 一封信的高度
+        val seamY = totalH * 0.26f          // 当前信顶边（= 已读堆底缝）
+        val stripGap = 6.dp                 // 纸堆每层间距
+        val cardHpx = with(androidx.compose.ui.platform.LocalDensity.current) { cardH.toPx() }
+
+        // 连续位置：整数 = 当前信下标，小数 = 翻页进度
+        val pos = remember { Animatable(0f) }
+        val n = letters.size
+        val clampPos = { v: Float -> v.coerceIn(-0.08f, n - 1 + 0.08f) }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(n) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            scope.launch {
+                                pos.animateTo(
+                                    pos.value.roundToInt().coerceIn(0, n - 1).toFloat(),
+                                    spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                                )
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                pos.animateTo(
+                                    pos.value.roundToInt().coerceIn(0, n - 1).toFloat(),
+                                    spring(stiffness = Spring.StiffnessMediumLow)
+                                )
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            scope.launch { pos.snapTo(clampPos(pos.value - dragAmount / cardHpx)) }
+                        }
+                    )
+                }
+        ) {
+            val p = pos.value
+            val flipFrac = p - kotlin.math.floor(p)  // 0=静置；>0 表示有一封正在向上翻走
+
+            // ── 信卡：rel 大的（纸条下方）先画，rel 小的（上方/纸堆）后画压上来 ──
+            val order = letters.indices
+                .map { it to (it - p) }
+                .filter { (_, rel) -> rel in -4.5f..2.5f }
+                .sortedByDescending { (_, rel) -> rel }
+            order.forEach { (i, rel) ->
+                key(letters[i].key) {
+                    StripCard(
+                        letter = letters[i],
+                        rel = rel,
+                        isNewest = i == 0,
+                        cardH = cardH,
+                        seamY = seamY,
+                        stripGap = stripGap,
+                        onOpen = { onOpen(letters[i]) },
+                        onStampClick = { onStampClick(letters[i]) }
+                    )
+                }
+            }
+
+            // ── 折痕阴影：跟着正在翻走那封的底边走（从 seamY+cardH 升到 seamY） ──
+            val hingeY = seamY + cardH * (1f - flipFrac)
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .offset { IntOffset(0, hingeY.roundToPx()) }
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color(0x40000000), Color(0x4D000000), Color.Transparent)
+                        )
+                    )
+            )
+
+            // ── 顶部已读纸堆的纸边（最上层信之后画，压在最底） ──
+            val readDepth = kotlin.math.min(kotlin.math.max(p.roundToInt(), 0), 4)
+            repeat(readDepth) { k ->
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset { IntOffset(0, (seamY - 10.dp - stripGap * (k + 1)).roundToPx()) }
+                        .fillMaxWidth(1f - k * 0.012f)
+                        .height(5.dp)
+                        .graphicsLayer { alpha = 1f - k * 0.16f }
+                        .background(PaperMid)
+                )
+            }
+
+            // ── 底部待读纸堆：从下一封中段开始紧紧叠住 ──
+            val unreadCount = n - 1 - kotlin.math.max(p.roundToInt(), 0)
+            val pileBaseY = seamY + cardH + cardH * 0.22f
+            repeat(unreadCount.coerceIn(0, 3)) { k ->
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset { IntOffset(0, (pileBaseY + stripGap * k).roundToPx()) }
+                        .fillMaxWidth(1f - k * 0.012f)
+                        .height(5.dp)
+                        .graphicsLayer { alpha = 1f - k * 0.16f }
+                        .background(PaperMid)
+                )
+            }
         }
     }
 }
 
-// ════════ 单封信卡：薄纸 + 微透视 + 排版 ════════
+// ════════ 带上的一封信 ════════
 
 @Composable
-private fun LetterCard(
-    letter: FoldLetter, index: Int, listState: LazyListState,
-    onOpen: () -> Unit, onStampClick: () -> Unit,
+private fun StripCard(
+    letter: FoldLetter,
+    rel: Float,               // 相对位置：0=当前信，负=已读（上方），1≈下一封
+    isNewest: Boolean,
+    cardH: androidx.compose.ui.unit.Dp,
+    seamY: androidx.compose.ui.unit.Dp,
+    stripGap: androidx.compose.ui.unit.Dp,
+    onOpen: () -> Unit,
+    onStampClick: () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val cardH = 280.dp
-    val cardHpx = with(density) { cardH.toPx() }
-    val progress by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val item = info.visibleItemsInfo.firstOrNull { it.index == index }
-                ?: return@derivedStateOf if (index < listState.firstVisibleItemIndex) -1f else 1f
-            val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
-            ((item.offset + item.size / 2f - center) / cardHpx).coerceIn(-1f, 1f)
+    // 几何：三种状态
+    //  rel <= -1  → 已读纸堆：底边钉在缝上，仰倒 ~72°，每层往上错一点
+    //  -1 < rel<=0 → 正在翻走/当前：底边从 seamY+cardH 升到 seamY，角度 0→72°
+    //  0 < rel<=1 → 下一封：顶边粘在上一封底边上，微仰 16°→0° 被拉直立
+    val pivotBottom = rel <= 0f
+    val angle: Float
+    val anchorY: androidx.compose.ui.unit.Dp   // 枢轴边的 Y（底边或顶边）
+    val shade: Float                            // 背光强度 0..1
+    when {
+        rel <= -1f -> {
+            val depth = (-rel - 1f).coerceAtMost(3f)
+            angle = (PILE_TILT + depth * PILE_TILT_STEP).coerceAtMost(80f)
+            anchorY = seamY - stripGap * depth - 2.dp
+            shade = 0.45f + depth * 0.10f
+        }
+        rel <= 0f -> {
+            angle = -rel * PILE_TILT
+            anchorY = seamY + cardH * (1f + rel)   // 底边沿缝上升
+            shade = -rel * 0.45f
+        }
+        else -> {
+            angle = rel * NEXT_TILT
+            anchorY = seamY + cardH * rel          // 顶边 = 上一封底边
+            shade = rel * 0.15f
         }
     }
-    val absP = abs(progress)
-    val tilt = progress * MAX_TILT
-    val pivotY = if (tilt < 0f) 1f else 0f
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(cardH)
             .graphicsLayer {
-                rotationX = -tilt
-                transformOrigin = TransformOrigin(0.5f, pivotY)
-                cameraDistance = CAMERA_DIST * density.density
+                transformOrigin = if (pivotBottom) TransformOrigin(0.5f, 1f) else TransformOrigin(0.5f, 0f)
+                translationY = if (pivotBottom) (anchorY - cardH).toPx() else anchorY.toPx()
+                rotationX = -angle                   // Android 里正值是把底边推向远处；取负才是顶边向后仰
+                cameraDistance = CAMERA_DIST * density
             }
     ) {
-        Column(
+        // 纸面（撕边）
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to PaperLight,
-                        0.5f to lerpPaper(PaperMid, PaperDark, absP * 0.3f),
-                        1f to lerpPaper(PaperMid, PaperDark, absP * 0.35f)
-                    )
-                )
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onOpen() }
-                .padding(horizontal = 28.dp, vertical = 14.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column {
-                    Text(letter.dateMs.fmt("d"),
-                        fontSize = 36.sp, fontWeight = FontWeight.Bold,
-                        color = InkDark, fontFamily = FontFamily.Serif)
-                    Text(letter.dateMs.fmt("MMM", Locale("en")),
-                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        color = InkDark, fontFamily = FontFamily.Serif, letterSpacing = 2.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("from 沈聿淮",
-                        fontSize = 14.sp, color = InkBrown,
-                        fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic)
-                    Text(letter.dateMs.fmt("yyyy-MM-dd · HH:mm"),
-                        fontSize = 10.sp, color = InkSub)
+                .drawBehind {
+                    val w = size.width
+                    val edge = 5.dp.toPx()
+                    val paper = Path().apply {
+                        moveTo(0f, edge)
+                        var x = 0f
+                        while (x < w) {
+                            val j = sin(x / w * 25f + 2f) * 3f + sin(x / w * 8f) * 2f
+                            lineTo(x, edge + j.coerceIn(0f, edge))
+                            x += 14f
+                        }
+                        lineTo(w, size.height)
+                        lineTo(0f, size.height)
+                        close()
+                    }
+                    drawPath(paper, lerpPaper(PaperLight, PaperDark, shade * 0.5f))
+                    drawPath(paper, Color(0xFFDDD5C8), style = Stroke(1.2f))
                 }
+                .pointerInput(letter.key) {
+                    detectTapGestures { onOpen() }
+                }
+                .padding(horizontal = 30.dp)
+                .padding(top = 16.dp, bottom = 10.dp)
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    // 大日期 + 月份
+                    Column {
+                        Text(letter.dateMs.fmt("d"),
+                            fontSize = 40.sp, fontWeight = FontWeight.Bold,
+                            color = StampRed, fontFamily = FontFamily.Serif)
+                        Text(letter.dateMs.fmt("MMM", Locale("en")).uppercase(),
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
+                            color = InkBrown, fontFamily = FontFamily.Serif)
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.padding(top = 8.dp)) {
+                        Text("from 沈聿淮",
+                            fontSize = 22.sp, color = InkDark,
+                            fontFamily = FontFamily.Cursive, fontStyle = FontStyle.Italic)
+                        Text(letter.dateMs.fmt("MM.dd · HH:mm"),
+                            fontSize = 11.sp, color = InkSub, letterSpacing = 1.sp)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    // 邮戳区：最新一封多个 NEW 章
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (isNewest) {
+                            Text("NEW",
+                                fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+                                color = StampRed.copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .graphicsLayer { rotationZ = 12f }
+                                    .border(1.2.dp, StampRed.copy(alpha = 0.55f), RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp))
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        Postmark()
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                DashedLine()
+                Spacer(Modifier.height(10.dp))
+                if (letter.title.isNotBlank()) {
+                    Text(letter.title, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                        color = InkDark, modifier = Modifier.padding(bottom = 6.dp))
+                }
+                Text(letter.content.replace("\n", " ").trim(),
+                    fontSize = 13.sp, lineHeight = 21.sp, color = InkBrown,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
-                StampOrReply(letter.reply, letter.repliedAtMs, letter.cloudId > 0, onStampClick)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    StampOrReply(letter.reply, letter.repliedAtMs, letter.cloudId > 0, onStampClick)
+                    Spacer(Modifier.weight(1f))
+                    // 「再读一遍」印章只在平铺的这封上清晰可点
+                    Text("再 读 一 遍 →",
+                        fontSize = 11.sp, letterSpacing = 2.sp,
+                        color = StampRed.copy(alpha = if (rel in -0.4f..0.4f) 0.85f else 0.25f),
+                        modifier = Modifier
+                            .graphicsLayer { rotationZ = -2f }
+                            .border(1.4.dp, StampRed.copy(alpha = if (rel in -0.4f..0.4f) 0.6f else 0.2f), RoundedCornerShape(2.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp))
+                }
             }
-            Spacer(Modifier.height(8.dp))
-            DashedLine()
-            Spacer(Modifier.height(10.dp))
-            Text(letter.content.replace("\n", " ").trim(),
-                fontSize = 13.sp, lineHeight = 22.sp, color = InkBrown,
-                maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.weight(1f))
-            Text("再读一遍 →", fontSize = 11.sp, color = Accent,
-                fontFamily = FontFamily.Serif, modifier = Modifier.align(Alignment.End))
+        }
+
+        // 背光（仰倒时纸面变暗）+ 下一封下半截渐隐进纸堆
+        if (shade > 0.01f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color(0xFF50332B).copy(alpha = shade * 0.55f),
+                            0.5f to Color(0xFF50332B).copy(alpha = shade * 0.15f),
+                            1f to Color.Transparent
+                        )
+                    )
+            )
+        }
+        if (rel > 0.3f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.55f to Color.Transparent,
+                            1f to PaperMid.copy(alpha = ((rel - 0.3f) * 0.5f).coerceIn(0f, 0.45f))
+                        )
+                    )
+            )
         }
     }
 }
 
-// ════════ 展开的信：全屏撕边信纸 ════════
+// ════════ 圆形邮戳 + 波浪线 ════════
+
+@Composable
+private fun Postmark() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // 三条波浪线
+        Canvas(Modifier.width(34.dp).height(20.dp)) {
+            val w = size.width; val h = size.height
+            for (row in 0..2) {
+                val y0 = h * (0.2f + row * 0.3f)
+                val path = Path()
+                path.moveTo(0f, y0)
+                var x = 0f
+                while (x < w) {
+                    path.quadraticTo(x + w / 12f, y0 - 3.dp.toPx(), x + w / 6f, y0)
+                    x += w / 6f
+                }
+                drawPath(path, InkBrown.copy(alpha = 0.55f), style = Stroke(1.3f))
+            }
+        }
+        Spacer(Modifier.width(2.dp))
+        Box(
+            Modifier
+                .size(54.dp)
+                .graphicsLayer { rotationZ = -14f }
+                .drawBehind {
+                    val c = InkBrown.copy(alpha = 0.55f)
+                    drawCircle(c, size.minDimension / 2f, style = Stroke(1.6f))
+                    drawCircle(c, size.minDimension / 2f - 4.dp.toPx(),
+                        style = Stroke(1f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3f, 3f))))
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("SEAN·K", fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                color = InkBrown.copy(alpha = 0.7f), letterSpacing = 0.5.sp)
+        }
+    }
+}
+
+// ════════ 展开读信（unfold 动画） ════════
 
 @Composable
 private fun LetterOpenOverlay(
@@ -322,6 +565,13 @@ private fun LetterOpenOverlay(
     onClose: () -> Unit,
     onStampClick: () -> Unit,
 ) {
+    val unfold = remember { Animatable(0f) }
+    LaunchedEffect(letter.key) {
+        unfold.snapTo(0f)
+        unfold.animateTo(1f, tween(480, easing = FastOutSlowInEasing))
+    }
+    val t = unfold.value
+
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -329,17 +579,27 @@ private fun LetterOpenOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF5EFE6).copy(alpha = 0.97f))
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onClose() }
+                .background(Color(0xFFF1E9DF).copy(alpha = 0.98f))
         ) {
+            // 花体页眉
+            Text("Letters",
+                fontSize = 34.sp, color = InkDark.copy(alpha = 0.8f),
+                fontFamily = FontFamily.Cursive, fontStyle = FontStyle.Italic,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 26.dp))
+
+            // 信纸：从微仰状态展平 + 向下揭开（unfold）
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(top = 48.dp, bottom = 40.dp)
+                    .padding(top = 86.dp, bottom = 40.dp)
+                    .graphicsLayer {
+                        alpha = (t * 1.4f).coerceAtMost(1f)
+                        transformOrigin = TransformOrigin(0.5f, 0f)
+                        rotationX = (1f - t) * -22f
+                        translationY = (1f - t) * 46.dp.toPx()
+                        cameraDistance = CAMERA_DIST * density
+                    }
             ) {
                 TornPaper(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Column(
@@ -354,48 +614,54 @@ private fun LetterOpenOverlay(
                         ) {
                             Column {
                                 Text(letter.dateMs.fmt("d"),
-                                    fontSize = 44.sp, fontWeight = FontWeight.Bold,
-                                    color = InkDark, fontFamily = FontFamily.Serif)
-                                Text(letter.dateMs.fmt("MMM", Locale("en")),
+                                    fontSize = 48.sp, fontWeight = FontWeight.Bold,
+                                    color = StampRed, fontFamily = FontFamily.Serif)
+                                Text(letter.dateMs.fmt("MMM", Locale("en")).uppercase(),
                                     fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                    color = InkDark, fontFamily = FontFamily.Serif, letterSpacing = 3.sp)
+                                    color = InkBrown, fontFamily = FontFamily.Serif, letterSpacing = 3.sp)
                             }
-                            Spacer(Modifier.weight(1f))
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("from 沈聿淮",
-                                    fontSize = 18.sp, color = InkBrown,
-                                    fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic)
-                                Text(letter.dateMs.fmt("yyyy-MM-dd · HH:mm"),
+                                    fontSize = 24.sp, color = InkDark,
+                                    fontFamily = FontFamily.Cursive, fontStyle = FontStyle.Italic)
+                                Text(letter.dateMs.fmt("yyyy.MM.dd · HH:mm"),
                                     fontSize = 11.sp, color = InkSub)
+                                Spacer(Modifier.height(6.dp))
+                                Postmark()
                             }
                         }
-                        // 邮戳/回应
-                        if (letter.cloudId > 0) {
-                            Spacer(Modifier.height(8.dp))
-                            StampOrReply(letter.reply, letter.repliedAtMs, true, onStampClick)
-                        }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(14.dp))
                         DashedLine()
                         Spacer(Modifier.height(18.dp))
                         if (letter.title.isNotBlank()) {
-                            Text(letter.title, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                                color = InkBrown, modifier = Modifier.padding(bottom = 12.dp))
+                            Text(letter.title, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                                color = InkDark, modifier = Modifier.padding(bottom = 12.dp))
                         }
                         Text(letter.content,
                             fontSize = 15.sp, lineHeight = 30.sp,
                             color = Color(0xFF4A3828), fontFamily = FontFamily.Serif)
                         Spacer(Modifier.height(20.dp))
-                        Text("—— 沈聿淮", fontSize = 13.sp, color = InkSub,
-                            fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
-                            modifier = Modifier.align(Alignment.End))
+                        // 回应 + 落款
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            StampOrReply(letter.reply, letter.repliedAtMs, letter.cloudId > 0, onStampClick)
+                            Spacer(Modifier.weight(1f))
+                            Text("—— 沈聿淮", fontSize = 13.sp, color = InkSub,
+                                fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic)
+                        }
                     }
                 }
             }
+
             Text("✕", fontSize = 20.sp, color = InkDark,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 48.dp, end = 20.dp)
-                    .clickable { onClose() })
+                    .padding(top = 30.dp, end = 18.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.5f))
+                    .clickable { onClose() }
+                    .padding(top = 4.dp))
         }
     }
 }
@@ -445,7 +711,7 @@ private fun StampOrReply(
     if (reply.isBlank()) {
         Box(
             Modifier
-                .size(52.dp)
+                .size(46.dp)
                 .graphicsLayer { rotationZ = -8f }
                 .clickable { onClick() },
             contentAlignment = Alignment.Center

@@ -71,9 +71,36 @@ public final class HomecomingMemoryRepository
 
     public Memory update(String ownerId, String id, String content,
             String baseHash, long updatedAt) {
+        // keywords 不传＝保留现有：memory_local 是整行 REPLACE，不带关键词会把检索索引抹掉
+        return update(ownerId, id, content, null, baseHash, updatedAt);
+    }
+
+    public Memory update(String ownerId, String id, String content, String keywords,
+            String baseHash, long updatedAt) {
+        String effective = keywords != null ? keywords : currentKeywords(ownerId, id);
         return save(new Memory(required(id, "id"), validateOwner(ownerId),
-                required(content, "content"), "", baseHash, false, updatedAt),
+                required(content, "content"),
+                effective == null ? "" : effective,
+                baseHash, false, updatedAt),
                 "update", required(baseHash, "baseHash"));
+    }
+
+    /** 现有关键词：先查 memory_local 再退 memory_snapshot（与 recall 的合并次序一致）。 */
+    private String currentKeywords(String ownerId, String id) {
+        if (!(backend instanceof SQLiteBackend)) return null;
+        SQLiteDatabase database = ((SQLiteBackend) backend).helper.getReadableDatabase();
+        for (String table : new String[]{"memory_local", "memory_snapshot"}) {
+            try (Cursor cursor = database.rawQuery(
+                    "SELECT payload_json FROM " + table + " WHERE id=? AND owner_id=?",
+                    new String[]{id, ownerId})) {
+                if (cursor.moveToFirst()) {
+                    return new JSONObject(cursor.getString(0)).optString("keywords", "");
+                }
+            } catch (Exception exception) {
+                // 读不出就继续查下一张表，最后由调用方空串兜底
+            }
+        }
+        return "";
     }
 
     public Memory delete(String ownerId, String id, String baseHash, long updatedAt) {
