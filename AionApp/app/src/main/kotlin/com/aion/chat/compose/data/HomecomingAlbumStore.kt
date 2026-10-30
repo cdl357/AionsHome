@@ -54,7 +54,7 @@ object HomecomingAlbumStore {
                 )
             )
         }
-        cur.close(); db.close()
+        cur.close()
         out
     } catch (e: Exception) { emptyList() }
 
@@ -68,7 +68,7 @@ object HomecomingAlbumStore {
         )
         val cur = db.rawQuery("SELECT last_insert_rowid()", null)
         val id = if (cur.moveToFirst()) cur.getLong(0) else -1L
-        cur.close(); db.close()
+        cur.close()
         id
     } catch (e: Exception) { -1L }
 
@@ -76,7 +76,7 @@ object HomecomingAlbumStore {
         val db = db(context); ensure(db)
         if (note != null) db.execSQL("UPDATE album_photo_local SET note = ? WHERE id = ?", arrayOf(note, id))
         if (takenOn != null) db.execSQL("UPDATE album_photo_local SET taken_on = ? WHERE id = ?", arrayOf(takenOn, id))
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     fun remove(context: Context, id: Long): Boolean = try {
@@ -87,7 +87,7 @@ object HomecomingAlbumStore {
         }
         cur.close()
         db.execSQL("DELETE FROM album_photo_local WHERE id = ?", arrayOf(id))
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     /** 备注里图片占位（photo wall 摘要用）：私心话为空显示这个。 */

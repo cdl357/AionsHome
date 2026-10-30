@@ -92,7 +92,7 @@ object HomecomingMomentsStore {
                 )
             )
         }
-        cur.close(); db.close()
+        cur.close()
         moments
     } catch (e: Exception) { emptyList() }
 
@@ -105,7 +105,6 @@ object HomecomingMomentsStore {
         val cur = db.rawQuery("SELECT last_insert_rowid()", null)
         val id = if (cur.moveToFirst()) cur.getLong(0) else -1L
         cur.close()
-        db.close()
         id
     } catch (e: Exception) { -1L }
 
@@ -114,7 +113,7 @@ object HomecomingMomentsStore {
         db.execSQL("DELETE FROM moments_local WHERE id = ?", arrayOf(id))
         db.execSQL("DELETE FROM moment_like_local WHERE moment_id = ?", arrayOf(id))
         db.execSQL("DELETE FROM moment_comment_local WHERE moment_id = ?", arrayOf(id))
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     /** 点赞/取消（author 一人一条）。返回 true=现在已赞。 */
@@ -129,13 +128,13 @@ object HomecomingMomentsStore {
                 "DELETE FROM moment_like_local WHERE moment_id = ? AND author = ?",
                 arrayOf(momentId.toString(), author)
             )
-            db.close(); false
+            false
         } else {
             db.execSQL(
                 "INSERT INTO moment_like_local(moment_id, author, created_at) VALUES(?,?,?)",
                 arrayOf(momentId, author, System.currentTimeMillis())
             )
-            db.close(); true
+            true
         }
     } catch (e: Exception) { false }
 
@@ -145,13 +144,13 @@ object HomecomingMomentsStore {
             "INSERT INTO moment_comment_local(moment_id, author, content, created_at) VALUES(?,?,?,?)",
             arrayOf(momentId, author, content, System.currentTimeMillis())
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     fun deleteComment(context: Context, commentId: Long): Boolean = try {
         val db = db(context); ensure(db)
         db.execSQL("DELETE FROM moment_comment_local WHERE id = ?", arrayOf(commentId))
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
 
@@ -164,7 +163,7 @@ object HomecomingMomentsStore {
             arrayOf(momentId.toString())
         )
         while (cur.moveToNext()) likes.add(cur.getString(0))
-        cur.close(); db.close()
+        cur.close()
         likes
     } catch (e: Exception) { emptyList() }
 
@@ -179,7 +178,7 @@ object HomecomingMomentsStore {
         while (cur.moveToNext()) {
             out.add(Comment(cur.getLong(0), cur.getString(1), cur.getString(2), cur.getLong(3)))
         }
-        cur.close(); db.close()
+        cur.close()
         out
     } catch (e: Exception) { emptyList() }
 

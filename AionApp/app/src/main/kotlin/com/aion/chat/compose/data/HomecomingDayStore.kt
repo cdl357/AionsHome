@@ -70,7 +70,7 @@ object HomecomingDayStore {
                 )
             )
         }
-        cur.close(); db.close()
+        cur.close()
         list
     } catch (e: Exception) { emptyList() }
 
@@ -80,13 +80,13 @@ object HomecomingDayStore {
             "INSERT INTO anniversary_local(date, title, icon, kind, created_at) VALUES(?,?,?,?,?)",
             arrayOf(date, title, icon, kind, System.currentTimeMillis())
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     fun deleteAnniversary(context: Context, id: Long): Boolean = try {
         val db = db(context); ensure(db)
         db.execSQL("DELETE FROM anniversary_local WHERE id = ?", arrayOf(id))
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     // ── 日记 ──
@@ -110,7 +110,7 @@ object HomecomingDayStore {
                 )
             )
         }
-        cur.close(); db.close()
+        cur.close()
         list
     } catch (e: Exception) { emptyList() }
 
@@ -120,7 +120,7 @@ object HomecomingDayStore {
             "INSERT INTO diary_local(author, title, content, created_at) VALUES(?,?,?,?)",
             arrayOf(author, title, content, createdAt)
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     // ── 两人的留言（便利贴）：留言板页已删，日历「那天的小纸条」仍从这里读 ──
@@ -141,7 +141,7 @@ object HomecomingDayStore {
                 )
             )
         }
-        cur.close(); db.close()
+        cur.close()
         list
     } catch (e: Exception) { emptyList() }
 
@@ -166,7 +166,7 @@ object HomecomingDayStore {
                 list.add(MemorySummary(content, cur.getString(1), time))
             }
         }
-        cur.close(); db.close()
+        cur.close()
         list
     } catch (e: Exception) { emptyList() }
 }

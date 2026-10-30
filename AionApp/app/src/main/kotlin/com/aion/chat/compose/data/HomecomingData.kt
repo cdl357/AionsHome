@@ -82,7 +82,6 @@ object HomecomingData {
                 }
             }
             memCur.close()
-            db.close()
         } catch (e: Exception) {
             // 库还没建立或字段变化时保持安静，页面显示空态
         }
@@ -109,7 +108,6 @@ object HomecomingData {
             val cur = db.rawQuery("SELECT content FROM home_quote WHERE id = 1", null)
             val saved = if (cur.moveToFirst()) cur.getString(0) else null
             cur.close()
-            db.close()
             saved?.takeIf { it.isNotBlank() } ?: quoteForToday()
         } catch (e: Exception) {
             quoteForToday()
@@ -122,7 +120,6 @@ object HomecomingData {
             val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
             db.execSQL("CREATE TABLE IF NOT EXISTS home_quote(id INTEGER PRIMARY KEY, content TEXT NOT NULL)")
             db.execSQL("INSERT OR REPLACE INTO home_quote(id, content) VALUES(1, ?)", arrayOf(content))
-            db.close()
             true
         } catch (e: Exception) {
             false

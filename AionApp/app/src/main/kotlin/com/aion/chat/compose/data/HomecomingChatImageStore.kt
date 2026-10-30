@@ -27,7 +27,7 @@ object HomecomingChatImageStore {
             "INSERT OR REPLACE INTO chat_image_local(message_id, path, created_at) VALUES(?,?,?)",
             arrayOf(messageId, path, System.currentTimeMillis())
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     /** 多图：换行分隔存同表。 */
@@ -42,7 +42,7 @@ object HomecomingChatImageStore {
             arrayOf(messageId)
         )
         val path = if (cur.moveToFirst()) cur.getString(0) else null
-        cur.close(); db.close()
+        cur.close()
         path?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
     } catch (e: Exception) { emptyList() }
 
@@ -53,7 +53,21 @@ object HomecomingChatImageStore {
             arrayOf(messageId)
         )
         val path = if (cur.moveToFirst()) cur.getString(0) else null
-        cur.close(); db.close()
+        cur.close()
         path
+    } catch (e: Exception) { null }
+
+    /** 她最近发的一张聊天图（Sean 的 <saveimg>/<savesticker> 收图用）。文件路径，可能已失效。 */
+    fun latestUserImage(context: Context): String? = try {
+        val db = db(context); ensure(db)
+        val cur = db.rawQuery(
+            "SELECT m.id FROM chat_message m " +
+                "WHERE m.role='user' AND m.attachment_kind='image' " +
+                "ORDER BY m.created_at DESC LIMIT 1",
+            null
+        )
+        val msgId = if (cur.moveToFirst()) cur.getString(0) else null
+        cur.close()
+        msgId?.let { pathsFor(context, it).firstOrNull() }
     } catch (e: Exception) { null }
 }

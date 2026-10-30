@@ -121,7 +121,7 @@ object HeartTideStore {
             "INSERT OR IGNORE INTO dream_local(date, content, mood, created_at) VALUES(?,?,?,?)",
             arrayOf(LocalDate.now().toString(), content, mood, System.currentTimeMillis())
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     fun dreams(context: Context): List<Dream> = try {
@@ -139,7 +139,7 @@ object HeartTideStore {
                 )
             )
         }
-        cur.close(); db.close()
+        cur.close()
         out
     } catch (e: Exception) { emptyList() }
 

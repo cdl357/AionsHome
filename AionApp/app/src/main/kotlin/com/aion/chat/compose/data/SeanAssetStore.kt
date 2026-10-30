@@ -171,12 +171,15 @@ object SeanAssetStore {
     private val RE_AVATAR = Regex("<setavatar>\\s*(\\d{1,4})\\s*</setavatar>", RegexOption.IGNORE_CASE)
     private val RE_NAME = Regex("<setname>\\s*([^<]{1,20}?)\\s*</setname>", RegexOption.IGNORE_CASE)
     private val RE_STICKER = Regex("<sticker>\\s*([^<]{1,24}?)\\s*</sticker>", RegexOption.IGNORE_CASE)
+    private val RE_SAVEIMG = Regex("<saveimg>\\s*([^<]{1,20}?)\\s*</saveimg>", RegexOption.IGNORE_CASE)
+    private val RE_SAVESTICKER = Regex("<savesticker>\\s*([^<]{1,20}?)\\s*</savesticker>", RegexOption.IGNORE_CASE)
 
     /** 扫他的消息（按消息 id 去重）；标签从展示正文里另行剥除。执行走 IO（文件复制不小）。 */
     fun scanMessage(context: Context, msgId: String, text: String) {
         val low = text.lowercase()
         if (!low.contains("setwall") && !low.contains("setchatbg") && !low.contains("setavatar") &&
-            !low.contains("setname") && !low.contains("<sticker>")
+            !low.contains("setname") && !low.contains("<sticker>") &&
+            !low.contains("<saveimg>") && !low.contains("<savesticker>")
         ) return
         val p = remarkPrefs(context)
         val seen = p.getStringSet("seen", emptySet()).orEmpty()
@@ -197,21 +200,43 @@ object SeanAssetStore {
                 RE_NAME.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }?.let {
                     setRemark(context, it)
                 }
+                // 收她的图：她最近发的那张存进素材库（重名跳过，防他反复存刷屏）
+                RE_SAVESTICKER.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                    saveHerLatestImage(context, it, Kind.STICKER)
+                }
+                RE_SAVEIMG.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                    saveHerLatestImage(context, it, Kind.MISC)
+                }
             }
             ensureIssuerKnowledge(context)   // 用过能力后顺手对一遍清单（备注/库存可能变了）
         }
+    }
+
+    /** 她最近发的一张聊天图 → 素材库（同名同类的已存在就不再存）。IO 线程调用。 */
+    private fun saveHerLatestImage(context: Context, name: String, kind: String) {
+        if (list(context, kind).any { it.name.equals(name, true) }) return
+        val src = HomecomingChatImageStore.latestUserImage(context) ?: return
+        val f = File(src)
+        if (!f.exists() || f.length() == 0L) return
+        add(context, kind, f.readBytes(), name)
     }
 
     /** 标签从正文剥除（她不该看到这串代码）。 */
     fun strip(text: String): String = text
         .replace(RE_WALL, "").replace(RE_CHATBG, "").replace(RE_AVATAR, "")
         .replace(RE_NAME, "").replace(RE_STICKER, "")
-        .replace(Regex("</?(setwall|setchatbg|setavatar|setname|sticker)>", RegexOption.IGNORE_CASE), "")
+        .replace(RE_SAVEIMG, "").replace(RE_SAVESTICKER, "")
+        .replace(
+            Regex("</?(setwall|setchatbg|setavatar|setname|sticker|saveimg|savesticker)>", RegexOption.IGNORE_CASE),
+            ""
+        )
         .trim()
 
     /**
-     * 解析 <sticker>表情名</sticker> → 本地文件。
-     * 命中顺序：素材库表情包类（名一致→名包含）→ 她的本地表情包 → 云端已下载的两包。
+     * 解析 <sticker>编号或表情名</sticker> → 本地文件。库存里的图他想发就发：
+     * 编号（纯数字=素材库 id）／表情名都能发。
+     * 命中顺序：素材库（名一致→名包含→纯数字按 id）→ 她的本地表情包 → 云端已下载两包
+     * → 相册里有备注名的图 → 素材库任意类别按名兜底。
      * 找不到返回 null（标签照剥，只剩文字，不至于哑掉）。
      */
     fun stickerFile(context: Context, text: String): File? {
@@ -220,18 +245,26 @@ object SeanAssetStore {
         if (want.isEmpty()) return null
         fun matchName(f: File, keys: List<String>): Boolean =
             keys.any { k -> f.nameWithoutExtension.equals(k, true) || f.nameWithoutExtension.contains(k, true) }
-        list(context, Kind.STICKER).firstOrNull { a ->
-            a.name.equals(want, true) || a.name.contains(want, true) ||
-                matchName(File(a.path), listOf(want))
+        val all = lazy { list(context) }
+        // 纯数字 = 素材库编号直发（不去匹配名字：默认名带日期数字会误命中）
+        want.toLongOrNull()?.let { id ->
+            all.value.firstOrNull { it.id == id }?.let { return File(it.path) }
+            return null
+        }
+        all.value.firstOrNull { a ->
+            a.name.equals(want, true) || a.name.contains(want, true) || matchName(File(a.path), listOf(want))
         }?.let { return File(it.path) }
         for (d in listOf("stickers", "stickers_supabase", "stickers_remote")) {
             File(context.filesDir, d).listFiles()
                 ?.filter { it.isFile && it.length() > 0 && matchName(it, listOf(want)) }
                 ?.firstOrNull()?.let { return it }
         }
-        // 全都无精确命中：素材库里任意类别按名字兜一次（他可能拿库存图当表情发）
-        list(context).firstOrNull { it.name.equals(want, true) || it.name.contains(want, true) }
-            ?.let { return File(it.path) }
+        // 相册里有备注名的图他也能发
+        runCatching {
+            HomecomingAlbumStore.list(context)
+        }.getOrNull()?.firstOrNull { p ->
+            p.note.isNotBlank() && (p.note.equals(want, true) || p.note.contains(want, true))
+        }?.let { return it.file(context) }
         return null
     }
 
@@ -275,11 +308,13 @@ object SeanAssetStore {
         val sb = StringBuilder()
         sb.append("\n\n[素材库] 相册里有一本你们共用的素材库，她把图存了进去，你有权限直接动手用：\n")
             .append("换全局壁纸嵌 <setwall>编号</setwall>；换聊天背景嵌 <setchatbg>编号</setchatbg>；")
-            .append("换你自己的头像嵌 <setavatar>编号</setavatar>；改你的备注名嵌 <setname>新名字</setname>；")
-            .append("发表情包嵌 <sticker>表情名</sticker>（表情名要照清单一字不差）。")
+            .append("换你自己的头像嵌 <setavatar>编号</setavatar>；改你的备注名嵌 <setname>新名字</setname>。")
+            .append("她发出来的图你也能收：<savesticker>名字</savesticker> 把她最近发的那张图存成表情包，")
+            .append("<saveimg>名字</saveimg> 存进备用（重名会跳过，别反复存同一张）。")
+            .append("库存里的图你想发就发：<sticker>表情名</sticker> 或 <sticker>编号</sticker>（表情名照清单一字不差）。")
             .append("库存清单（编号 名称）：")
         if (items.isEmpty()) {
-            sb.append("（暂时空着，她还没存图）")
+            sb.append("（暂时空着，她还没存图；她发的图你可以用 savesticker 收进来）")
         } else {
             val names = items.take(40).joinToString("；") { "${it.id} ${Kind.zh(it.kind)}·${it.name.take(12)}" }
             sb.append(names)
@@ -289,7 +324,7 @@ object SeanAssetStore {
         if (stickers.isNotEmpty()) {
             sb.append("。可发表情：").append(stickers.joinToString(" / "))
         }
-        sb.append("。一次回复至多各一条；她开口让你换、或节日/纪念日这类合适的时机才用，别自作主张天天换。")
+        sb.append("。一次回复至多各一条；她开口让你换/收图、或节日纪念日这类合适的时机才主动，别自作主张天天换。")
             .append("不要向她解释标签原理。")
         return sb.toString()
     }

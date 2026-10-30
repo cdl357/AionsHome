@@ -94,7 +94,6 @@ object ReadingStore {
         saveBooks(context, listBooks(context).filter { it.id != bookId })
         val db = com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context)
         db.execSQL("DELETE FROM reading_comment_local WHERE book_id = ?", arrayOf(bookId))
-        db.close()
         true
     } catch (e: Exception) { false }
 
@@ -121,7 +120,7 @@ object ReadingStore {
         while (cur.moveToNext()) {
             out.add(Comment(cur.getLong(0), bookId, paraKey, cur.getString(1), cur.getString(2), cur.getLong(3)))
         }
-        cur.close(); db.close()
+        cur.close()
         out
     } catch (e: Exception) { emptyList() }
 
@@ -132,7 +131,7 @@ object ReadingStore {
             "INSERT INTO reading_comment_local(book_id, para_key, author, content, created_at) VALUES(?,?,?,?,?)",
             arrayOf(bookId, paraKey, author, content, System.currentTimeMillis())
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 
     fun paraKey(text: String): String =

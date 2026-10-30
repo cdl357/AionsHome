@@ -30,7 +30,7 @@ object ReminderStore {
         while (cur.moveToNext()) {
             list.add(Reminder(cur.getLong(0), cur.getLong(1), cur.getString(2)))
         }
-        cur.close(); db.close()
+        cur.close()
         list
     } catch (e: Exception) { emptyList() }
 
@@ -42,7 +42,7 @@ object ReminderStore {
         )
         val cur = db.rawQuery("SELECT last_insert_rowid()", null)
         val id = if (cur.moveToFirst()) cur.getLong(0) else -1L
-        cur.close(); db.close()
+        cur.close()
         id
     } catch (e: Exception) { -1L }
 
@@ -52,6 +52,6 @@ object ReminderStore {
             "UPDATE reminder_local SET status = 'deleted' WHERE id = ?",
             arrayOf(id)
         )
-        db.close(); true
+        true
     } catch (e: Exception) { false }
 }
