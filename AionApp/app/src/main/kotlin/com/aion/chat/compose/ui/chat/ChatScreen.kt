@@ -334,6 +334,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             com.aion.chat.compose.data.CommandStore.ensureIssuerKnowledge(context)
             com.aion.chat.compose.data.StudyRoomStore.ensureIssuerKnowledge(context)
             com.aion.chat.compose.data.SeanAssetStore.ensureIssuerKnowledge(context)
+            com.aion.chat.compose.data.SeanImageGenStore.ensureIssuerKnowledge(context)
             list.reversed().filter { it.role != "user" }.forEach {
                 com.aion.chat.compose.data.CommandStore.scanMessage(context, it.id, it.text)
                 com.aion.chat.compose.data.StudyRoomStore.scanMessage(context, it.id, it.text)
@@ -862,37 +863,55 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             Column(Modifier.fillMaxSize()) {
                 // ── 顶栏（skin==3 仿TG：圆返回+居中胶囊+右头像；否则旧顶栏） ──
                 if (skin.value == 3) {
+                    // 仿TG顶栏（按 Yuri 预览定稿）：左圆钮设置 + 居中名字胶囊 + 右头像
+                    val seanRemarkTg = remember(com.aion.chat.compose.data.SeanAssetStore.rev) {
+                        com.aion.chat.compose.data.SeanAssetStore.remark(context).ifBlank { "Sean" }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Tune,
-                            contentDescription = "聊天设置",
-                            tint = HomecomingColors.Ink,
+                        Box(
                             modifier = Modifier
-                                .size(22.dp)
-                                .clickable { showChatDrawer.value = true }
-                        )
+                                .size(40.dp)
+                                .shadow(2.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .clickable { showChatDrawer.value = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Tune,
+                                contentDescription = "聊天设置",
+                                tint = Color(0xFF6B5D4F),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color.White.copy(alpha = 0.72f))
-                                .padding(horizontal = 22.dp, vertical = 5.dp)
+                                .shadow(2.dp, RoundedCornerShape(22.dp))
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .padding(horizontal = 26.dp, vertical = 5.dp)
                         ) {
-                            Text("Sean", fontSize = 15.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
+                            Text(
+                                seanRemarkTg,
+                                fontSize = 15.sp, color = Color(0xFF4A3F34),
+                                fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp
+                            )
                             Text(
                                 if (connected) "在线" else "离线",
                                 fontSize = 10.sp,
-                                color = if (connected) HomecomingColors.Ok else HomecomingColors.InkSoft
+                                color = if (connected) HomecomingColors.Ok else HomecomingColors.InkSoft,
+                                letterSpacing = 0.5.sp
                             )
                         }
-                        Spacer(Modifier.width(10.dp))
-                        AvatarPhoto(who = "sean", initial = "S", size = 38.dp)
+                        Spacer(Modifier.weight(1f))
+                        AvatarPhoto(who = "sean", initial = "S", size = 40.dp)
                     }
                 } else {
                     Row(
@@ -1044,14 +1063,22 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         } else null
                         Column(modifier = Modifier.fillMaxWidth()) {
                             gapText?.let { g ->
-                                Text(
-                                    g,
-                                    fontSize = if (g.contains("月") && g.contains("周")) 12.sp else 11.sp,
-                                    color = if (g.contains("月") && g.contains("周")) HomecomingColors.Ink else HomecomingColors.InkSoft,
-                                    fontWeight = if (g.contains("月") && g.contains("周")) FontWeight.Medium else FontWeight.Normal,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                                )
+                                // 仿TG：日期/间隔提示做成居中小胶囊
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        g,
+                                        fontSize = if (g.contains("月") && g.contains("周")) 11.sp else 10.sp,
+                                        color = Color(0xFFA3907A),
+                                        letterSpacing = 1.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.White.copy(alpha = 0.75f))
+                                            .padding(horizontal = 14.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
                         }
                         if (msg.role == "user") {
@@ -1075,10 +1102,26 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             val seanSticker = remember(msg.id) {
                                 com.aion.chat.compose.data.SeanAssetStore.stickerFile(context, msg.text)
                             }
+                            // 他的画笔：<genimg>描述</genimg> → 调中转站出图，图显示在这条消息下面
+                            val genPrompt = remember(msg.id) {
+                                com.aion.chat.compose.data.SeanImageGenStore.extractPrompt(msg.text)
+                            }
+                            val genImage = remember(msg.id, com.aion.chat.compose.data.SeanImageGenStore.rev) {
+                                if (genPrompt != null) {
+                                    com.aion.chat.compose.data.SeanImageGenStore.get(context, msg.id)
+                                } else null
+                            }
+                            LaunchedEffect(msg.id, genPrompt != null) {
+                                if (genPrompt != null && genImage == null) {
+                                    com.aion.chat.compose.data.SeanImageGenStore.ensureGenerated(context, msg.id, genPrompt)
+                                }
+                            }
                             val cleanText = remember(msg.id) {
-                                com.aion.chat.compose.data.SeanAssetStore.strip(
-                                    com.aion.chat.compose.data.StudyRoomStore.strip(
-                                        com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                                com.aion.chat.compose.data.SeanImageGenStore.strip(
+                                    com.aion.chat.compose.data.SeanAssetStore.strip(
+                                        com.aion.chat.compose.data.StudyRoomStore.strip(
+                                            com.aion.chat.compose.data.CommandStore.strip(msg.text)
+                                        )
                                     )
                                 )
                             }
@@ -1106,7 +1149,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             }
                             AssistantBubbles(
                                 text = cleanText, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt,
-                                stickerPath = seanSticker?.absolutePath
+                                stickerPath = seanSticker?.absolutePath,
+                                genPath = genImage?.path?.takeIf { genImage.state == "done" },
+                                genBusy = genImage == null || genImage.state == "pending",
+                                genFailed = genImage?.state == "failed"
                             )
                         }
                     }
@@ -1981,7 +2027,10 @@ private fun TgChatImage(
 @Composable
 fun AssistantBubbles(
     text: String, skin: Int, alpha: Float = 1f, timeMs: Long = 0L,
-    stickerPath: String? = null
+    stickerPath: String? = null,
+    genPath: String? = null,
+    genBusy: Boolean = false,
+    genFailed: Boolean = false
 ) {
     val segments = splitBubbles(text)
     val timeText = if (timeMs > 0) timeText(timeMs) else ""
@@ -2000,6 +2049,36 @@ fun AssistantBubbles(
                         .clip(RoundedCornerShape(10.dp))
                 )
             }
+        }
+        // 他画的图：显示在这条消息下面（点开大图）
+        genPath?.let { gp ->
+            val f = remember(gp) { java.io.File(gp) }
+            val bmp = remember(gp) { f.takeIf { it.exists() }?.let { decodeChatImage(it, 1080) } }
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "他画的图",
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .widthIn(max = 248.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                )
+            }
+        }
+        if (genBusy) {
+            Text(
+                "✏️ 他正在画…",
+                fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                fontStyle = FontStyle.Italic,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+            )
+        }
+        if (genFailed) {
+            Text(
+                "（这次没画成——中转站可能没通，稍后再让他画一张）",
+                fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+            )
         }
         if (segments.isNotEmpty() || stickerPath == null) {
             segments.forEachIndexed { i, seg ->

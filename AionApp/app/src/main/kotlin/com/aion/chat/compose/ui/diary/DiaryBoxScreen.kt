@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,10 +52,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -91,15 +94,14 @@ import kotlin.math.sin
  *
  * Z 字折叠长纸条：
  *  - 当前信平铺在中间；读过的在上方仰倒 ~72° 叠成纸堆（底边钉在同一条缝上）；
- *  - 下一封在下方微仰，下半截压进待读纸堆；
- *  - 上滑翻信：当前信绕底边向后仰倒并入上堆，下一封被同一道缝带着立起来补位，
+ *  - 未读的在下方横躺（~58°）摞成紧纸堆，每层只露出一条细边（像一沓邮票）；
+ *  - 上滑翻信：当前信绕底边向后仰倒并入上堆，下一封从横躺被同一道缝带着立起来补位，
  *    接缝始终粘在一起（下一封顶边 = 上一封底边）。
  * 点开某封 → 全屏信纸展开（撕边、大字日期、邮戳、unfold 动画）。
  */
 private const val PILE_TILT = 72f        // 读过信的仰倒角
 private const val PILE_TILT_STEP = 2f    // 纸堆每深一层追加的角度
-private const val NEXT_TILT = 16f        // 下一封静置时的微仰角
-private const val CAMERA_DIST = 36f
+private const val NEXT_TILT = 47f        // 未读信的横躺角（翻页时从 47° 被拉成竖直 0°）
 
 private val PaperLight = Color(0xFFFAF5EE)
 private val PaperMid = Color(0xFFF5EFE6)
@@ -241,8 +243,8 @@ private fun LettersStrip(
     val scope = rememberCoroutineScope()
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val totalH = maxHeight
-        val cardH = totalH * 0.40f          // 一封信的高度
-        val seamY = totalH * 0.26f          // 当前信顶边（= 已读堆底缝）
+        val cardH = totalH * 0.28f          // 一封信的高度（按参考视频比例调定）
+        val seamY = totalH * 0.27f          // 当前信顶边（= 已读堆底缝）
         val stripGap = 6.dp                 // 纸堆每层间距
         val cardHpx = with(androidx.compose.ui.platform.LocalDensity.current) { cardH.toPx() }
 
@@ -254,6 +256,7 @@ private fun LettersStrip(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(horizontal = maxWidth * 0.09f)
                 .pointerInput(n) {
                     detectVerticalDragGestures(
                         onDragEnd = {
@@ -285,7 +288,7 @@ private fun LettersStrip(
             // ── 信卡：rel 大的（纸条下方）先画，rel 小的（上方/纸堆）后画压上来 ──
             val order = letters.indices
                 .map { it to (it - p) }
-                .filter { (_, rel) -> rel in -4.5f..2.5f }
+                .filter { (_, rel) -> rel in -4.5f..5.5f }
                 .sortedByDescending { (_, rel) -> rel }
             order.forEach { (i, rel) ->
                 key(letters[i].key) {
@@ -330,21 +333,7 @@ private fun LettersStrip(
                         .background(PaperMid)
                 )
             }
-
-            // ── 底部待读纸堆：从下一封中段开始紧紧叠住 ──
-            val unreadCount = n - 1 - kotlin.math.max(p.roundToInt(), 0)
-            val pileBaseY = seamY + cardH + cardH * 0.22f
-            repeat(unreadCount.coerceIn(0, 3)) { k ->
-                Box(
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .offset { IntOffset(0, (pileBaseY + stripGap * k).roundToPx()) }
-                        .fillMaxWidth(1f - k * 0.012f)
-                        .height(5.dp)
-                        .graphicsLayer { alpha = 1f - k * 0.16f }
-                        .background(PaperMid)
-                )
-            }
+            // 底部不再画装饰条：未读信本身已经按纸堆几何摞在那里
         }
     }
 }
@@ -352,7 +341,7 @@ private fun LettersStrip(
 // ════════ 带上的一封信 ════════
 
 @Composable
-private fun StripCard(
+private fun BoxScope.StripCard(
     letter: FoldLetter,
     rel: Float,               // 相对位置：0=当前信，负=已读（上方），1≈下一封
     isNewest: Boolean,
@@ -365,7 +354,8 @@ private fun StripCard(
     // 几何：三种状态
     //  rel <= -1  → 已读纸堆：底边钉在缝上，仰倒 ~72°，每层往上错一点
     //  -1 < rel<=0 → 正在翻走/当前：底边从 seamY+cardH 升到 seamY，角度 0→72°
-    //  0 < rel<=1 → 下一封：顶边粘在上一封底边上，微仰 16°→0° 被拉直立
+    //  0 < rel<=1 → 下一封：顶边粘在上一封底边上，从横躺 58° 被拉直立
+    //  rel > 1   → 未读纸堆：全部锚在同一处，每层只往下错一条细边
     val pivotBottom = rel <= 0f
     val angle: Float
     val anchorY: androidx.compose.ui.unit.Dp   // 枢轴边的 Y（底边或顶边）
@@ -382,22 +372,33 @@ private fun StripCard(
             anchorY = seamY + cardH * (1f + rel)   // 底边沿缝上升
             shade = -rel * 0.45f
         }
-        else -> {
+        rel <= 1f -> {
             angle = rel * NEXT_TILT
             anchorY = seamY + cardH * rel          // 顶边 = 上一封底边
             shade = rel * 0.15f
         }
+        else -> {
+            // 未读纸堆：全部锚在同一处，每层只往下错一条细边（一沓邮票）
+            val depth = (rel - 1f).coerceAtMost(4f)
+            angle = NEXT_TILT + depth * 1.5f
+            anchorY = seamY + cardH + cardH * 0.07f * depth
+            shade = 0.15f + depth * 0.08f
+        }
     }
 
+    // 纸堆越深越窄一点（参考视频里每层微微收窄）
+    val stackNarrow = if (rel > 1f) (rel - 1f).coerceAtMost(4f) * 0.016f else 0f
     Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .align(Alignment.TopCenter)
+            .fillMaxWidth(1f - stackNarrow)
             .height(cardH)
+            .shadow(10.dp, RectangleShape, clip = false)   // 投影落在下一层纸边上，分出层叠感
             .graphicsLayer {
                 transformOrigin = if (pivotBottom) TransformOrigin(0.5f, 1f) else TransformOrigin(0.5f, 0f)
                 translationY = if (pivotBottom) (anchorY - cardH).toPx() else anchorY.toPx()
                 rotationX = -angle                   // Android 里正值是把底边推向远处；取负才是顶边向后仰
-                cameraDistance = CAMERA_DIST * density
+                cameraDistance = size.height * 8f    // 弱透视，接近参考视频的远镜头
             }
     ) {
         // 纸面（撕边）
@@ -425,34 +426,37 @@ private fun StripCard(
                 .pointerInput(letter.key) {
                     detectTapGestures { onOpen() }
                 }
-                .padding(horizontal = 30.dp)
-                .padding(top = 16.dp, bottom = 10.dp)
+                .padding(horizontal = cardH * 0.11f)
+                .padding(top = cardH * 0.08f, bottom = cardH * 0.05f)
         ) {
-            Column(Modifier.fillMaxSize()) {
+            // 纸堆深层的内容淡化成纸边（只看到纸，看不到字和印章）
+            val contentAlpha = (1f - (rel - 1.4f) * 2f).coerceIn(0.16f, 1f)
+            Column(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     // 大日期 + 月份
                     Column {
                         Text(letter.dateMs.fmt("d"),
-                            fontSize = 40.sp, fontWeight = FontWeight.Bold,
+                            fontSize = (cardH.value * 0.145f).sp, fontWeight = FontWeight.Bold,
                             color = StampRed, fontFamily = FontFamily.Serif)
                         Text(letter.dateMs.fmt("MMM", Locale("en")).uppercase(),
-                            fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
+                            fontSize = (cardH.value * 0.050f).sp, fontWeight = FontWeight.Bold,
+                            letterSpacing = (cardH.value * 0.016f).sp,
                             color = InkBrown, fontFamily = FontFamily.Serif)
                     }
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.padding(top = 8.dp)) {
+                    Spacer(Modifier.width(cardH * 0.07f))
+                    Column(Modifier.padding(top = cardH * 0.03f)) {
                         Text("from 沈聿淮",
-                            fontSize = 22.sp, color = InkDark,
+                            fontSize = (cardH.value * 0.110f).sp, color = InkDark,
                             fontFamily = FontFamily.Cursive, fontStyle = FontStyle.Italic)
                         Text(letter.dateMs.fmt("MM.dd · HH:mm"),
-                            fontSize = 11.sp, color = InkSub, letterSpacing = 1.sp)
+                            fontSize = (cardH.value * 0.048f).sp, color = InkSub, letterSpacing = 1.sp)
                     }
                     Spacer(Modifier.weight(1f))
                     // 邮戳区：最新一封多个 NEW 章
                     Column(horizontalAlignment = Alignment.End) {
                         if (isNewest) {
                             Text("NEW",
-                                fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+                                fontSize = (cardH.value * 0.040f).sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
                                 color = StampRed.copy(alpha = 0.7f),
                                 modifier = Modifier
                                     .graphicsLayer { rotationZ = 12f }
@@ -460,18 +464,18 @@ private fun StripCard(
                                     .padding(horizontal = 6.dp, vertical = 2.dp))
                             Spacer(Modifier.height(4.dp))
                         }
-                        Postmark()
+                        Postmark(scale = cardH / 210.dp)
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(cardH * 0.05f))
                 DashedLine()
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(cardH * 0.05f))
                 if (letter.title.isNotBlank()) {
-                    Text(letter.title, fontSize = 16.sp, fontWeight = FontWeight.Medium,
-                        color = InkDark, modifier = Modifier.padding(bottom = 6.dp))
+                    Text(letter.title, fontSize = (cardH.value * 0.075f).sp, fontWeight = FontWeight.Medium,
+                        color = InkDark, modifier = Modifier.padding(bottom = cardH * 0.024f))
                 }
                 Text(letter.content.replace("\n", " ").trim(),
-                    fontSize = 13.sp, lineHeight = 21.sp, color = InkBrown,
+                    fontSize = (cardH.value * 0.062f).sp, lineHeight = (cardH.value * 0.102f).sp, color = InkBrown,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -479,12 +483,12 @@ private fun StripCard(
                     Spacer(Modifier.weight(1f))
                     // 「再读一遍」印章只在平铺的这封上清晰可点
                     Text("再 读 一 遍 →",
-                        fontSize = 11.sp, letterSpacing = 2.sp,
+                        fontSize = (cardH.value * 0.050f).sp, letterSpacing = 2.sp,
                         color = StampRed.copy(alpha = if (rel in -0.4f..0.4f) 0.85f else 0.25f),
                         modifier = Modifier
                             .graphicsLayer { rotationZ = -2f }
                             .border(1.4.dp, StampRed.copy(alpha = if (rel in -0.4f..0.4f) 0.6f else 0.2f), RoundedCornerShape(2.dp))
-                            .padding(horizontal = 10.dp, vertical = 5.dp))
+                            .padding(horizontal = cardH * 0.044f, vertical = cardH * 0.02f))
                 }
             }
         }
@@ -503,14 +507,14 @@ private fun StripCard(
                     )
             )
         }
-        if (rel > 0.3f) {
+        if (rel > 0.5f) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             0.55f to Color.Transparent,
-                            1f to PaperMid.copy(alpha = ((rel - 0.3f) * 0.5f).coerceIn(0f, 0.45f))
+                            1f to PaperMid.copy(alpha = ((rel - 0.5f) * 0.5f).coerceIn(0f, 0.30f))
                         )
                     )
             )
@@ -521,10 +525,10 @@ private fun StripCard(
 // ════════ 圆形邮戳 + 波浪线 ════════
 
 @Composable
-private fun Postmark() {
+private fun Postmark(scale: Float = 1f) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         // 三条波浪线
-        Canvas(Modifier.width(34.dp).height(20.dp)) {
+        Canvas(Modifier.width(34.dp * scale).height(20.dp * scale)) {
             val w = size.width; val h = size.height
             for (row in 0..2) {
                 val y0 = h * (0.2f + row * 0.3f)
@@ -541,7 +545,7 @@ private fun Postmark() {
         Spacer(Modifier.width(2.dp))
         Box(
             Modifier
-                .size(54.dp)
+                .size(54.dp * scale)
                 .graphicsLayer { rotationZ = -14f }
                 .drawBehind {
                     val c = InkBrown.copy(alpha = 0.55f)
@@ -551,7 +555,7 @@ private fun Postmark() {
                 },
             contentAlignment = Alignment.Center
         ) {
-            Text("SEAN·K", fontSize = 8.sp, fontWeight = FontWeight.Bold,
+            Text("SEAN·K", fontSize = (8f * scale).sp, fontWeight = FontWeight.Bold,
                 color = InkBrown.copy(alpha = 0.7f), letterSpacing = 0.5.sp)
         }
     }
@@ -598,7 +602,7 @@ private fun LetterOpenOverlay(
                         transformOrigin = TransformOrigin(0.5f, 0f)
                         rotationX = (1f - t) * -22f
                         translationY = (1f - t) * 46.dp.toPx()
-                        cameraDistance = CAMERA_DIST * density
+                        cameraDistance = size.height * 3f
                     }
             ) {
                 TornPaper(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {

@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +61,14 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
     val routeApiKey = remember { mutableStateOf("") }
     val routeModel = remember { mutableStateOf("") }
     val routeSaved = remember { mutableStateOf(false) }
+    // Sean 的画笔（生图中转站）：地址/密钥/模型，停笔防抖后落库并刷新他的能力清单
+    val genBase = remember { mutableStateOf(com.aion.chat.compose.data.SeanImageGenStore.config(context).first) }
+    val genKey = remember { mutableStateOf(com.aion.chat.compose.data.SeanImageGenStore.config(context).second) }
+    val genModel = remember { mutableStateOf(com.aion.chat.compose.data.SeanImageGenStore.config(context).third) }
+    LaunchedEffect(genBase.value, genKey.value, genModel.value) {
+        kotlinx.coroutines.delay(800)
+        com.aion.chat.compose.data.SeanImageGenStore.saveConfig(context, genBase.value, genKey.value, genModel.value)
+    }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val restoreLauncher = rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
@@ -494,6 +503,38 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
         fun reloadMcp() { mcps.clear(); mcps.addAll(HomecomingMcpStore.list(context)) }
         val mcpEditing = remember { mutableStateOf<HomecomingMcpStore.McpServer?>(null) }
         val showMcpDialog = remember { mutableStateOf(false) }
+
+        FrostCard {
+            Text("Sean 的画笔（生图中转站）", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text(
+                "OpenAI 兼容生图接口。配好后他会画画：回复里嵌 <genimg>画面描述</genimg>，图直接出现在气泡下面",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = genBase.value, onValueChange = { genBase.value = it },
+                label = { Text("生图 Base URL（如 https://api.xx.com/v1）") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = genKey.value, onValueChange = { genKey.value = it },
+                label = { Text("API Key") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = genModel.value, onValueChange = { genModel.value = it },
+                label = { Text("模型（如 dall-e-3 / gemini-2.5-flash-image）") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true
+            )
+            Text(
+                if (com.aion.chat.compose.data.SeanImageGenStore.configured(context)) "已接好——他随时能画，第一次用要等十几秒出图"
+                else "还没配好：三项填全并回聊天页，他才会知道这支画笔（免得空口许诺）",
+                fontSize = 11.sp,
+                color = if (com.aion.chat.compose.data.SeanImageGenStore.configured(context)) HomecomingColors.Ok else HomecomingColors.InkSoft
+            )
+        }
 
         FrostCard {
             Text("MCP 服务器", fontSize = 15.sp, color = HomecomingColors.Ink)
