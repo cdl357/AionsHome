@@ -45,6 +45,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
@@ -87,6 +88,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -156,7 +158,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
     val connected = wiring != null && route != null
 
-    // ── 气泡皮肤（0 冰蓝 / 1 水晶 / 2 墨蓝） ──
+    // ── 气泡皮肤（0 冰蓝 / 1 水晶 / 2 墨蓝 / 3 仿TG） ──
     val prefs = remember {
         context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
     }
@@ -1541,30 +1543,68 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             focusedBorderColor = Color.Transparent,
                             unfocusedBorderColor = Color.Transparent
                         ) else androidx.compose.material3.OutlinedTextFieldDefaults.colors(),
-                        maxLines = 4,
-                        trailingIcon = {
+                        maxLines = 4
+                    )
+                    if (skin.value == 3 && input.value.isBlank() && !sending.value && pendingImages.isEmpty() && pendingVideo == null) {
+                        // 仿TG：没打字时右边是麦克风（语音输入），有字才变发送键
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .shadow(2.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.9f))
+                                .clickable { startVoiceInput() },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 Icons.Filled.Mic,
                                 contentDescription = "语音输入",
-                                tint = HomecomingColors.InkSoft,
-                                modifier = Modifier.clickable { startVoiceInput() }
+                                tint = Color(0xFF8A7A64)
                             )
                         }
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(HomecomingColors.Accent)
-                            .clickable { send() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (sending.value) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
-                            contentDescription = if (sending.value) "停止" else "发送",
-                            tint = Color.White
-                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(HomecomingColors.Accent)
+                                .clickable { send() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (sending.value) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
+                                contentDescription = if (sending.value) "停止" else "发送",
+                                tint = Color.White
+                            )
+                        }
                     }
+                }
+            }
+
+            // ── 回到底部浮动钮（仿TG）：往上翻过消息时浮出，点了滚到最新 ──
+            val canScrollForward by remember { derivedStateOf { listState.canScrollForward } }
+            if (skin.value == 3 && canScrollForward) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 150.dp)
+                        .size(40.dp)
+                        .shadow(3.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.92f))
+                        .clickable {
+                            scope.launch {
+                                val total = listState.layoutInfo.totalItemsCount
+                                if (total > 0) listState.animateScrollToItem(total - 1)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = "回到底部",
+                        tint = Color(0xFF8A7A64)
+                    )
                 }
             }
         }
@@ -1917,14 +1957,22 @@ fun UserBubbles(
                                 .background(Color(0xFFD9D4C8).copy(alpha = 0.9f))
                         )
                     }
-                    TgChatImage(
-                        path = imagePaths.first(), skin = skin,
-                        modifier = Modifier
-                            .widthIn(max = 220.dp)
-                            .heightIn(max = 150.dp)
-                            .clip(RoundedCornerShape(14.dp)),
-                        onView = { onViewImage(0) }
-                    )
+                    Box {
+                        TgChatImage(
+                            path = imagePaths.first(), skin = skin,
+                            modifier = Modifier
+                                .widthIn(max = 220.dp)
+                                .heightIn(max = 150.dp)
+                                .clip(RoundedCornerShape(14.dp)),
+                            onView = { onViewImage(0) }
+                        )
+                        if (skin == 3) {
+                            TgTimePill(
+                                timeText,
+                                Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                            )
+                        }
+                    }
                 }
             } else {
                 Column(
@@ -1932,15 +1980,24 @@ fun UserBubbles(
                     horizontalAlignment = Alignment.End
                 ) {
                     imagePaths.forEachIndexed { idx, p ->
-                        TgChatImage(
-                            path = p, skin = skin,
-                            modifier = Modifier
-                                .widthIn(max = 240.dp)
-                                .heightIn(max = 300.dp)
-                                .clip(RoundedCornerShape(14.dp)),
-                            isSticker = p.contains("/stickers") && imagePaths.size == 1,
-                            onView = { onViewImage(idx) }
-                        )
+                        // 仿TG：图片右下角叠半透明时间胶囊（贴纸不叠）
+                        Box {
+                            TgChatImage(
+                                path = p, skin = skin,
+                                modifier = Modifier
+                                    .widthIn(max = 240.dp)
+                                    .heightIn(max = 300.dp)
+                                    .clip(RoundedCornerShape(16.dp)),
+                                isSticker = p.contains("/stickers") && imagePaths.size == 1,
+                                onView = { onViewImage(idx) }
+                            )
+                            if (skin == 3 && !p.contains("/stickers")) {
+                                TgTimePill(
+                                    timeText,
+                                    Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1948,20 +2005,20 @@ fun UserBubbles(
         }
         segments.forEachIndexed { segIdx, seg ->
             if (skin == 3) {
-                // 仿TG：浅绿气泡、时间+✓✓ 内嵌右下、右下角小圆角
+                // 仿TG：浅绿气泡、时间+✓✓ 内嵌右下、右下角小圆角（按预览：小号紧凑）
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                     CopyOnLongPress(text = seg) {
                         Box(
                             modifier = Modifier
                                 .widthIn(max = 280.dp)
-                                .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
-                                .background(Color(0xFFEFFDDE).copy(alpha = (0.96f * alpha).coerceIn(0.3f, 1f)))
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .clip(RoundedCornerShape(14.dp, 14.dp, 4.dp, 14.dp))
+                                .background(Color(0xFFDCF2C6).copy(alpha = (0.96f * alpha).coerceIn(0.3f, 1f)))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                tgInline(text = seg, time = timeText, check = true, isLast = segIdx == segments.lastIndex),
-                                fontSize = 15.sp, color = Color(0xFF1F2C1A),
-                                lineHeight = 21.sp
+                                tgInline(text = seg, time = timeText, check = true, isLast = segIdx == segments.lastIndex, timeColor = Color(0xFF7FA05C)),
+                                fontSize = 14.sp, color = Color(0xFF3D4A30),
+                                lineHeight = 20.sp
                             )
                         }
                     }
@@ -2123,18 +2180,18 @@ private fun AssistantBubbleSingle(
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         CopyOnLongPress(text = text) {
             if (skin == 3) {
-                // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角
+                // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角（按预览：小号紧凑）
                 Box(
                     modifier = Modifier
                         .widthIn(max = 300.dp)
-                        .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
+                        .clip(RoundedCornerShape(14.dp, 14.dp, 14.dp, 4.dp))
                         .background(Color.White.copy(alpha = (0.97f * alpha).coerceIn(0.3f, 1f)))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        tgInline(text = text, time = timeText, check = false, isLast = isLast),
-                        fontSize = 15.sp, color = Color(0xFF242018),
-                        lineHeight = 21.sp
+                        tgInline(text = text, time = timeText, check = false, isLast = isLast, timeColor = Color(0xFFB3A48E)),
+                        fontSize = 14.sp, color = Color(0xFF4A4238),
+                        lineHeight = 20.sp
                     )
                 }
             } else {
@@ -2154,11 +2211,11 @@ private fun AssistantBubbleSingle(
 }
 
 /** 仿TG：正文 + 右下角小号灰字时间（发出的多一对✓✓），内嵌在最后一个字后面。 */
-private fun tgInline(text: String, time: String, check: Boolean, isLast: Boolean) =
+private fun tgInline(text: String, time: String, check: Boolean, isLast: Boolean, timeColor: Color = Color(0xFF9AA394)) =
     if (time.isBlank() || !isLast) AnnotatedString(text)
     else buildAnnotatedString {
         append(text)
-        withStyle(SpanStyle(fontSize = 10.sp, color = Color(0xFF9AA394), fontWeight = FontWeight.Normal)) {
+        withStyle(SpanStyle(fontSize = 9.5.sp, color = timeColor, fontWeight = FontWeight.Normal)) {
             append("  " + time + if (check) " ✓✓" else "")
         }
     }
