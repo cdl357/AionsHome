@@ -93,6 +93,8 @@ fun MomentsScreen() {
     val reloadKey = remember { mutableStateOf(0) }
     val coverVersion = remember { mutableStateOf(0L) }
     val cloudError = remember { mutableStateOf<com.aion.chat.compose.data.CloudErrorKind?>(null) }
+    // 最后一条线路的具体失败原因（超时/401/TLS…），亮在错误横幅上
+    val cloudErrorDetail = remember { mutableStateOf<String?>(null) }
     val isRefreshing = remember { mutableStateOf(false) }
     val viewerRef = remember { mutableStateOf<String?>(null) }
 
@@ -205,6 +207,7 @@ fun MomentsScreen() {
                 main.post {
                     if (reloadVersion.get() != myRun) return@post
                     cloudError.value = kind ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
+                    cloudErrorDetail.value = res?.detail
                     isRefreshing.value = false
                 }
                 return@launch
@@ -259,6 +262,7 @@ fun MomentsScreen() {
             main.post {
                 if (reloadVersion.get() != myRun) return@post
                 cloudError.value = null
+                cloudErrorDetail.value = null
                 feed.clear()
                 feed.addAll(all)
                 isRefreshing.value = false
@@ -482,7 +486,7 @@ fun MomentsScreen() {
 
         Spacer(Modifier.height(40.dp)) // 给压沿头像留空间
 
-        // ── 云端失败横幅：网络/权限/解析分种提示（点一下重试） ──
+        // ── 云端失败横幅：网络/权限/解析分种提示（点一下重试；带最后一条线路的具体失败原因） ──
         if (cloudError.value != null) {
             val kind = cloudError.value!!
             val msg = when (kind) {
@@ -498,7 +502,7 @@ fun MomentsScreen() {
                     "云端数据解析失败：字段和代码对不上（日志 tag=SupabaseClient）"
                 com.aion.chat.compose.data.CloudErrorKind.OTHER_HTTP ->
                     "云端返回异常状态"
-            }
+            } + (cloudErrorDetail.value?.let { " · $it" } ?: "")
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier

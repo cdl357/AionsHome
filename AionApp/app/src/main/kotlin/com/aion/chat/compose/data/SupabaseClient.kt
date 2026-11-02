@@ -52,15 +52,19 @@ enum class CloudErrorKind {
 }
 
 /** 读取结果：error==null 时 data 一定非 null（空列表=云端确实没数据，不是错误）。 */
-data class CloudResult<T>(val data: T?, val error: CloudErrorKind?)
+data class CloudResult<T>(val data: T?, val error: CloudErrorKind?, val detail: String? = null)
 
-/** 一次请求的内部结论。 */
+/** 一次请求的内部结论。detail = 最后一条线路的具体失败原因（给界面亮出来，别只有个 NETWORK）。 */
 internal class CloudReply(
     val payload: Any? = null,
-    val error: CloudErrorKind? = null
+    val error: CloudErrorKind? = null,
+    val detail: String? = null
 )
 
 /** 底层请求（中转 → 直连）。网络错误才换线路；4xx 语义性失败换线结果一样，直接终止。 */
+private fun hostOf(base: String): String =
+    runCatching { java.net.URL(base).host + ":" + java.net.URL(base).port }.getOrDefault(base.take(30))
+
 internal suspend fun supabaseRequest(
     path: String,
     method: String,
@@ -69,6 +73,7 @@ internal suspend fun supabaseRequest(
     parse: ((HttpURLConnection) -> Any?)? = null
 ): CloudReply = withContext(Dispatchers.IO) {
     var lastError: CloudErrorKind? = null
+    var lastDetail: String? = null
     val goodBase = SupabaseClient.lastGoodBase
     val ordered = (listOfNotNull(goodBase) + SupabaseClient.BASES).distinct()
     for (base in ordered) {
@@ -82,8 +87,8 @@ internal suspend fun supabaseRequest(
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true
             }
-            conn.connectTimeout = 5_000
-            conn.readTimeout = 12_000
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 20_000
             if (body != null) conn.outputStream.use { it.write(body) }
             val code = conn.responseCode
             if (code in 200..299) {
@@ -105,8 +110,9 @@ internal suspend fun supabaseRequest(
                 404 -> CloudErrorKind.HTTP_404
                 else -> CloudErrorKind.OTHER_HTTP
             }
-            Log.w(SupabaseClient.TAG, "[HTTP $code] $method /$path -> $kind" +
-                " body=" + runCatching { conn.errorStream?.bufferedReader()?.readText()?.take(200) }.getOrNull())
+            val bodyText = runCatching { conn.errorStream?.bufferedReader()?.readText()?.take(200) }.getOrNull()
+            Log.w(SupabaseClient.TAG, "[HTTP $code] $method /$path -> $kind body=$bodyText")
+            lastDetail = "HTTP $code @ " + hostOf(base) + (bodyText?.take(60)?.let { " · $it" } ?: "")
             // 401/403 是线路无关的语义性失败（权限/表结构），换线也一样；4xx/5xx 都换线再试
             if (code in 401..403) return@withContext CloudReply(error = kind)
             lastError = kind
@@ -114,18 +120,22 @@ internal suspend fun supabaseRequest(
         } catch (e: UnknownHostException) {
             Log.w(SupabaseClient.TAG, "[NET/DNS] $method $base/$path 域名解析失败: ${e.message}")
             lastError = CloudErrorKind.NETWORK
+            lastDetail = hostOf(base) + " 域名解析失败"
         } catch (e: SocketTimeoutException) {
             Log.w(SupabaseClient.TAG, "[NET/TIMEOUT] $method $base/$path 连接或读取超时")
             lastError = CloudErrorKind.NETWORK
+            lastDetail = hostOf(base) + " 超时（这条线路到不了）"
         } catch (e: javax.net.ssl.SSLException) {
             Log.w(SupabaseClient.TAG, "[NET/TLS] $method $base/$path TLS 握手被拦: ${e.message?.take(120)}")
             lastError = CloudErrorKind.NETWORK
+            lastDetail = hostOf(base) + " TLS 被拦"
         } catch (e: Exception) {
             Log.w(SupabaseClient.TAG, "[NET] $method $base/$path ${e.javaClass.simpleName}: ${e.message?.take(120)}")
             lastError = CloudErrorKind.NETWORK
+            lastDetail = hostOf(base) + " " + e.javaClass.simpleName
         }
     }
-    CloudReply(error = lastError ?: CloudErrorKind.NETWORK)
+    CloudReply(error = lastError ?: CloudErrorKind.NETWORK, detail = lastDetail)
 }
 
 /** 把 PostgREST 返回的 text[]（JSON 数组）安全转 List<String>；兼容 "{a,b}" 字符串形态。 */
@@ -217,7 +227,7 @@ object SupabaseMomentsStore {
                 JSONArray(conn.inputStream.bufferedReader().readText())
             }
         )
-        if (reply.error != null) return CloudResult(null, reply.error)
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)
         if (arr.length() == 0) {
@@ -259,7 +269,7 @@ object SupabaseMomentsStore {
             "GET",
             parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
         )
-        if (reply.error != null) return CloudResult(null, reply.error)
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)
         if (arr.length() == 0) {
@@ -299,7 +309,7 @@ object SupabaseMomentsStore {
             "GET",
             parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
         )
-        if (reply.error != null) return CloudResult(null, reply.error)
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)
         val out = mutableListOf<CloudAlbumPhoto>()
@@ -343,7 +353,7 @@ object SupabaseMomentsStore {
             "GET",
             parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
         )
-        if (reply.error != null) return CloudResult(null, reply.error)
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)
         if (arr.length() == 0) {
@@ -454,7 +464,7 @@ object SeanDiaryStore {
             "GET",
             parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
         )
-        if (reply.error != null) return CloudResult(null, reply.error)
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray ?: return CloudResult(null, CloudErrorKind.PARSE)
         val out = mutableListOf<SeanDiaryRow>()
         for (i in 0 until arr.length()) {

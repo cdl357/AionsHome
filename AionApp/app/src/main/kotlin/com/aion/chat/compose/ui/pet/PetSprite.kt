@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -16,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.drawscope.scale
@@ -163,7 +165,11 @@ fun PetSprite(
 
     Canvas(
         modifier = modifier
+            // 独立渲染层 + 按素材比例锁宽：帧间失效只重绘桌宠自己这一小块，
+            // 不再把整列内容（玻璃卡/头像/文字）拖着重绘（掉帧的根源）
+            .width(displayHeight * 192f / 208f)
             .height(displayHeight)
+            .graphicsLayer { }
             .clickable { onTap() }
     ) {
         val a = anim ?: return@Canvas
