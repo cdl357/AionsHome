@@ -1197,7 +1197,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 stickerPath = seanSticker?.absolutePath,
                                 genPath = gi?.path?.takeIf { gi.state == "done" },
                                 genBusy = genPrompt != null && (gi == null || gi.state == "pending"),
-                                genFailed = genPrompt != null && gi?.state == "failed"
+                                genFailed = genPrompt != null && gi?.state == "failed",
+                                messageId = msg.id,
+                                onSpeakText = { t ->
+                                    // 菜单朗读不受总开关限制：她点名要听哪条就听哪条
+                                    runCatching {
+                                        tts.value?.speak(
+                                            t, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null,
+                                            "menu_" + System.currentTimeMillis()
+                                        )
+                                    }
+                                },
+                                onDeleteMessage = { id ->
+                                    scope.launch(Dispatchers.IO) {
+                                        runCatching { wiring?.chats?.deleteMessage(id) }
+                                        main.post { reloadNow() }
+                                    }
+                                }
                             )
                         }
                     }
@@ -1869,6 +1885,28 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             }
             Spacer(Modifier.height(16.dp))
 
+            Text("找聊天记录 / 气泡皮肤", fontSize = 14.sp, color = HomecomingColors.Ink)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showSearch.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("找聊天记录") }
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showSkinDialog.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("气泡皮肤") }
+            }
+            Spacer(Modifier.height(16.dp))
+
             Text("聊天背景图", fontSize = 14.sp, color = HomecomingColors.Ink)
             Text("只给聊天页换一张；不选则跟随全局背景", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             Row(
@@ -2178,7 +2216,10 @@ fun AssistantBubbles(
     stickerPath: String? = null,
     genPath: String? = null,
     genBusy: Boolean = false,
-    genFailed: Boolean = false
+    genFailed: Boolean = false,
+    messageId: String? = null,
+    onSpeakText: (String) -> Unit = {},
+    onDeleteMessage: (String) -> Unit = {}
 ) {
     val segments = splitBubbles(text)
     val timeText = if (timeMs > 0) timeText(timeMs) else ""
@@ -2230,7 +2271,12 @@ fun AssistantBubbles(
         }
         if (segments.isNotEmpty() || stickerPath == null) {
             segments.forEachIndexed { i, seg ->
-                AssistantBubbleSingle(text = seg, skin = skin, alpha = alpha, timeText = timeText, isLast = i == segments.lastIndex)
+                AssistantBubbleSingle(
+                    text = seg, skin = skin, alpha = alpha, timeText = timeText,
+                    isLast = i == segments.lastIndex,
+                    fullText = text, messageId = messageId,
+                    onSpeakText = onSpeakText, onDeleteMessage = onDeleteMessage
+                )
             }
         } else if (timeText.isNotEmpty()) {
             // 纯表情消息：时间戳单独一行小字
@@ -2243,7 +2289,7 @@ fun AssistantBubbles(
     }
 }
 
-/** 长按复制气泡文本（聊天里最常用的隐性需求）。 */
+/** 长按复制气泡文本（用户气泡保留原行为）。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CopyOnLongPress(text: String, content: @Composable () -> Unit) {
@@ -2263,13 +2309,105 @@ private fun CopyOnLongPress(text: String, content: @Composable () -> Unit) {
     ) { content() }
 }
 
+/**
+ * 长按气泡 → 菜单：朗读 / 复制 / 删除（Yuri 点名：朗读和删除放长按里）。
+ * 删除两段确认（第一下变「确认删除？」），避免误删 Sean 的原话。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MessageLongPressMenu(
+    text: String,
+    fullText: String,
+    messageId: String?,
+    onSpeakText: (String) -> Unit,
+    onDeleteMessage: (String) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    var showMenu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.combinedClickable(
+            onClick = {},
+            onLongClick = { showMenu = true; confirmDelete = false }
+        )
+    ) { content() }
+    if (showMenu) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showMenu = false; confirmDelete = false },
+            title = { Text("这条消息", fontSize = 15.sp, color = HomecomingColors.Ink) },
+            text = {
+                Column {
+                    if (fullText.length > 60) {
+                        Text(
+                            fullText.take(60) + "…",
+                            fontSize = 12.sp, color = HomecomingColors.InkSoft,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            showMenu = false
+                            runCatching { onSpeakText(fullText) }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("朗读", fontSize = 14.sp, color = HomecomingColors.Ink) }
+                    TextButton(
+                        onClick = {
+                            showMenu = false
+                            runCatching {
+                                val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                    as android.content.ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("chat", text))
+                                Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("复制", fontSize = 14.sp, color = HomecomingColors.Ink) }
+                    if (messageId != null) {
+                        TextButton(
+                            onClick = {
+                                if (!confirmDelete) {
+                                    confirmDelete = true
+                                } else {
+                                    showMenu = false
+                                    onDeleteMessage(messageId)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                if (confirmDelete) "确认删除？" else "删除",
+                                fontSize = 14.sp,
+                                color = HomecomingColors.Danger
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
+    }
+}
+
 @Composable
 private fun AssistantBubbleSingle(
     text: String, skin: Int, alpha: Float = 1f,
     timeText: String = "", isLast: Boolean = true,
+    fullText: String = "",
+    messageId: String? = null,
+    onSpeakText: (String) -> Unit = {},
+    onDeleteMessage: (String) -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-        CopyOnLongPress(text = text) {
+        MessageLongPressMenu(
+            text = text,
+            fullText = fullText.ifBlank { text },
+            messageId = messageId,
+            onSpeakText = onSpeakText,
+            onDeleteMessage = onDeleteMessage
+        ) {
             if (skin == 3) {
                 // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角（按预览：小号紧凑）
                 Box(

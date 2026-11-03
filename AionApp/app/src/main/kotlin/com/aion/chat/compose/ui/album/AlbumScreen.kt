@@ -1083,7 +1083,13 @@ private fun SeanAssetLibraryPanel() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val rev = com.aion.chat.compose.data.SeanAssetStore.rev
-    val assets = remember(rev) { com.aion.chat.compose.data.SeanAssetStore.list(context) }
+    // 素材清单是 DB 读：组合期跑会卡面板（0.3.76 清过的组合期查库又绕回来了）
+    var assets by remember(rev) { mutableStateOf(emptyList<com.aion.chat.compose.data.SeanAssetStore.Asset>()) }
+    LaunchedEffect(rev) {
+        assets = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            com.aion.chat.compose.data.SeanAssetStore.list(context)
+        }
+    }
     var pendingBytes by remember { mutableStateOf<ByteArray?>(null) }
     var actionFor by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
     var renaming by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
@@ -1185,6 +1191,7 @@ private fun SeanAssetLibraryPanel() {
                                                 }
                                             }
                                         }
+                                        .let { it }
                                         .padding(horizontal = 14.dp, vertical = 8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1266,8 +1273,11 @@ private fun SeanAssetLibraryPanel() {
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
-                                com.aion.chat.compose.data.SeanAssetStore.delete(context, a.id)
+                                val id = a.id
                                 actionFor = null
+                                scope.launch(Dispatchers.IO) {
+                                    com.aion.chat.compose.data.SeanAssetStore.delete(context, id)
+                                }
                             }
                             .padding(vertical = 10.dp)
                     )
@@ -1303,8 +1313,13 @@ private fun SeanAssetLibraryPanel() {
             confirmButton = {
                 TextButton(onClick = {
                     val n = renameDraft.trim()
-                    if (n.isNotEmpty()) com.aion.chat.compose.data.SeanAssetStore.rename(context, a.id, n)
+                    val id = a.id
                     renaming = null
+                    if (n.isNotEmpty()) {
+                        scope.launch(Dispatchers.IO) {
+                            com.aion.chat.compose.data.SeanAssetStore.rename(context, id, n)
+                        }
+                    }
                 }) { Text("保存", color = HomecomingColors.Accent) }
             },
             dismissButton = {
@@ -1323,12 +1338,17 @@ private fun AssetRow(asset: com.aion.chat.compose.data.SeanAssetStore.Asset, onO
             .clickable { onOpen() }
             .padding(horizontal = 16.dp, vertical = 5.dp)
     ) {
-        val bmp = remember(asset.id, asset.path) {
-            runCatching { decodeSampled(File(asset.path), 128) }.getOrNull()
+        var bmp by remember(asset.id, asset.path) { mutableStateOf<Bitmap?>(null) }
+        LaunchedEffect(asset.id, asset.path) {
+            val path = asset.path
+            bmp = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching { decodeSampled(File(path), 128) }.getOrNull()
+            }
         }
-        if (bmp != null) {
+        val shown = bmp
+        if (shown != null) {
             Image(
-                bitmap = bmp.asImageBitmap(),
+                bitmap = shown.asImageBitmap(),
                 contentDescription = asset.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

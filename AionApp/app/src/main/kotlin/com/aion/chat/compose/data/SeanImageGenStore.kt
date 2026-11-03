@@ -45,7 +45,10 @@ object SeanImageGenStore {
             .putString("model", model.trim())
             .apply()
         bump()
-        ensureIssuerKnowledge(context)
+        // identity_snapshot 读写是 DB IO：设置页防抖回调在主线程，别跟着上主线程
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            ensureIssuerKnowledge(context)
+        }
     }
 
     fun config(context: Context): Triple<String, String, String> = Triple(
@@ -92,8 +95,13 @@ object SeanImageGenStore {
             "SELECT message_id, path, prompt, state, created_at FROM sean_gen_image WHERE message_id=?",
             arrayOf(messageId)
         ).use { c ->
-            if (c.moveToFirst()) GenImage(c.getString(0), c.getString(1) ?: "", c.getString(2) ?: "", c.getString(3), c.getLong(4))
-            else null
+            if (!c.moveToFirst()) return null
+            val g = GenImage(c.getString(0), c.getString(1) ?: "", c.getString(2) ?: "", c.getString(3), c.getLong(4))
+            // 生成中进程被杀 → 行永卡 pending：超 3 分钟判失败（消息从「正在画」变「没画成」）
+            if (g.state == "pending" && System.currentTimeMillis() - g.createdAt > 180_000L) {
+                upsert(context, messageId, g.prompt, "failed", "")
+                g.copy(state = "failed")
+            } else g
         }
     }.getOrNull()
 
@@ -166,7 +174,9 @@ object SeanImageGenStore {
         val first = data.optJSONObject(0) ?: throw IllegalStateException("gen data 空")
         val b64 = first.optString("b64_json", "")
         if (b64.isNotBlank()) {
-            return android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            // 有的中转站直接回 data URI 前缀，Base64.decode 会炸：剥掉再解
+            val raw = if (b64.contains(";base64,")) b64.substringAfter(";base64,") else b64
+            return toJpegIfPng(android.util.Base64.decode(raw, android.util.Base64.DEFAULT))
         }
         // 有些中转站只回 url：下载
         val url = first.optString("url", "")
@@ -180,15 +190,17 @@ object SeanImageGenStore {
         throw IllegalStateException("gen 响应既无 b64_json 也无 url")
     }
 
-    /** 画出来的是 png（gemini 系）时转 jpg 存；入口统一压缩防超大图。 */
-    @Suppress("unused")
-    private fun toJpeg(bytes: ByteArray): ByteArray = runCatching {
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
-        val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
-        bmp.recycle()
-        out.toByteArray()
-    }.getOrDefault(bytes)
+    /** PNG 冒名 .jpg 会导致有的渲染器/分享端不认：PNG 魔数才转，JPEG 原样过。 */
+    private fun toJpegIfPng(bytes: ByteArray): ByteArray {
+        if (bytes.size < 8 || bytes[0] != 0x89.toByte() || bytes[1] != 0x50.toByte()) return bytes
+        return runCatching {
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+            val out = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            bmp.recycle()
+            out.toByteArray()
+        }.getOrDefault(bytes)
+    }
 
     // ── 能力说明注入（配好中转站才告诉他） ──
 

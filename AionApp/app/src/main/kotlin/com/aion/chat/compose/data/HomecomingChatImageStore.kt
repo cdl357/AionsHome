@@ -68,6 +68,7 @@ object HomecomingChatImageStore {
         )
         val msgId = if (cur.moveToFirst()) cur.getString(0) else null
         cur.close()
-        msgId?.let { pathsFor(context, it).firstOrNull() }
+        // 收图只收图片：视频消息同挂在 image kind 下，.mp4 不能被 <savesticker> 读进内存
+        msgId?.let { pathsFor(context, it).firstOrNull { path -> !path.endsWith(".mp4", true) } }
     } catch (e: Exception) { null }
 }

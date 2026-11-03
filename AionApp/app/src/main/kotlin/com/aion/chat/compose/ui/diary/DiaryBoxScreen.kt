@@ -315,6 +315,8 @@ private fun LettersStrip(
         val pos = remember { Animatable(0f) }
         val n = letters.size
         val clampPos = { v: Float -> v.coerceIn(-0.08f, n - 1 + 0.08f) }
+        // 吸附动画与拖拽共用一把 Animatable：动画没停就 snapTo 会排队卡 0.5s——拖动先取消动画
+        var animJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
         Box(
             modifier = Modifier
@@ -323,7 +325,7 @@ private fun LettersStrip(
                 .pointerInput(n) {
                     detectVerticalDragGestures(
                         onDragEnd = {
-                            scope.launch {
+                            animJob = scope.launch {
                                 pos.animateTo(
                                     pos.value.roundToInt().coerceIn(0, n - 1).toFloat(),
                                     spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
@@ -331,7 +333,7 @@ private fun LettersStrip(
                             }
                         },
                         onDragCancel = {
-                            scope.launch {
+                            animJob = scope.launch {
                                 pos.animateTo(
                                     pos.value.roundToInt().coerceIn(0, n - 1).toFloat(),
                                     spring(stiffness = Spring.StiffnessMediumLow)
@@ -340,6 +342,7 @@ private fun LettersStrip(
                         },
                         onVerticalDrag = { change, dragAmount ->
                             change.consume()
+                            animJob?.cancel()
                             scope.launch { pos.snapTo(clampPos(pos.value - dragAmount / cardHpx)) }
                         }
                     )

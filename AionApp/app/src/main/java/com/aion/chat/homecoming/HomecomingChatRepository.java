@@ -63,6 +63,11 @@ public final class HomecomingChatRepository {
                 required(failureCode, "failureCode"));
     }
 
+    /** 长按删除单条消息（本地删除；连带清掉图片/视频挂载映射）。 */
+    public void deleteMessage(String id) {
+        backend.deleteMessage(required(id, "id"));
+    }
+
     public void beginAssistantRequest(
             String requestId, String timelineId, long createdAt) {
         validateTimeline(timelineId);
@@ -161,6 +166,7 @@ public final class HomecomingChatRepository {
                 HomecomingOperationJournal.Operation operation,
                 boolean assistant);
         void fail(String requestId, String code);
+        void deleteMessage(String id);
         default void begin(String requestId, String timelineId, long createdAt) {
         }
         List<Message> list(
@@ -199,6 +205,23 @@ public final class HomecomingChatRepository {
                 insertOperation(database, operation);
                 database.setTransactionSuccessful();
                 return candidate;
+            } finally {
+                database.endTransaction();
+            }
+        }
+
+        @Override
+        public void deleteMessage(String id) {
+            SQLiteDatabase database = helper.getWritableDatabase();
+            database.beginTransaction();
+            try {
+                database.execSQL("DELETE FROM chat_message WHERE id=?", new Object[]{id});
+                try {
+                    database.execSQL("DELETE FROM chat_image_local WHERE message_id=?", new Object[]{id});
+                } catch (RuntimeException ignored) {
+                    // 挂载表可能还没建过（没发过图），不挡删除
+                }
+                database.setTransactionSuccessful();
             } finally {
                 database.endTransaction();
             }

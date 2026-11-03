@@ -80,7 +80,11 @@ public final class HomecomingModelGateway {
             if (cancelled.get()) {
                 observer.onFailure("cancelled");
             } else {
-                observer.onFailure("model_request_failed");
+                // 失败码带原因：provider/URL/网络哪一环断的，错误卡上要能看出来
+                String why = exception.getMessage();
+                observer.onFailure("model_request_failed:"
+                        + exception.getClass().getSimpleName()
+                        + (why == null ? "" : ":" + why));
             }
         } finally {
             cancellations.remove(request.requestId, cancelled);
@@ -107,11 +111,9 @@ public final class HomecomingModelGateway {
         if ("gemini".equals(route.provider)) {
             return buildGemini(route, model, request);
         }
-        if ("siliconflow".equals(route.provider)
-                || "custom_openai".equals(route.provider)) {
-            return buildOpenAi(route, model, request);
-        }
-        throw new IllegalArgumentException("unsupported provider");
+        // 设置页写的是 openai_compatible；custom_openai/siliconflow/未知值一律按
+        // OpenAI 兼容处理（橘瓣同款容错：设置只出 OpenAI 兼容中转，不再打枪）
+        return buildOpenAi(route, model, request);
     }
 
     private static NetworkRequest buildOpenAi(
@@ -143,8 +145,13 @@ public final class HomecomingModelGateway {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Authorization", "Bearer " + route.apiKey);
         headers.put("Content-Type", "application/json");
+        // Base URL 自动补 /v1（设置页「拉取模型」会补，但手填的常不带——发消息的路径必须同款归一）
+        String base = trimSlash(route.baseUrl);
+        if (!base.endsWith("/v1")) {
+            base = base + "/v1";
+        }
         return new NetworkRequest(
-                trimSlash(route.baseUrl) + "/chat/completions",
+                base + "/chat/completions",
                 HomecomingSnapshotStore.canonicalJson(body),
                 headers);
     }

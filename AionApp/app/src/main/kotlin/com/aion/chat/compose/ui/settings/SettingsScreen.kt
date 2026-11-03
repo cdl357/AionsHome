@@ -69,6 +69,12 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
         kotlinx.coroutines.delay(800)
         com.aion.chat.compose.data.SeanImageGenStore.saveConfig(context, genBase.value, genKey.value, genModel.value)
     }
+    // 800ms 防抖期间退出页面也会丢配置：离开时无条件落一次（读的是最新值）
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            com.aion.chat.compose.data.SeanImageGenStore.saveConfig(context, genBase.value, genKey.value, genModel.value)
+        }
+    }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val restoreLauncher = rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
