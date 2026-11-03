@@ -156,7 +156,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
     val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
-    val connected = wiring != null && route != null
+    // 线路缺 Key = 假连接（重装恢复的脱敏备份）：显式判出来，别让她对着「已连接」发 401
+    val routeHasKey = route?.optString("api_key", "").orEmpty().isNotBlank()
+    val connected = wiring != null && route != null && routeHasKey
 
     // ── 气泡皮肤（0 冰蓝 / 1 水晶 / 2 墨蓝 / 3 仿TG） ──
     val prefs = remember {
@@ -367,8 +369,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             ?: pendingImage.value.ifBlank { pendingImages.firstOrNull()?.first ?: "" }
         val imagePath = pv?.path
             ?: pendingImagePath.value.ifBlank { pendingImages.firstOrNull()?.second ?: "" }
-        val extraImagesForModel = pv?.frames?.drop(1) ?: emptyList()
-        val extraImagePaths = pendingImages.drop(1).map { it.second }
+        // 多图全部带给模型（0.3.80 只接了视频帧，纯多图没接——这次真修）：
+        // 视频消息 = 帧序列（首帧当主图）+ 所选图片；纯多图 = 首图当主图 + 其余
+        val extraImagesForModel = buildList {
+            if (pv != null) addAll(pv.frames.drop(1))
+            pendingImages.drop(if (pv != null) 0 else 1).forEach { add(it.first) }
+        }
+        val extraImagePaths = pendingImages.drop(if (pv != null) 0 else 1).map { it.second }
         if (text.isEmpty() && image.isEmpty()) return
         val w = wiring ?: return
         if (sending.value) {
@@ -377,7 +384,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             return
         }
         if (!connected) {
-            Toast.makeText(context, "先去「更多 → 设置」配一条云线路", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                if (route != null && !routeHasKey) "线路还没填 API Key——去 设置 → 云线路 补上"
+                else "先去「更多 → 设置」配一条云线路",
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
         sending.value = true
@@ -452,7 +464,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         main.post {
                             acc.append(delta)
                             pendingSegments.clear()
-                            pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(acc.toString()))))
+                            pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(acc.toString()))))))
                         }
                     }
                     override fun onCorrected(full: String) {
@@ -460,7 +472,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             acc.setLength(0)
                             acc.append(full)
                             pendingSegments.clear()
-                            pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(full))))
+                            pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(full))))))
                         }
                     }
                     override fun onNotice(t: String) { main.post { noticeText.value = t } }
@@ -535,7 +547,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             // 引擎在完成时一次性给出可见文本（控制标签已在引擎内剥离）
                             main.post {
                                 pendingSegments.clear()
-                                pendingSegments.addAll(splitBubbles(chunk))
+                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(chunk))))
                             }
                         }
 
@@ -787,7 +799,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         durMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                             ?.toLongOrNull() ?: 0L
                         // 封面：10% 处一帧，气泡显示用
-                        r.getFrameAtTime(durMs / 10, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { cover ->
+                        r.getFrameAtTime(durMs * 1000L / 10, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { cover ->
                             val t = java.io.File(dir, "${base}_thumb.jpg")
                             t.outputStream().use { scaledBitmap(cover, 720).compress(Bitmap.CompressFormat.JPEG, 85, it) }
                             cover.recycle()
@@ -807,7 +819,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     } finally {
                         r.release()
                     }
-                    if (frames.isEmpty()) null else VideoDraft(dst.absolutePath, thumbPath, durMs, frames)
+                    if (frames.isEmpty()) {
+                        dst.delete()   // 别留最大 200MB 的孤儿文件
+                        java.io.File(dir, "${base}_thumb.jpg").delete()
+                        null
+                    } else VideoDraft(dst.absolutePath, thumbPath, durMs, frames)
                 }.getOrNull()
                 main.post {
                     if (draft == null) {
@@ -906,6 +922,49 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+                        // 搜索 / 朗读 / 皮肤：0.3.84 顶栏迁移时漏在这的三个入口，补回（默认皮肤自锁修复）
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .clickable { showSearch.value = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Search, "找聊天记录", tint = Color(0xFF6B5D4F), modifier = Modifier.size(17.dp))
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .clickable {
+                                    voiceOn.value = !voiceOn.value
+                                    prefs.edit().putBoolean("voice_read", voiceOn.value).apply()
+                                    if (!voiceOn.value) runCatching { tts.value?.stop() }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (voiceOn.value) Icons.Filled.VolumeUp else Icons.Outlined.VolumeUp,
+                                contentDescription = "读出回复",
+                                tint = if (voiceOn.value) HomecomingColors.Accent else Color(0xFF6B5D4F),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .clickable { showSkinDialog.value = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.Palette, "气泡皮肤", tint = Color(0xFF6B5D4F), modifier = Modifier.size(17.dp))
+                        }
                         Spacer(Modifier.weight(1f))
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -921,9 +980,17 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp
                             )
                             Text(
-                                if (connected) "在线" else "离线",
+                                when {
+                                    connected -> "在线"
+                                    route != null && !routeHasKey -> "线路缺 Key"
+                                    else -> "离线"
+                                },
                                 fontSize = 10.sp,
-                                color = if (connected) HomecomingColors.Ok else HomecomingColors.InkSoft,
+                                color = when {
+                                    connected -> HomecomingColors.Ok
+                                    route != null && !routeHasKey -> HomecomingColors.Accent
+                                    else -> HomecomingColors.InkSoft
+                                },
                                 letterSpacing = 0.5.sp
                             )
                         }
@@ -1115,21 +1182,24 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 onViewImage = { idx -> viewerPaths = imgPaths; viewerIndex = idx }
                             )
                         } else {
-                            // 他发表情包：消息文本里嵌的 <sticker>名</sticker> 解析成本地文件
-                            val seanSticker = remember(msg.id) {
-                                com.aion.chat.compose.data.SeanAssetStore.stickerFile(context, msg.text)
+                            // 他发表情包：<sticker>名</sticker> 解析挪 IO（每条消息一次 DB+目录扫描，别在组合期跑）
+                            var seanSticker by remember(msg.id) { mutableStateOf<java.io.File?>(null) }
+                            LaunchedEffect(msg.id) {
+                                seanSticker = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                    com.aion.chat.compose.data.SeanAssetStore.stickerFile(context, msg.text)
+                                }
                             }
                             // 他的画笔：<genimg>描述</genimg> → 调中转站出图，图显示在这条消息下面
                             val genPrompt = remember(msg.id) {
                                 com.aion.chat.compose.data.SeanImageGenStore.extractPrompt(msg.text)
                             }
-                            val genImage = remember(msg.id, com.aion.chat.compose.data.SeanImageGenStore.rev) {
-                                if (genPrompt != null) {
+                            var genImage by remember(msg.id) { mutableStateOf<com.aion.chat.compose.data.SeanImageGenStore.GenImage?>(null) }
+                            LaunchedEffect(msg.id, genPrompt, com.aion.chat.compose.data.SeanImageGenStore.rev) {
+                                if (genPrompt == null) return@LaunchedEffect
+                                genImage = kotlinx.coroutines.withContext(Dispatchers.IO) {
                                     com.aion.chat.compose.data.SeanImageGenStore.get(context, msg.id)
-                                } else null
-                            }
-                            LaunchedEffect(msg.id, genPrompt != null) {
-                                if (genPrompt != null && genImage == null) {
+                                }
+                                if (genImage == null) {
                                     com.aion.chat.compose.data.SeanImageGenStore.ensureGenerated(context, msg.id, genPrompt)
                                 }
                             }
@@ -1164,12 +1234,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     )
                                 }
                             }
+                            val gi = genImage   // 委托属性不能智能转换：先落局部
                             AssistantBubbles(
                                 text = cleanText, skin = skin.value, alpha = bubbleAlpha.value, timeMs = msg.createdAt,
                                 stickerPath = seanSticker?.absolutePath,
-                                genPath = genImage?.path?.takeIf { genImage.state == "done" },
-                                genBusy = genImage == null || genImage.state == "pending",
-                                genFailed = genImage?.state == "failed"
+                                genPath = gi?.path?.takeIf { gi.state == "done" },
+                                genBusy = genPrompt != null && (gi == null || gi.state == "pending"),
+                                genFailed = genPrompt != null && gi?.state == "failed"
                             )
                         }
                     }
@@ -1485,7 +1556,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                         .align(Alignment.TopEnd)
                                         .size(18.dp)
                                         .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-                                        .clickable { pendingImages.removeAt(pi) }
+                                        .clickable {
+                                            val removed = pendingImages.removeAt(pi)
+                                            // 拍照流会同时写 pendingImage/pendingImagePath：不同步清，删掉的图照样发
+                                            if (pendingImagePath.value == removed.second) {
+                                                pendingImage.value = ""
+                                                pendingImagePath.value = ""
+                                            }
+                                        }
                                 )
                             }
                         }
@@ -2329,28 +2407,37 @@ private fun videoDurationSec(path: String): Int = runCatching {
 /** 视频气泡：封面 + 中央播放键 + 右下时长，点按弹出播放。 */
 @Composable
 private fun VideoBubble(path: String, onPlay: () -> Unit) {
-    val thumb = remember(path) {
-        runCatching { decodeChatImage(java.io.File(path.removeSuffix(".mp4") + "_thumb.jpg"), 512) }.getOrNull()
+    // 封面解码 + 时长读取都是磁盘/媒体操作：挪 IO（组合期跑会在滚动时掉帧）
+    var thumb by remember(path) { mutableStateOf<Bitmap?>(null) }
+    var durSec by remember(path) { mutableStateOf(0) }
+    LaunchedEffect(path) {
+        val pair = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            runCatching { decodeChatImage(java.io.File(path.removeSuffix(".mp4") + "_thumb.jpg"), 512) }.getOrNull() to videoDurationSec(path)
+        }
+        thumb = pair.first; durSec = pair.second
     }
-    val durSec = remember(path) { videoDurationSec(path) }
+    // 横屏视频不再被裁成竖条：按封面宽高比算高度（限 110~250dp）
+    val aspect = thumb?.let { it.width.toFloat() / it.height.toFloat() } ?: (9f / 16f)
+    val boxH = (180f / aspect).dp.coerceIn(110.dp, 250.dp)
     Box(
         modifier = Modifier
             .padding(end = 10.dp)
             .clip(RoundedCornerShape(14.dp))
             .clickable { onPlay() }
     ) {
-        if (thumb != null) {
+        val t = thumb
+        if (t != null) {
             Image(
-                bitmap = thumb.asImageBitmap(),
+                bitmap = t.asImageBitmap(),
                 contentDescription = "视频",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.width(180.dp).height(240.dp)
+                modifier = Modifier.width(180.dp).height(boxH)
             )
         } else {
             Box(
                 modifier = Modifier
                     .width(180.dp)
-                    .height(240.dp)
+                    .height(boxH)
                     .background(HomecomingColors.InkSoft.copy(alpha = 0.2f))
             )
         }
