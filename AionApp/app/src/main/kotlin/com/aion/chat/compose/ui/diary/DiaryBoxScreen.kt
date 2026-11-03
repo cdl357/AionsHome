@@ -450,7 +450,8 @@ private fun BoxScope.StripCard(
             .align(Alignment.TopCenter)
             .fillMaxWidth(1f - stackNarrow)
             .height(cardH)
-            .shadow(12.dp, RectangleShape, clip = false)   // 0 14px 18px -8px rgba(80,51,43,.32) 近似
+            .shadow(10.dp, RectangleShape, clip = false,
+                ambientColor = Color(0x4050332B), spotColor = Color(0x7350332B))   // 0 14px 18px -8px rgba(80,51,43,.32) 近似；默认黑影在 72° 仰倒时会糊成大黑块
             .graphicsLayer {
                 transformOrigin = if (pivotBottom) TransformOrigin(0.5f, 1f) else TransformOrigin(0.5f, 0f)
                 translationY = if (pivotBottom) (anchorY - cardH).toPx() else anchorY.toPx()

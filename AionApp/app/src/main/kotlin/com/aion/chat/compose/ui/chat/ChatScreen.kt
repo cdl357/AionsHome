@@ -922,49 +922,6 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                        // 搜索 / 朗读 / 皮肤：0.3.84 顶栏迁移时漏在这的三个入口，补回（默认皮肤自锁修复）
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.85f))
-                                .clickable { showSearch.value = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.Search, "找聊天记录", tint = Color(0xFF6B5D4F), modifier = Modifier.size(17.dp))
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.85f))
-                                .clickable {
-                                    voiceOn.value = !voiceOn.value
-                                    prefs.edit().putBoolean("voice_read", voiceOn.value).apply()
-                                    if (!voiceOn.value) runCatching { tts.value?.stop() }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                if (voiceOn.value) Icons.Filled.VolumeUp else Icons.Outlined.VolumeUp,
-                                contentDescription = "读出回复",
-                                tint = if (voiceOn.value) HomecomingColors.Accent else Color(0xFF6B5D4F),
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.85f))
-                                .clickable { showSkinDialog.value = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Outlined.Palette, "气泡皮肤", tint = Color(0xFF6B5D4F), modifier = Modifier.size(17.dp))
-                        }
                         Spacer(Modifier.weight(1f))
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
