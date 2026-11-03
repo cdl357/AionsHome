@@ -14,7 +14,13 @@ object HomecomingRouteConfig {
 
     fun file(context: Context): File = File(context.filesDir, "routes.json")
 
-    fun stamp(context: Context): Long = file(context).lastModified()
+    // 响应式戳：save() 后立刻变，聊天页 remember(stamp) 才会重建 wiring（配置保存即生效）
+    val stampState = androidx.compose.runtime.mutableStateOf(0L)
+
+    fun stamp(context: Context): Long {
+        if (stampState.value == 0L) stampState.value = file(context).lastModified()
+        return stampState.value
+    }
 
     fun load(context: Context): JSONObject? = try {
         val f = file(context)
@@ -23,6 +29,7 @@ object HomecomingRouteConfig {
 
     fun save(context: Context, root: JSONObject): Boolean = try {
         file(context).writeText(root.toString())
+        stampState.value = file(context).lastModified()   // 通知所有观察方：线路变了
         true
     } catch (e: Exception) { false }
 

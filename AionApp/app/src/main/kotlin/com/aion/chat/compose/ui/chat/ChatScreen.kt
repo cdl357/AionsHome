@@ -289,6 +289,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val remoteStickerFiles = remember { mutableStateListOf<java.io.File>() }
     var remoteStickerLoaded by remember { mutableStateOf(false) }
     val errorText = remember { mutableStateOf<String?>(null) }
+    // 橘瓣式发送失败错误卡：原因 + 建议 + 重试，挂在聊天流里可关闭
+    val sendError = remember { mutableStateOf<SendError?>(null) }
     val listState = rememberLazyListState()
 
     // ── 语音输入（语音通话第二块）：系统语音识别，说完变文字进输入框 ──
@@ -357,7 +359,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         text.replace(Regex("(请|帮我|给我|我想|想要|一起|陪我|现在|立刻|马上|然后|适合|一首|首歌|个|下|吧|呗|好吗|可以吗)"), " ")
             .replace(Regex("\\s+"), " ").trim()
 
-    fun send(forcedText: String? = null, promptPrefix: String? = null, preSong: com.aion.chat.compose.data.MusicClient.Song? = null) {
+    fun send(forcedText: String? = null, promptPrefix: String? = null, preSong: com.aion.chat.compose.data.MusicClient.Song? = null, forceRoute: Boolean = false) {
         val text = (forcedText ?: input.value).trim()
         // 视频优先：抽帧给他看，气泡播本地 mp4
         val pv = pendingVideo
@@ -424,7 +426,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         activeRequestId = requestId
         emptyHint.value = false
         // ── 网关 SSE 后端（开关打开时走这里；旧中转站分支原样保留在后面） ──
-        if (useGateway) {
+        if (useGateway && !forceRoute) {
             val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
             val videoNote = pv?.let {
                 "（Yuri 发来一段视频，约 ${it.durationMs / 1000} 秒。images 里是按时间顺序抽的 ${it.frames.size} 帧，请当作看过这段视频来回应她。）"
@@ -497,10 +499,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     override fun onFailure(code: String) {
                         main.post {
                             if (stopping) { stopping = false; return@post }
+                            // 网关没通（8790 服务端从未部署）→ 不吞消息：自动改走她的线路重发
+                            // （同一 requestId，commit 按 (requestId,role) 幂等，不会出双气泡）
                             sending.value = false
                             thinkingLive.value = null; toolName.value = null; noticeText.value = null
-                            errorText.value = "回复失败（$code）。检查网络后重试。"
-                            Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
+                            errorText.value = "网关没连上（$code），已自动改走你的线路重发"
+                            send(forcedText = text, promptPrefix = promptPrefix, forceRoute = true)
                         }
                     }
                 }
@@ -568,7 +572,18 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             main.post {
                                 if (stopping) { stopping = false; return@post }
                                 sending.value = false
-                                errorText.value = "回复失败（$code）。检查云线路后重试。"
+                                sendError.value = SendError(
+                                    title = "回复失败（$code）",
+                                    reason = when {
+                                        code.startsWith("network") -> "连不上线路端点（超时 / 域名解析失败 / 连接被拒）"
+                                        code.contains("401") || code.contains("403") -> "Key 无效或没权限（HTTP 401/403）"
+                                        code.contains("404") -> "端点路径不对（HTTP 404）——Base URL 多半少了 /v1，或模型名写错"
+                                        code.contains("429") -> "限流了（HTTP 429），稍等再试"
+                                        else -> "线路返回异常（$code）"
+                                    },
+                                    solution = "去 设置 → 云线路 检查 Base URL / API Key / 模型，保存后立即生效，不用重启",
+                                    retryText = text
+                                )
                                 Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -1250,8 +1265,49 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             AssistantBubbleSingle(text = seg, skin = skin.value, alpha = bubbleAlpha.value, timeText = timeText(System.currentTimeMillis()))
                         }
                     }
+                    // ── 发送失败错误卡（照橘瓣 ChatError：标题+原因+建议+重试，可关） ──
+                    sendError.value?.let { err ->
+                        item(key = "send_error_card") {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(0xFFFDECEC))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("⚠ 发送失败", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                        color = HomecomingColors.Danger, modifier = Modifier.weight(1f))
+                                    Text("✕", fontSize = 13.sp, color = HomecomingColors.InkSoft,
+                                        modifier = Modifier
+                                            .clickable { sendError.value = null }
+                                            .padding(horizontal = 6.dp))
+                                }
+                                Text(err.reason, fontSize = 12.sp, color = HomecomingColors.Ink,
+                                    modifier = Modifier.padding(top = 4.dp))
+                                Text(err.solution, fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                                    modifier = Modifier.padding(top = 3.dp))
+                                if (err.retryText != null) {
+                                    Text(
+                                        "重试",
+                                        fontSize = 13.sp, color = HomecomingColors.Accent,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .padding(top = 8.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                val t = err.retryText
+                                                sendError.value = null
+                                                send(forcedText = t, forceRoute = true)
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-
                 // ── 表情包面板 ──
                 if (showStickerPanel.value) {
                     val stickerFiles = remember(showStickerPanel.value, stickerVersion.value, sbStickerFiles.size, remoteStickerFiles.size) {
@@ -2320,6 +2376,17 @@ private fun VideoBubble(path: String, onPlay: () -> Unit) {
         }
     }
 }
+
+/**
+ * 发送失败错误卡（照橘瓣 ChatService.ChatError 模式）：
+ * 标题 + 具体原因 + 建议动作 + 可重试，挂在聊天流里可关闭——不再是一闪而过的 toast。
+ */
+private data class SendError(
+    val title: String,
+    val reason: String,
+    val solution: String,
+    val retryText: String? = null
+)
 
 /** 聊天图片落盘：sticker=true 存表情包库（压到 ~256px），否则存聊天图片（~1024px）。失败返回空串。 */
 private fun saveChatImage(context: android.content.Context, bytes: ByteArray, sticker: Boolean): String = runCatching {

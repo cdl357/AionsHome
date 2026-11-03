@@ -47,7 +47,6 @@ except urllib.error.HTTPError as e:
 print(rel['id'])
 PYEOF
 )
-ASSET=$(basename "$APK" | sed "s/^/AionsHome-$VER/;s/AionsHome-$VERapp-release/AionsHome-$VER/")
 ASSET="AionsHome-$VER.apk"
 python - "$VER" "$TOKEN" "$REL_JSON" "$APK" "$ASSET" <<'PYEOF'
 import json, sys, urllib.request

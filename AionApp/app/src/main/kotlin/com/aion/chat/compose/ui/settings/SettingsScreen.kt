@@ -423,7 +423,7 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                 Column(modifier = Modifier.weight(1f)) {
                     Text("聊天后端（实验）", fontSize = 13.sp, color = HomecomingColors.Ink)
                     Text(
-                        if (gwOn.value) "网关 SSE（未联调，需要沈聿淮那边通了才能聊）" else "中转站（当前可用）",
+                        if (gwOn.value) "网关 SSE（服务端未部署——开着发不出去也会自动回退到你的线路）" else "中转站（当前可用）",
                         fontSize = 11.sp, color = HomecomingColors.InkSoft
                     )
                 }
@@ -435,7 +435,7 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                             .edit().putBoolean("gateway", on).apply()
                         Toast.makeText(
                             context,
-                            if (on) "已切到网关 SSE——回聊天页生效（未联调前会连不上）" else "已切回中转站",
+                            if (on) "已切到网关 SSE（服务端未部署，发不出去会自动回退到你的线路）" else "已切回中转站",
                             Toast.LENGTH_LONG
                         ).show()
                     }
