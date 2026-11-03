@@ -68,6 +68,49 @@ object MusicPlayer {
         }
     }
 
+    // ── 音频焦点（历史开放项）：播放前申请，被抢/失去焦点自动暂停，不再和别的 App 叠着响 ──
+    private var focusRequested = false
+    private val focusListener = android.media.AudioManager.OnAudioFocusChangeListener { f ->
+        if (f == android.media.AudioManager.AUDIOFOCUS_LOSS ||
+            f == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+        ) {
+            runCatching {
+                appContext?.let { ctx -> pauseInternal(ctx) }
+            }
+        }
+    }
+
+    private fun requestFocus(ctx: android.content.Context) {
+        runCatching {
+            val am = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+            am.requestAudioFocus(focusListener, android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.AUDIOFOCUS_GAIN)
+            focusRequested = true
+        }
+    }
+
+    private fun abandonFocus() {
+        if (!focusRequested) return
+        runCatching {
+            appContext?.let { ctx ->
+                val am = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                am.abandonAudioFocus(focusListener)
+            }
+        }
+        focusRequested = false
+    }
+
+    /** 焦点丢失时的内部暂停（不走对外的 pause()，避免重复发通知）。 */
+    private fun pauseInternal(ctx: android.content.Context) {
+        runCatching {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.pause()
+                emit { it.copy(playing = false) }
+                val s = current
+                if (s != null) MusicNotification.show(ctx, s, false)
+            }
+        }
+    }
+
     private fun emit(transform: (PlayerState) -> PlayerState) {
         stateFlow.value = transform(stateFlow.value)
     }
@@ -109,6 +152,7 @@ object MusicPlayer {
         }
         mp.setOnPreparedListener {
             prepared = true
+            requestFocus(context)
             it.start()
             emit { it.copy(playing = true, loading = false, durationSec = it.durationSec, error = null) }
             postEvent("play", local)
@@ -133,6 +177,7 @@ object MusicPlayer {
     }
 
     fun pause() {
+        abandonFocus()
         runCatching {
             if (mediaPlayer?.isPlaying == true) {
                 mediaPlayer?.pause()
@@ -241,6 +286,7 @@ object MusicPlayer {
     }
 
     private fun releasePlayer() {
+        abandonFocus()
         runCatching {
             mediaPlayer?.stop()
             mediaPlayer?.release()

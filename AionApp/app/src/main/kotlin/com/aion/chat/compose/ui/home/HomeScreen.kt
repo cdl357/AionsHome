@@ -633,10 +633,18 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    // 界面实时渲染总闸（StyleHub「界面实时渲染」）：关=纯半透明平面，不再跑实时模糊（性能逃生口）
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val glassOn = com.aion.chat.compose.data.StyleSettings.glassBlur(context)
+    val glassMod = if (glassOn) {
+        Modifier.hazeEffect(state = hazeState, style = HazeMaterials.ultraThin())
+    } else {
+        Modifier.background(Color.White.copy(alpha = 0.55f))
+    }
     val core = modifier
         .fillMaxWidth()
         .clip(GlassShape)
-        .hazeEffect(state = hazeState, style = HazeMaterials.ultraThin())
+        .then(glassMod)
         .border(1.dp, GlassEdge, GlassShape)
         .padding(horizontal = 16.dp, vertical = contentPadding)
     Column(

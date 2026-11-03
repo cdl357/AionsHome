@@ -49,7 +49,7 @@ import kotlin.math.roundToInt
 
 /**
  * 样式中心（参考橘瓣样式设置，Yuri：我都要）：
- * 主题外观 / 透明度设置 / 颜色自定义 / 消息显示 / 插图素材，五大分区全部落库。
+ * 主题外观 / 透明度设置 / 消息显示 / 聊天字体 / 插图素材——全部开关/滑杆均接真实消费点（无实现项已摘除）。
  * 气泡透明度即时生效（写 chat_prefs）；其余项由聊天页/全局玻璃件按 rev 接线读取。
  */
 @Composable
@@ -99,25 +99,11 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
             SwitchRow("界面实时渲染", "为玻璃界面启用实时背景渲染", StyleSettings.glassBlur(context)) {
                 StyleSettings.setGlassBlur(context, it)
             }
-            SwitchRow("聊天气泡实时模糊", "为普通聊天气泡实时渲染背景模糊", StyleSettings.bubbleBlur(context)) {
-                StyleSettings.setBubbleBlur(context, it)
-            }
-            SliderRow("模糊强度", StyleSettings.blurStrength(context).toFloat(), 1f, 24f) { v ->
-                StyleSettings.setBlurStrength(context, v.roundToInt())
-            }
-            Text(
-                "${StyleSettings.blurStrength(context)} dp",
-                fontSize = 11.sp, color = soft, modifier = Modifier.padding(start = 14.dp, bottom = 8.dp)
-            )
         }
 
         // ══════ 透明度设置 ══════
         SectionTitle("透明度设置")
         Card {
-            SliderRow("界面材质不透明度", StyleSettings.glassOpacity(context) * 100, 40f, 100f) { v ->
-                StyleSettings.setGlassOpacity(context, v / 100f)
-            }
-            Percent(StyleSettings.glassOpacity(context))
             SliderRow("聊天气泡透明度", StyleSettings.bubbleOpacity(context) * 100, 30f, 100f) { v ->
                 StyleSettings.setBubbleOpacity(context, v / 100f)
             }
@@ -128,33 +114,11 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
             Percent(StyleSettings.thinkingOpacity(context))
         }
 
-        // ══════ 颜色自定义 ══════
-        SectionTitle("颜色自定义")
-        Card {
-            ColorRow("聊天正文颜色", StyleSettings.bodyColor(context), onOpen = { i -> colorDialogTitle = "聊天正文颜色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setBodyColor(context, v) } }, onReset = { StyleSettings.setBodyColor(context, null) })
-            ColorRow("全局字体颜色", StyleSettings.globalFontColor(context), onOpen = { i -> colorDialogTitle = "全局字体颜色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setGlobalFontColor(context, v) } }, onReset = { StyleSettings.setGlobalFontColor(context, null) })
-            ColorRow("用户气泡颜色", StyleSettings.userBubbleColor(context), onOpen = { i -> colorDialogTitle = "用户气泡颜色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setUserBubbleColor(context, v) } }, onReset = { StyleSettings.setUserBubbleColor(context, null) })
-            ColorRow("AI气泡颜色", StyleSettings.aiBubbleColor(context), onOpen = { i -> colorDialogTitle = "AI气泡颜色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setAiBubbleColor(context, v) } }, onReset = { StyleSettings.setAiBubbleColor(context, null) })
-            ColorRow("思维链气泡颜色", StyleSettings.thinkingBubbleColor(context), onOpen = { i -> colorDialogTitle = "思维链气泡颜色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setThinkingBubbleColor(context, v) } }, onReset = { StyleSettings.setThinkingBubbleColor(context, null) })
-            ColorRow("聊天背景色", StyleSettings.chatBgColor(context), onOpen = { i -> colorDialogTitle = "聊天背景色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setChatBgColor(context, v) } }, onReset = { StyleSettings.setChatBgColor(context, null) })
-            ColorRow("主色调（按钮/链接）", StyleSettings.primaryColor(context), onOpen = { i -> colorDialogTitle = "主色调（按钮/链接）"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setPrimaryColor(context, v) } }, onReset = { StyleSettings.setPrimaryColor(context, null) })
-            ColorRow("输入框背景颜色", StyleSettings.inputBgColor(context), onOpen = { i -> colorDialogTitle = "输入框背景颜色"; colorDialogInitial = i; pickColorFor = { v -> StyleSettings.setInputBgColor(context, v) } }, onReset = { StyleSettings.setInputBgColor(context, null) })
-        }
-
         // ══════ 消息显示 ══════
         SectionTitle("消息显示")
         Card {
-            SwitchRow("显示用户头像", "是否在聊天消息中显示用户头像", StyleSettings.showUserAvatar(context)) {
-                StyleSettings.setShowUserAvatar(context, it)
-            }
-            SwitchRow("显示助手消息气泡", "是否为助手消息显示气泡背景", StyleSettings.showAiBubble(context)) {
+            SwitchRow("显示助手消息气泡", "关=他的话直接落在纸上，不带白底框", StyleSettings.showAiBubble(context)) {
                 StyleSettings.setShowAiBubble(context, it)
-            }
-            SwitchRow("显示昵称下方日期", "在昵称下方显示消息日期", StyleSettings.showDate(context)) {
-                StyleSettings.setShowDate(context, it)
-            }
-            SwitchRow("显示Token和上下文统计", "显示token用量和消息数量", StyleSettings.showTokenStats(context)) {
-                StyleSettings.setShowTokenStats(context, it)
             }
             SwitchRow("显示思考内容", "是否在生成过程中默认展开并显示思考过程", StyleSettings.showThinking(context)) {
                 StyleSettings.setShowThinking(context, it)
@@ -198,9 +162,6 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
                 StyleSettings.setThinkingFontScale(context, v / 100f)
             }
             Percent(StyleSettings.thinkingFontScale(context))
-            SwitchRow("字体跟随系统", "聊天字号自动响应系统字体大小设置", StyleSettings.fontFollowSystem(context)) {
-                StyleSettings.setFontFollowSystem(context, it)
-            }
         }
 
         // ══════ 插图素材 ══════
@@ -216,16 +177,12 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
                 "${StyleSettings.bubbleRadius(context)} dp（0=直角）",
                 fontSize = 11.sp, color = soft, modifier = Modifier.padding(start = 14.dp, bottom = 8.dp)
             )
-            SwitchRow("背景图叠加主题色遮罩", "关=纯图片，开=图片+主题色遮罩", StyleSettings.themeTintOverlay(context)) {
-                StyleSettings.setThemeTintOverlay(context, it)
-            }
             ImageRow("用户头像挂件", "选择一张图片作为头像装饰框", StyleSettings.SLOT_USER_PENDANT)
             ImageRow("AI头像挂件", "选择一张图片作为AI头像装饰框", StyleSettings.SLOT_AI_PENDANT)
         }
 
         Text(
-            "颜色 / 字体 / 圆角 / 气泡背景图会在下一次进入聊天页时生效；气泡透明度即时生效。" +
-                "深色模式与自定义字体文件在后面的版本。",
+            "气泡字体 / 透明度 / 圆角 / 实时渲染即时生效。深色模式在后面的版本。",
             fontSize = 10.sp, color = soft, lineHeight = 15.sp,
             modifier = Modifier.padding(vertical = 14.dp)
         )

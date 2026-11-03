@@ -150,12 +150,13 @@ fun DiaryBoxScreen(onBack: () -> Unit = {}) {
 
     LaunchedEffect(Unit) {
         loading.value = true
-        val cached = readDiaryCache(context)
+        // 缓存读写都是磁盘 IO：全挪后台（原来在主线程直读直写）
+        val cached = withContext(Dispatchers.IO) { readDiaryCache(context) }
         if (!cached.isNullOrEmpty()) { letters.value = cached; loading.value = false }
         val fresh = withContext(Dispatchers.IO) { loadFoldLetters(context) }
         if (fresh.isNotEmpty()) {
             letters.value = fresh
-            writeDiaryCache(context, fresh)
+            withContext(Dispatchers.IO) { writeDiaryCache(context, fresh) }
         }
         if (cached.isNullOrEmpty()) loading.value = false
     }
@@ -517,12 +518,15 @@ private fun BoxScope.StripCard(
                             color = MonBrown, fontFamily = FontFamily.Serif)
                     }
                     Spacer(Modifier.width(cardH * 0.07f))
-                    Column(Modifier.padding(top = cardH * 0.03f)) {
+                    // 窄屏防溢出：from 列给剩余空间并截断（原来固定宽会把邮戳挤出纸边）
+                    Column(Modifier.weight(1f, fill = false).padding(top = cardH * 0.03f)) {
                         Text("from 沈聿淮",
                             fontSize = (cardH.value * 0.110f).sp, color = FromInk,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                             fontFamily = FontFamily.Cursive, fontStyle = FontStyle.Italic)
                         Text(letter.dateMs.fmt("MM.dd · HH:mm"),
-                            fontSize = (cardH.value * 0.048f).sp, color = TimeInk, letterSpacing = 1.sp)
+                            fontSize = (cardH.value * 0.048f).sp, color = TimeInk, letterSpacing = 1.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(Modifier.weight(1f))
                     // 邮戳区：最新一封多枚 NEW 章（rotate 12°）

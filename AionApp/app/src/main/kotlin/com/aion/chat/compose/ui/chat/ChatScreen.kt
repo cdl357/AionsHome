@@ -2051,6 +2051,11 @@ fun UserBubbles(
 ) {
     val segments = splitBubbles(text)
     val timeText = if (timeMs > 0) timeText(timeMs) else ""
+    // StyleHub：字体大小 / 透明度 / 圆角（她的绿气泡同款接线）
+    val ctxU = LocalContext.current
+    val fontScaleU = com.aion.chat.compose.data.StyleSettings.fontScale(ctxU)
+    val bubbleOpU = com.aion.chat.compose.data.StyleSettings.bubbleOpacity(ctxU)
+    val bRadU = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxU).coerceIn(6, 28)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -2137,17 +2142,18 @@ fun UserBubbles(
                 // 仿TG：浅绿气泡、时间+✓✓ 内嵌右下、右下角小圆角（按预览：小号紧凑）
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                     CopyOnLongPress(text = seg) {
+                        val rU = bRadU.dp
                         Box(
                             modifier = Modifier
                                 .widthIn(max = 280.dp)
-                                .clip(RoundedCornerShape(14.dp, 14.dp, 4.dp, 14.dp))
-                                .background(Color(0xFFDCF2C6).copy(alpha = (0.96f * alpha).coerceIn(0.3f, 1f)))
+                                .clip(RoundedCornerShape(rU, rU, (rU / 3.5f).coerceIn(2.dp, 9.dp), rU))
+                                .background(Color(0xFFDCF2C6).copy(alpha = (0.96f * bubbleOpU * alpha).coerceIn(0.3f, 1f)))
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 tgInline(text = seg, time = timeText, check = true, isLast = segIdx == segments.lastIndex, timeColor = Color(0xFF7FA05C)),
-                                fontSize = 14.sp, color = Color(0xFF3D4A30),
-                                lineHeight = 20.sp
+                                fontSize = (14 * fontScaleU).sp, color = Color(0xFF3D4A30),
+                                lineHeight = (20 * fontScaleU).sp
                             )
                         }
                     }
@@ -2401,6 +2407,13 @@ private fun AssistantBubbleSingle(
     onDeleteMessage: (String) -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+        // StyleHub 四项：聊天字体大小 / 气泡透明度 / 气泡圆角 / 显示助手消息气泡
+        val ctxB = LocalContext.current
+        val fontScaleB = com.aion.chat.compose.data.StyleSettings.fontScale(ctxB)
+        val bubbleOpB = com.aion.chat.compose.data.StyleSettings.bubbleOpacity(ctxB)
+        val bRadB = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxB).coerceIn(6, 28)
+        val showAiBubbleB = com.aion.chat.compose.data.StyleSettings.showAiBubble(ctxB)
+        val tgShape = RoundedCornerShape(bRadB.dp, bRadB.dp, (bRadB / 3.5f).dp.coerceIn(2.dp, 9.dp), bRadB.dp)
         MessageLongPressMenu(
             text = text,
             fullText = fullText.ifBlank { text },
@@ -2409,18 +2422,22 @@ private fun AssistantBubbleSingle(
             onDeleteMessage = onDeleteMessage
         ) {
             if (skin == 3) {
-                // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角（按预览：小号紧凑）
+                // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角（字体/透明度/圆角跟随 StyleHub；气泡可关）
                 Box(
                     modifier = Modifier
                         .widthIn(max = 300.dp)
-                        .clip(RoundedCornerShape(14.dp, 14.dp, 14.dp, 4.dp))
-                        .background(Color.White.copy(alpha = (0.97f * alpha).coerceIn(0.3f, 1f)))
+                        .then(if (showAiBubbleB) Modifier.clip(tgShape) else Modifier)
+                        .then(
+                            if (showAiBubbleB) Modifier.background(
+                                Color.White.copy(alpha = (0.97f * bubbleOpB * alpha).coerceIn(0.3f, 1f))
+                            ) else Modifier
+                        )
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
                         tgInline(text = text, time = timeText, check = false, isLast = isLast, timeColor = Color(0xFFB3A48E)),
-                        fontSize = 14.sp, color = Color(0xFF4A4238),
-                        lineHeight = 20.sp
+                        fontSize = (14 * fontScaleB).sp, color = Color(0xFF4A4238),
+                        lineHeight = (20 * fontScaleB).sp
                     )
                 }
             } else {
