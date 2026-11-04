@@ -158,9 +158,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
     val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
-    // 线路缺 Key = 假连接（重装恢复的脱敏备份）：显式判出来，别让她对着「已连接」发 401
-    val routeHasKey = route?.optString("api_key", "").orEmpty().isNotBlank()
-    val connected = wiring != null && route != null && routeHasKey
+    // 橘瓣式提供商体系：聊天用哪个提供商/模型由 ProviderStore.active 决定
+    val activeProv = remember(routeStamp, com.aion.chat.compose.data.ProviderStore.rev) {
+        com.aion.chat.compose.data.ProviderStore.active(context)
+    }
+    val connected = wiring != null && activeProv != null
 
     // ── 气泡皮肤（0 冰蓝 / 1 水晶 / 2 墨蓝 / 3 仿TG） ──
     val prefs = remember {
@@ -389,10 +391,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             Toast.makeText(
                 context,
                 when {
-                    wiring == null -> "线路配置解析失败——去 设置 → 云线路 重存一次"
-                    route == null -> "先去「更多 → 设置」配一条云线路"
-                    !routeHasKey -> "线路还没填 API Key——去 设置 → 云线路 补上"
-                    else -> "先去「更多 → 设置」配一条云线路"
+                    wiring == null -> "线路配置解析失败——去 设置 → 模型提供商 重存一次"
+                    else -> "先去 设置 → 模型提供商 新增提供商（URL+Key），拉模型列表选好，设为聊天使用"
                 },
                 Toast.LENGTH_SHORT
             ).show()
@@ -464,13 +464,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             emptyHint.value = false
             activeRequestId = reqId
         }
-        if (modelKey.isBlank()) {
+        // 橘瓣式：路由/模型由提供商体系决定（routes.json 里 active 提供商已镜像为 "main"）
+        val act = com.aion.chat.compose.data.ProviderStore.active(context)
+        if (act == null) {
             main.post {
                 sending.value = false
                 sendError.value = SendError(
-                    title = "模型名没填",
-                    reason = "线路里没有可用的模型（设置页「模型」一栏是空的）",
-                    solution = "去 设置 → 云线路 填上模型名（或点「拉取模型」选一个），保存后立即生效"
+                    title = "还没有可用的提供商",
+                    reason = "设置 → 模型提供商 里没有启用中的提供商（或没添加模型）",
+                    solution = "去 设置 → 模型提供商 新增：填名称 / URL / Key，拉模型列表勾选，保存并设为聊天使用"
                 )
             }
             return
@@ -484,8 +486,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         HomecomingChatWiring.RESPONDER,
                         HomecomingChatWiring.USER,
                         promptText,
-                        "main",
-                        modelKey,
+                        act.first.id,          // active 提供商自己的路由（routes.json 已同步）
+                        act.second.key,        // active 模型
                         img,
                         "",
                         true,
@@ -999,16 +1001,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             )
                             Text(
                                 when {
-                                    connected -> "在线"
+                                    connected -> "在线 · " + activeProv!!.first.name
                                     wiring == null -> "线路配置有误"
-                                    route == null -> "未配置线路"
-                                    !routeHasKey -> "线路缺 Key"
-                                    else -> "离线"
+                                    else -> "未配置提供商"
                                 },
                                 fontSize = 10.sp,
                                 color = when {
                                     connected -> HomecomingColors.Ok
-                                    wiring == null || (route != null && !routeHasKey) -> HomecomingColors.Accent
+                                    wiring == null -> HomecomingColors.Accent
                                     else -> HomecomingColors.InkSoft
                                 },
                                 letterSpacing = 0.5.sp

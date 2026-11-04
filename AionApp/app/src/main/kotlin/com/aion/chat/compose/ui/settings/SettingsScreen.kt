@@ -45,6 +45,7 @@ import com.aion.chat.compose.data.HomecomingData
 import com.aion.chat.compose.data.HomecomingRouteConfig
 import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.FrostCard
+import com.aion.chat.compose.ui.settings.ProviderScreen
 import com.aion.chat.compose.data.AppCrashLog
 import com.aion.chat.compose.data.HomecomingMcpStore
 import com.aion.chat.compose.ui.theme.HomecomingColors
@@ -61,6 +62,7 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
     val routeApiKey = remember { mutableStateOf("") }
     val routeModel = remember { mutableStateOf("") }
     val routeSaved = remember { mutableStateOf(false) }
+    val showProviderScreen = remember { mutableStateOf(false) }
     // Sean 的画笔（生图中转站）：地址/密钥/模型，停笔防抖后落库并刷新他的能力清单
     val genBase = remember { mutableStateOf(com.aion.chat.compose.data.SeanImageGenStore.config(context).first) }
     val genKey = remember { mutableStateOf(com.aion.chat.compose.data.SeanImageGenStore.config(context).second) }
@@ -324,186 +326,31 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
         }
 
         FrostCard {
-            Text("云线路（聊天用）", fontSize = 15.sp, color = HomecomingColors.Ink)
+            Text("模型提供商", fontSize = 15.sp, color = HomecomingColors.Ink)
             Text(
-                "OpenAI 兼容接口：填 Base URL / API Key / 模型",
-                fontSize = 12.sp,
-                color = HomecomingColors.InkSoft
+                "橘瓣式：新增提供商（名称 / URL / Key）→ 通了拉模型列表 → 勾选要用的 → 设为聊天使用",
+                fontSize = 12.sp, color = HomecomingColors.InkSoft
             )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = routeLabel.value, onValueChange = { routeLabel.value = it },
-                label = { Text("线路名称（可不填）") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = routeBaseUrl.value, onValueChange = { routeBaseUrl.value = it },
-                label = { Text("Base URL（如 https://api.xx.com/v1）") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = routeApiKey.value, onValueChange = { routeApiKey.value = it },
-                label = { Text("API Key") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = routeModel.value, onValueChange = { routeModel.value = it },
-                label = { Text("模型（可点下方「拉取模型」自己选）") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
-            ) {
-                TextButton(
-                    enabled = !modelsFetching.value,
-                    onClick = {
-                        val base = routeBaseUrl.value.trim()
-                        val key = routeApiKey.value.trim()
-                        if (base.isBlank() || key.isBlank()) {
-                            Toast.makeText(context, "先填 Base URL 和 API Key", Toast.LENGTH_SHORT).show()
-                            return@TextButton
-                        }
-                        modelsFetching.value = true
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            val res = fetchModels(base, key)
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                modelsFetching.value = false
-                                if (res.fixedBase != null && res.fixedBase != routeBaseUrl.value.trim()) {
-                                    // 用户少写了 /v1：自动补上，聊天接口才能通
-                                    routeBaseUrl.value = res.fixedBase
-                                    Toast.makeText(context, "Base URL 少了 /v1，已自动补上", Toast.LENGTH_SHORT).show()
-                                }
-                                if (res.ids.isNotEmpty()) {
-                                    routeModels.clear()
-                                    routeModels.addAll(res.ids)
-                                    showModelsDialog.value = true
-                                } else {
-                                    Toast.makeText(context, res.msg, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    }
-                ) { Text(if (modelsFetching.value) "拉取中…" else "拉取模型", color = HomecomingColors.Accent) }
-                Text(
-                    "填好 URL 和 Key 点这里，能用的模型拉下来自己选",
-                    fontSize = 11.sp, color = HomecomingColors.InkSoft
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = {
-                    val base = routeBaseUrl.value.trim()
-                    val key = routeApiKey.value.trim()
-                    val model = routeModel.value.trim()
-                    if (base.isBlank() || key.isBlank() || model.isBlank()) {
-                        Toast.makeText(context, "先填好 Base URL / API Key / 模型", Toast.LENGTH_SHORT).show()
-                        return@TextButton
-                    }
-                    routeTest.value = "正在测…"
-                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        val res = pingRoute(base, key, model)
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            routeTest.value = res
-                            // 测通了就直接保存——「填好」不等于「保存」，别让这一步漏掉
-                            if (res.startsWith("通了")) saveRoute()
-                        }
-                    }
-                }) { Text("测一下", color = HomecomingColors.InkSoft) }
-                TextButton(onClick = { saveRoute() }) { Text("保存线路", color = HomecomingColors.Accent) }
-            }
             Spacer(Modifier.height(10.dp))
-            // 聊天后端开关（网关 SSE 未联调，默认走旧中转站；文档：改完先别删旧实现）
-            val gwOn = remember {
-                mutableStateOf(
-                    context.getSharedPreferences("chat_backend", android.content.Context.MODE_PRIVATE)
-                        .getBoolean("gateway", false)
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { showProviderScreen.value = true },
+                    modifier = Modifier.weight(1f)
+                ) { Text("管理提供商") }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("聊天后端（实验）", fontSize = 13.sp, color = HomecomingColors.Ink)
-                    Text(
-                        if (gwOn.value) "网关 SSE（服务端未部署——开着发不出去也会自动回退到你的线路）" else "中转站（当前可用）",
-                        fontSize = 11.sp, color = HomecomingColors.InkSoft
-                    )
-                }
-                androidx.compose.material3.Switch(
-                    checked = gwOn.value,
-                    onCheckedChange = { on ->
-                        gwOn.value = on
-                        context.getSharedPreferences("chat_backend", android.content.Context.MODE_PRIVATE)
-                            .edit().putBoolean("gateway", on).apply()
-                        Toast.makeText(
-                            context,
-                            if (on) "已切到网关 SSE（服务端未部署，发不出去会自动回退到你的线路）" else "已切回中转站",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                )
-            }
-            Spacer(Modifier.height(8.dp))
             Text(
-                "从备份恢复线路",
-                fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                modifier = Modifier.clickable { restoreLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+                "聊天页顶栏会显示当前状态（在线 / 未配置提供商 / 缺 Key）",
+                fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                modifier = Modifier.padding(top = 8.dp)
             )
-            if (routeSaved.value) {
-                Text("已保存。回「聊天」页即可开聊。", fontSize = 11.sp, color = HomecomingColors.Ok)
-            }
-            if (routeTest.value.isNotBlank()) {
-                Text(routeTest.value, fontSize = 11.sp, color = HomecomingColors.InkSoft)
-            }
         }
 
-        // 模型选择弹窗：拉下来的可用模型挑一个
-        if (showModelsDialog.value) {
-            AlertDialog(
-                onDismissRequest = { showModelsDialog.value = false },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { showModelsDialog.value = false }) {
-                        Text("取消", color = HomecomingColors.InkSoft)
-                    }
-                },
-                title = { Text("选一个模型（共 ${routeModels.size} 个）") },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .heightIn(max = 380.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        routeModels.forEach { id ->
-                            Text(
-                                id,
-                                fontSize = 14.sp,
-                                color = if (id == routeModel.value) HomecomingColors.Accent else HomecomingColors.Ink,
-                                fontWeight = if (id == routeModel.value) FontWeight.Medium else FontWeight.Normal,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        routeModel.value = id
-                                        showModelsDialog.value = false
-
-                                        // 选完模型立即自动保存（模型名没法手打，测试通过≠已保存——这是「离线」的元凶）
-
-                                        saveRoute()
-                                        // 选完模型三项就齐了，直接保存（URL+Key 已填才能拉到列表）
-                                        if (routeBaseUrl.value.isNotBlank() && routeApiKey.value.isNotBlank()) {
-                                            saveRoute()
-                                        }
-                                    }
-                                    .padding(vertical = 9.dp)
-                            )
-                        }
-                    }
-                }
-            )
+        // ── 提供商管理全屏页 ──
+        if (showProviderScreen.value) {
+            com.aion.chat.compose.ui.settings.ProviderScreen(onClose = { showProviderScreen.value = false })
         }
 
         // ── MCP 服务器管理：先把配置攒好，聊天引擎的工具接线下一阶段开放 ──
