@@ -428,7 +428,7 @@ private fun BoxScope.StripCard(
             val depth = (-rel - 1f).coerceAtMost(3f)
             angle = (PILE_TILT + depth * PILE_TILT_STEP).coerceAtMost(80f)
             anchorY = seamY - stripGap * depth - 2.dp
-            shade = 0.45f + depth * 0.10f
+            shade = 0.30f + depth * 0.07f   // 压低：仰倒卡的背光不再发黑
         }
         rel <= 0f -> {
             angle = -rel * PILE_TILT
@@ -454,8 +454,8 @@ private fun BoxScope.StripCard(
             .align(Alignment.TopCenter)
             .fillMaxWidth(1f - stackNarrow)
             .height(cardH)
-            .shadow(10.dp, RectangleShape, clip = false,
-                ambientColor = Color(0x4050332B), spotColor = Color(0x7350332B))   // 0 14px 18px -8px rgba(80,51,43,.32) 近似；默认黑影在 72° 仰倒时会糊成大黑块
+            // 不用 elevation 阴影：Compose 阴影在 72° 旋转图层上会糊成黑块（Yuri 实测），
+            // 层叠感交给 撕边描边 + 折痕影 + 已读纸边条
             .graphicsLayer {
                 transformOrigin = if (pivotBottom) TransformOrigin(0.5f, 1f) else TransformOrigin(0.5f, 0f)
                 translationY = if (pivotBottom) (anchorY - cardH).toPx() else anchorY.toPx()

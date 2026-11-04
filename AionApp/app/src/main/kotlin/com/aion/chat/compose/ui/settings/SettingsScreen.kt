@@ -489,6 +489,10 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                                     .clickable {
                                         routeModel.value = id
                                         showModelsDialog.value = false
+
+                                        // 选完模型立即自动保存（模型名没法手打，测试通过≠已保存——这是「离线」的元凶）
+
+                                        saveRoute()
                                         // 选完模型三项就齐了，直接保存（URL+Key 已填才能拉到列表）
                                         if (routeBaseUrl.value.isNotBlank() && routeApiKey.value.isNotBlank()) {
                                             saveRoute()
