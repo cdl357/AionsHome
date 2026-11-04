@@ -86,7 +86,7 @@ fun AvatarPhoto(
 
     Box(
         modifier = Modifier
-            .size(size)
+            .size(size * 1.16f)   // 挂件要比头像大一圈才罩得住
             .then(clickableModifier),
         contentAlignment = Alignment.Center
     ) {
@@ -109,6 +109,32 @@ fun AvatarPhoto(
                 Text(initial, fontSize = (size.value * 0.4f).sp, color = borderColor,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Serif)
             }
+        }
+        // 头像挂件（StyleHub 插图素材 → SLOT_USER_PENDANT / SLOT_AI_PENDANT）：
+        // 透明底 PNG 叠在头像上，按素材 rev 刷新；没选就不叠
+        val pendantSlot = if (who == "yuri") {
+            com.aion.chat.compose.data.StyleSettings.SLOT_USER_PENDANT
+        } else {
+            com.aion.chat.compose.data.StyleSettings.SLOT_AI_PENDANT
+        }
+        val pendantRev = com.aion.chat.compose.data.StyleSettings.rev
+        val pendant = remember(pendantSlot, pendantRev) {
+            runCatching {
+                val f = com.aion.chat.compose.data.StyleSettings.imageFile(context, pendantSlot)
+                if (!f.exists()) null
+                else {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeFile(f.absolutePath, opts)?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+        pendant?.let {
+            Image(
+                bitmap = it,
+                contentDescription = "挂件",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(size * 1.16f)
+            )
         }
     }
 }

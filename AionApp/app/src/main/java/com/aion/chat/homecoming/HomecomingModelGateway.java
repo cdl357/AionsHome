@@ -34,7 +34,8 @@ public final class HomecomingModelGateway {
     public void stream(ChatRequest request, StreamObserver observer) throws Exception {
         HomecomingRouteVault.Route route = vault.resolve(request.routeId);
         HomecomingRouteVault.Model model = route.model(request.modelKey);
-        if (!request.imageDataUrl.isEmpty() && !model.vision) {
+        if ((!request.imageDataUrl.isEmpty() || !request.extraImageDataUrls.isEmpty())
+                && !model.vision) {
             throw new IllegalArgumentException("selected model does not support vision");
         }
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -123,16 +124,26 @@ public final class HomecomingModelGateway {
         JSONArray messages = new JSONArray();
         for (ChatMessage message : request.messages) {
             JSONObject value = new JSONObject().put("role", message.role);
-            if (!request.imageDataUrl.isEmpty() && "user".equals(message.role)
-                    && message == request.messages.get(request.messages.size() - 1)) {
-                value.put("content", new JSONArray()
+            boolean lastUserWithImage = !request.imageDataUrl.isEmpty()
+                    && "user".equals(message.role)
+                    && message == request.messages.get(request.messages.size() - 1);
+            if (lastUserWithImage) {
+                // 多图：首图 + extras 逐张 image_url part（v7：中转站与网关对齐）
+                JSONArray parts = new JSONArray()
                         .put(new JSONObject()
                                 .put("type", "text")
-                                .put("text", message.text))
-                        .put(new JSONObject()
-                                .put("type", "image_url")
-                                .put("image_url", new JSONObject()
-                                        .put("url", request.imageDataUrl))));
+                                .put("text", message.text));
+                java.util.ArrayList<String> urls = new java.util.ArrayList<>();
+                urls.add(request.imageDataUrl);
+                urls.addAll(request.extraImageDataUrls);
+                for (String url : urls) {
+                    if (url == null || url.isEmpty()) continue;
+                    parts.put(new JSONObject()
+                            .put("type", "image_url")
+                            .put("image_url", new JSONObject()
+                                    .put("url", url)));
+                }
+                value.put("content", parts);
             } else {
                 value.put("content", message.text);
             }
@@ -336,9 +347,18 @@ public final class HomecomingModelGateway {
         public final String modelKey;
         public final List<ChatMessage> messages;
         public final String imageDataUrl;
+        /** 多图（v7：中转站路径与网关对齐）——首图在 imageDataUrl，其余在这里。 */
+        public final List<String> extraImageDataUrls;
 
         public ChatRequest(String requestId, String routeId, String modelKey,
                 List<ChatMessage> messages, String imageDataUrl) {
+            this(requestId, routeId, modelKey, messages, imageDataUrl,
+                    java.util.Collections.<String>emptyList());
+        }
+
+        public ChatRequest(String requestId, String routeId, String modelKey,
+                List<ChatMessage> messages, String imageDataUrl,
+                List<String> extraImageDataUrls) {
             this.requestId = required(requestId, "requestId");
             this.routeId = required(routeId, "routeId");
             this.modelKey = required(modelKey, "modelKey");
@@ -347,6 +367,9 @@ public final class HomecomingModelGateway {
                 throw new IllegalArgumentException("messages are required");
             }
             this.imageDataUrl = imageDataUrl == null ? "" : imageDataUrl;
+            this.extraImageDataUrls = extraImageDataUrls == null
+                    ? java.util.Collections.<String>emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(extraImageDataUrls));
         }
     }
 

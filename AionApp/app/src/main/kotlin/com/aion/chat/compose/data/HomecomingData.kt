@@ -195,6 +195,46 @@ object SettingsBg {
 
     fun loadLoveBitmap(context: Context): android.graphics.Bitmap? = decode(loveFile(context))
 
+    // ── 背景亮度（底部导航深色壁纸适配）：按 stamp 缓存，采样小图算平均亮度 ──
+    @Volatile private var darkCache: Pair<Long, Boolean>? = null
+
+    /** 当前全局背景是否偏暗（true=深色壁纸：底栏应换浅色玻璃）。 */
+    fun isDarkBackground(context: Context): Boolean {
+        val stamp = backgroundFile(context).let { if (it.exists()) it.lastModified() else 0L }
+        darkCache?.let { (s, d) -> if (s == stamp) return d }
+        val dark = runCatching {
+            val f = backgroundFile(context)
+            if (!f.exists()) return@runCatching false
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(f.absolutePath, bounds)
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 64) sample *= 2
+            val bmp = android.graphics.BitmapFactory.decodeFile(
+                f.absolutePath, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            ) ?: return@runCatching false
+            var lum = 0.0
+            val step = maxOf(1, bmp.width / 24)
+            var n = 0
+            var y = 0
+            while (y < bmp.height) {
+                var x = 0
+                while (x < bmp.width) {
+                    val c = bmp.getPixel(x, y)
+                    lum += (android.graphics.Color.red(c) * 0.299
+                            + android.graphics.Color.green(c) * 0.587
+                            + android.graphics.Color.blue(c) * 0.114)
+                    n++
+                    x += step
+                }
+                y += step
+            }
+            bmp.recycle()
+            if (n == 0) false else (lum / n) < 110.0   // 0-255，低于 110 判深色
+        }.getOrDefault(false)
+        darkCache = stamp to dark
+        return dark
+    }
+
     // ── 背景图跨卸载持久化：app 私有目录会被卸载清空，备份到公共 Downloads，重装自动找回 ──
 
     private const val BG_BACKUP_NAME = "aionshome-bg-backup.jpg"

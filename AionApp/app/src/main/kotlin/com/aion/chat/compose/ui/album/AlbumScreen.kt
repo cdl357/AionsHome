@@ -1093,6 +1093,8 @@ private fun SeanAssetLibraryPanel() {
     var pendingBytes by remember { mutableStateOf<ByteArray?>(null) }
     var actionFor by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
     var renaming by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
+    // 删除两段确认（P3：单击即删太危险，与「改名」相邻）
+    var confirmDeleteAsset by remember { mutableStateOf(false) }
     var renameDraft by remember { mutableStateOf("") }
 
     val libPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1214,6 +1216,7 @@ private fun SeanAssetLibraryPanel() {
 
     // 单张素材的动作
     actionFor?.let { a ->
+        LaunchedEffect(a.id) { confirmDeleteAsset = false }
         fun applyTo(target: String) {
             scope.launch(Dispatchers.IO) {
                 val ok = com.aion.chat.compose.data.SeanAssetStore.applyAs(context, a, target)
@@ -1267,16 +1270,21 @@ private fun SeanAssetLibraryPanel() {
                             .padding(vertical = 10.dp)
                     )
                     Text(
-                        "删除",
+                        if (confirmDeleteAsset) "真的删除？（不可恢复）" else "删除",
                         fontSize = 14.sp, color = HomecomingColors.Danger,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
-                                val id = a.id
-                                actionFor = null
-                                scope.launch(Dispatchers.IO) {
-                                    com.aion.chat.compose.data.SeanAssetStore.delete(context, id)
+                                if (!confirmDeleteAsset) {
+                                    confirmDeleteAsset = true
+                                } else {
+                                    val id = a.id
+                                    actionFor = null
+                                    confirmDeleteAsset = false
+                                    scope.launch(Dispatchers.IO) {
+                                        com.aion.chat.compose.data.SeanAssetStore.delete(context, id)
+                                    }
                                 }
                             }
                             .padding(vertical = 10.dp)

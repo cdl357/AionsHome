@@ -105,6 +105,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
@@ -112,6 +113,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aion.chat.compose.data.HomecomingChatWiring
@@ -485,7 +487,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         "main",
                         modelKey,
                         img,
-                        ""
+                        "",
+                        true,
+                        extras.filter { it.isNotBlank() }   // v7：中转站路径也带多图/视频帧
                     ),
                     object : HomecomingChatEngine.Observer {
                         override fun onChunk(chunk: String) {
@@ -1677,6 +1681,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             start = 14.dp, end = 14.dp,
                             top = 10.dp,
                             bottom = if (imeOpen) 10.dp else 84.dp
+                        )
+                        .bubbleBgImage(
+                            com.aion.chat.compose.data.StyleSettings.SLOT_INPUT,
+                            RoundedCornerShape(22.dp)
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2118,6 +2126,7 @@ fun UserBubbles(
     val ctxU = LocalContext.current
     val fontScaleU = com.aion.chat.compose.data.StyleSettings.fontScale(ctxU)
     val bRadU = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxU).coerceIn(0, 40)
+    val fontU = styleFontFamily(com.aion.chat.compose.data.StyleSettings.fontFamily(ctxU))
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -2205,17 +2214,20 @@ fun UserBubbles(
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                     CopyOnLongPress(text = seg) {
                         val rU = bRadU.dp
+                        val shapeU = RoundedCornerShape(rU, rU, (rU / 3.5f).coerceIn(0.dp, 9.dp), rU)
                         Box(
                             modifier = Modifier
                                 .widthIn(max = 280.dp)
-                                .clip(RoundedCornerShape(rU, rU, (rU / 3.5f).coerceIn(0.dp, 9.dp), rU))
+                                .clip(shapeU)
                                 .background(Color(0xFFDCF2C6).copy(alpha = (0.96f * alpha).coerceIn(0.3f, 1f)))
+                                .bubbleBgImage(com.aion.chat.compose.data.StyleSettings.SLOT_USER_BUBBLE, shapeU)
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 tgInline(text = seg, time = timeText, check = checkmark, isLast = segIdx == segments.lastIndex, timeColor = Color(0xFF7FA05C)),
                                 fontSize = (14 * fontScaleU).sp, color = Color(0xFF3D4A30),
-                                lineHeight = (20 * fontScaleU).sp
+                                lineHeight = (20 * fontScaleU).sp,
+                                fontFamily = fontU
                             )
                         }
                     }
@@ -2474,6 +2486,7 @@ private fun AssistantBubbleSingle(
         val fontScaleB = com.aion.chat.compose.data.StyleSettings.fontScale(ctxB)
         val bRadB = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxB).coerceIn(0, 40)
         val showAiBubbleB = com.aion.chat.compose.data.StyleSettings.showAiBubble(ctxB)
+        val fontB = styleFontFamily(com.aion.chat.compose.data.StyleSettings.fontFamily(ctxB))
         val tgShape = RoundedCornerShape(bRadB.dp, bRadB.dp, (bRadB / 3.5f).dp.coerceIn(0.dp, 9.dp), bRadB.dp)
         MessageLongPressMenu(
             text = text,
@@ -2487,18 +2500,20 @@ private fun AssistantBubbleSingle(
                 Box(
                     modifier = Modifier
                         .widthIn(max = 300.dp)
-                        .then(if (showAiBubbleB) Modifier.clip(tgShape) else Modifier)
                         .then(
-                            if (showAiBubbleB) Modifier.background(
-                                Color.White.copy(alpha = (0.97f * alpha).coerceIn(0.3f, 1f))
-                            ) else Modifier
+                            if (showAiBubbleB) Modifier
+                                .clip(tgShape)
+                                .background(Color.White.copy(alpha = (0.97f * alpha).coerceIn(0.3f, 1f)))
+                                .bubbleBgImage(com.aion.chat.compose.data.StyleSettings.SLOT_AI_BUBBLE, tgShape)
+                            else Modifier
                         )
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
                         tgInline(text = text, time = timeText, check = false, isLast = isLast, timeColor = Color(0xFFB3A48E)),
                         fontSize = (14 * fontScaleB).sp, color = Color(0xFF4A4238),
-                        lineHeight = (20 * fontScaleB).sp
+                        lineHeight = (20 * fontScaleB).sp,
+                        fontFamily = fontB
                     )
                 }
             } else {
@@ -2636,6 +2651,45 @@ private fun VideoBubble(path: String, onPlay: () -> Unit) {
         }
     }
 }
+
+/** StyleHub 字体 chips（0=默认 1=衬线 2=等宽）→ FontFamily。 */
+internal fun styleFontFamily(idx: Int): androidx.compose.ui.text.font.FontFamily = when (idx) {
+    1 -> androidx.compose.ui.text.font.FontFamily.Serif
+    2 -> androidx.compose.ui.text.font.FontFamily.Monospace
+    else -> androidx.compose.ui.text.font.FontFamily.Default
+}
+
+/** 气泡背景图（StyleHub 插图素材）：返回裁好形状的背景 Modifier；没选图返回原样。 */
+@Composable
+private fun Modifier.bubbleBgImage(slot: String, shape: androidx.compose.ui.graphics.Shape): Modifier {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val rev = com.aion.chat.compose.data.StyleSettings.rev
+    val bmp = remember(slot, rev) {
+        runCatching {
+            val f = com.aion.chat.compose.data.StyleSettings.imageFile(ctx, slot)
+            if (!f.exists()) null else decodeChatImage(f, 512)
+        }.getOrNull()
+    } ?: return this
+    return this.drawWithContentCompat(bmp, shape)
+}
+
+/** 位图铺底 + 内容在上（裁形）。 */
+private fun Modifier.drawWithContentCompat(
+    bmp: Bitmap,
+    shape: androidx.compose.ui.graphics.Shape
+): Modifier = this.then(
+    Modifier
+        .clip(shape)
+        .drawBehind {
+            drawImage(
+                bmp.asImageBitmap(),
+                dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                alpha = 0.90f
+            )
+            // 压一层浅白，保证字可读
+            drawRect(Color.White.copy(alpha = 0.35f))
+        }
+)
 
 /**
  * 发送失败错误卡（照橘瓣 ChatService.ChatError 模式）：

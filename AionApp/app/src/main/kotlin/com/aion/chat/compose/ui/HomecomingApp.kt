@@ -257,12 +257,27 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
             .padding(horizontal = 16.dp)
             .padding(bottom = 12.dp)
     ) {
+        // 深色壁纸适配：黑字+12%白玻璃在深底上不可见——按背景亮度切换深玻璃浅字
+        val ctxNav = androidx.compose.ui.platform.LocalContext.current
+        val navDark = remember(com.aion.chat.compose.data.SettingsBg.stamp) {
+            com.aion.chat.compose.data.SettingsBg.isDarkBackground(ctxNav)
+        }
+        val navContent = if (navDark) Color.White else NavBlack
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.12f))
-                .border(1.dp, GlassEdge, RoundedCornerShape(50))
+                .background(
+                    if (navDark) Color(0xFF1A1613).copy(alpha = 0.80f)
+                    else Color.White.copy(alpha = 0.12f)
+                )
+                .border(
+                    1.dp,
+                    if (navDark) Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = 0.25f), Color.White.copy(alpha = 0.10f))
+                    ) else GlassEdge,
+                    RoundedCornerShape(50)
+                )
                 .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
@@ -276,20 +291,24 @@ private fun HomecomingBottomBar(current: String, onSelect: (HomeTab) -> Unit) {
                         .weight(1f)
                         .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(if (selected) Color.White.copy(alpha = 0.38f) else Color.Transparent)
+                        .background(
+                            if (selected) {
+                                if (navDark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.38f)
+                            } else Color.Transparent
+                        )
                         .clickable { onSelect(tab) }
                         .padding(vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = tab.icon,
                         contentDescription = tab.label,
-                        tint = NavBlack,
+                        tint = navContent,
                         modifier = Modifier.size(22.dp)
                     )
                     Text(
                         text = tab.label,
                         style = MaterialTheme.typography.labelSmall,
-                        color = NavBlack,
+                        color = navContent,
                         modifier = Modifier.padding(start = 5.dp)
                     )
                 }

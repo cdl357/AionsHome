@@ -152,7 +152,8 @@ public final class HomecomingChatEngine {
                     command.routeId,
                     command.modelKey,
                     messages,
-                    command.imageDataUrl),
+                    command.imageDataUrl,
+                    command.extraImageDataUrls),
                     new HomecomingModelGateway.StreamObserver() {
                         @Override public void onChunk(String text) {
                             // Control tags may span chunks; publish only after final parsing.
@@ -247,6 +248,8 @@ public final class HomecomingChatEngine {
         public final String imageDataUrl;
         public final String locationState;
         public final boolean commitUser;
+        /** 多图（v7）：首图在 imageDataUrl，其余在这里；网关/中转站路径都会带上。 */
+        public final java.util.List<String> extraImageDataUrls;
 
         public ChatCommand(
                 String requestId, String timelineId, String responderOwner,
@@ -260,6 +263,16 @@ public final class HomecomingChatEngine {
                 String requestId, String timelineId, String responderOwner,
                 String userSenderId, String text, String routeId, String modelKey,
                 String imageDataUrl, String locationState, boolean commitUser) {
+            this(requestId, timelineId, responderOwner, userSenderId, text,
+                    routeId, modelKey, imageDataUrl, locationState, commitUser,
+                    java.util.Collections.<String>emptyList());
+        }
+
+        public ChatCommand(
+                String requestId, String timelineId, String responderOwner,
+                String userSenderId, String text, String routeId, String modelKey,
+                String imageDataUrl, String locationState, boolean commitUser,
+                java.util.List<String> extraImageDataUrls) {
             this.requestId = required(requestId, "requestId");
             this.timelineId = required(timelineId, "timelineId");
             this.responderOwner = required(responderOwner, "responderOwner");
@@ -270,6 +283,10 @@ public final class HomecomingChatEngine {
             this.imageDataUrl = imageDataUrl == null ? "" : imageDataUrl;
             this.locationState = locationState == null ? "" : locationState;
             this.commitUser = commitUser;
+            this.extraImageDataUrls = extraImageDataUrls == null
+                    ? java.util.Collections.<String>emptyList()
+                    : java.util.Collections.unmodifiableList(
+                            new java.util.ArrayList<>(extraImageDataUrls));
         }
     }
 
