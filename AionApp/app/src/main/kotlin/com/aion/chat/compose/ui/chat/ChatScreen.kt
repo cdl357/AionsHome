@@ -386,8 +386,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         if (!connected) {
             Toast.makeText(
                 context,
-                if (route != null && !routeHasKey) "线路还没填 API Key——去 设置 → 云线路 补上"
-                else "先去「更多 → 设置」配一条云线路",
+                when {
+                    wiring == null -> "线路配置解析失败——去 设置 → 云线路 重存一次"
+                    route == null -> "先去「更多 → 设置」配一条云线路"
+                    !routeHasKey -> "线路还没填 API Key——去 设置 → 云线路 补上"
+                    else -> "先去「更多 → 设置」配一条云线路"
+                },
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -457,6 +461,17 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             stopping = false
             emptyHint.value = false
             activeRequestId = reqId
+        }
+        if (modelKey.isBlank()) {
+            main.post {
+                sending.value = false
+                sendError.value = SendError(
+                    title = "模型名没填",
+                    reason = "线路里没有可用的模型（设置页「模型」一栏是空的）",
+                    solution = "去 设置 → 云线路 填上模型名（或点「拉取模型」选一个），保存后立即生效"
+                )
+            }
+            return
         }
         scope.launch(Dispatchers.IO) {
             try {
@@ -981,13 +996,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             Text(
                                 when {
                                     connected -> "在线"
-                                    route != null && !routeHasKey -> "线路缺 Key"
+                                    wiring == null -> "线路配置有误"
+                                    route == null -> "未配置线路"
+                                    !routeHasKey -> "线路缺 Key"
                                     else -> "离线"
                                 },
                                 fontSize = 10.sp,
                                 color = when {
                                     connected -> HomecomingColors.Ok
-                                    route != null && !routeHasKey -> HomecomingColors.Accent
+                                    wiring == null || (route != null && !routeHasKey) -> HomecomingColors.Accent
                                     else -> HomecomingColors.InkSoft
                                 },
                                 letterSpacing = 0.5.sp

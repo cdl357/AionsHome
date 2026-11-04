@@ -25,28 +25,47 @@ public final class HomecomingRouteVault {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
         if (values != null) {
             for (int i = 0; i < values.length(); i++) {
-                JSONObject value = values.getJSONObject(i);
-                ArrayList<Model> models = new ArrayList<>();
-                JSONArray modelValues = value.optJSONArray("models");
-                if (modelValues != null) {
-                    for (int j = 0; j < modelValues.length(); j++) {
-                        JSONObject model = modelValues.getJSONObject(j);
-                        models.add(new Model(
-                                required(model.optString("key", ""), "model key"),
-                                required(model.optString("model", ""), "model"),
-                                model.optBoolean("vision", false),
-                                model.optBoolean("audio", false)));
+                // 容错（修复「整份配置因一条坏路由全废 → 永远离线」）：
+                // 缺 route_id/provider/base_url 的路由跳过并记日志，不再一票否决
+                try {
+                    JSONObject value = values.getJSONObject(i);
+                    ArrayList<Model> models = new ArrayList<>();
+                    JSONArray modelValues = value.optJSONArray("models");
+                    if (modelValues != null) {
+                        for (int j = 0; j < modelValues.length(); j++) {
+                            // 模型缺 key/model 的条目跳过（route 保留，主模型取下一个）
+                            try {
+                                JSONObject model = modelValues.getJSONObject(j);
+                                models.add(new Model(
+                                        required(model.optString("key", ""), "model key"),
+                                        required(model.optString("model", ""), "model"),
+                                        model.optBoolean("vision", false),
+                                        model.optBoolean("audio", false)));
+                            } catch (RuntimeException badModel) {
+                                android.util.Log.w("HomecomingRouteVault",
+                                        "skip bad model #" + j + ": " + badModel.getMessage());
+                            }
+                        }
                     }
-                }
-                Route route = new Route(
-                        required(value.optString("route_id", ""), "route id"),
-                        value.optString("label", value.optString("route_id", "")),
-                        required(value.optString("provider", ""), "provider"),
-                        required(value.optString("base_url", ""), "base url"),
-                        required(value.optString("api_key", ""), "api key"),
-                        models);
-                if (routes.put(route.routeId, route) != null) {
-                    throw new IllegalArgumentException("duplicate route id");
+                    if (models.isEmpty()) {
+                        android.util.Log.w("HomecomingRouteVault",
+                                "skip route #" + i + "（没有任何可用模型）");
+                        continue;
+                    }
+                    Route route = new Route(
+                            required(value.optString("route_id", ""), "route id"),
+                            value.optString("label", value.optString("route_id", "")),
+                            required(value.optString("provider", ""), "provider"),
+                            required(value.optString("base_url", ""), "base url"),
+                            value.optString("api_key", ""),
+                            models);
+                    if (routes.put(route.routeId, route) != null) {
+                        android.util.Log.w("HomecomingRouteVault",
+                                "duplicate route id " + route.routeId + "，后者覆盖");
+                    }
+                } catch (RuntimeException badRoute) {
+                    android.util.Log.w("HomecomingRouteVault",
+                            "skip bad route #" + i + ": " + badRoute.getMessage());
                 }
             }
         }

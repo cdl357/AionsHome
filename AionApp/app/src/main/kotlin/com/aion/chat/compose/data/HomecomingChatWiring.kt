@@ -47,10 +47,18 @@ class HomecomingChatWiring(context: Context) {
     }
 
     private fun buildVault(context: Context): HomecomingRouteVault {
-        val config = HomecomingRouteConfig.load(context)
-        val plaintext = config?.toString()?.toByteArray()
-            ?: "{\"chat\":[]}".toByteArray(Charsets.UTF_8)
-        return HomecomingRouteVault.fromPlaintext(plaintext)
+        // 配置毒化（旧格式/半截 JSON）不再让 safeCreate 返回 null：兜底空 vault，
+        // 聊天页据此显示「未配置线路」，设置页重存即可恢复
+        return try {
+            val config = HomecomingRouteConfig.load(context)
+            val plaintext = config?.toString()?.toByteArray()
+                ?: "{\"chat\":[]}".toByteArray(Charsets.UTF_8)
+            HomecomingRouteVault.fromPlaintext(plaintext)
+        } catch (e: Exception) {
+            AppCrashLog.write(context, e)
+            runCatching { HomecomingRouteVault.fromPlaintext("{\"chat\":[]}".toByteArray(Charsets.UTF_8)) }
+                .getOrDefault(HomecomingRouteVault.fromPlaintext("{\"chat\":[]}".toByteArray(Charsets.UTF_8)))
+        }
     }
 
     fun hasRoute(): Boolean = vault.listDescriptors().isNotEmpty()
