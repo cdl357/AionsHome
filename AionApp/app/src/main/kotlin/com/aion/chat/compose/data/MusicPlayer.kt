@@ -77,6 +77,8 @@ object MusicPlayer {
             runCatching {
                 appContext?.let { ctx -> pauseInternal(ctx) }
             }
+            // 复位标记：下次续播会重新申请焦点（否则 pause→别 App→resume 不申请，依旧叠音）
+            focusRequested = false
         }
     }
 
@@ -122,7 +124,8 @@ object MusicPlayer {
             if (mediaPlayer?.isPlaying == true) {
                 pause()
             } else {
-                // 已暂停的同一首：续播而不是整首重播（原来直接 return，点了没反应）
+                // 已暂停的同一首：续播（重新申请焦点——pause 时释放过）
+                requestFocus(context)
                 resume()
             }
             return

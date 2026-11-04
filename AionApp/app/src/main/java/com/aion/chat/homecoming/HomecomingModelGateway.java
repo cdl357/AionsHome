@@ -147,6 +147,12 @@ public final class HomecomingModelGateway {
         headers.put("Content-Type", "application/json");
         // Base URL 自动补 /v1（设置页「拉取模型」会补，但手填的常不带——发消息的路径必须同款归一）
         String base = trimSlash(route.baseUrl);
+        if (base.endsWith("/chat/completions")) {
+            return new NetworkRequest(base, HomecomingSnapshotStore.canonicalJson(body), headers);
+        }
+        if (base.contains("?")) {
+            return new NetworkRequest(base, HomecomingSnapshotStore.canonicalJson(body), headers);
+        }
         if (!base.endsWith("/v1")) {
             base = base + "/v1";
         }

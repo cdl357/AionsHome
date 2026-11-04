@@ -13,6 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -177,15 +180,22 @@ fun CallScreen(onHangUp: () -> Unit = {}) {
                 )
             }
             if (!ui?.reply.isNullOrBlank()) {
-                Text(
-                    "Sean：" + ui!!.reply,
-                    fontSize = 14.sp, color = Color.White,
-                    lineHeight = 22.sp,
-                    textAlign = TextAlign.Center,
+                // 长回复限高可滚：不再把文字叠到底部按键上
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 32.dp)
-                )
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 32.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        "Sean：" + ui!!.reply,
+                        fontSize = 14.sp, color = Color.White,
+                        lineHeight = 22.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
 

@@ -98,7 +98,7 @@ object SeanImageGenStore {
             if (!c.moveToFirst()) return null
             val g = GenImage(c.getString(0), c.getString(1) ?: "", c.getString(2) ?: "", c.getString(3), c.getLong(4))
             // 生成中进程被杀 → 行永卡 pending：超 3 分钟判失败（消息从「正在画」变「没画成」）
-            if (g.state == "pending" && System.currentTimeMillis() - g.createdAt > 180_000L) {
+            if (g.state == "pending" && System.currentTimeMillis() - g.createdAt > 240_000L) {
                 upsert(context, messageId, g.prompt, "failed", "")
                 g.copy(state = "failed")
             } else g
@@ -148,7 +148,7 @@ object SeanImageGenStore {
     private fun callRelay(context: Context, prompt: String): ByteArray {
         val (rawBase, key, model) = config(context)
         var base = rawBase.trim().trimEnd('/')
-        if (!base.endsWith("/v1")) base = "$base/v1"
+        if (!base.endsWith("/v1") && !base.endsWith("/images/generations")) base = "$base/v1"
         val body = JSONObject()
             .put("model", model)
             .put("prompt", prompt)

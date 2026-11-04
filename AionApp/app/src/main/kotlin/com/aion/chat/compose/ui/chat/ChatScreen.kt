@@ -437,6 +437,122 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         val requestId = "req_" + System.currentTimeMillis()
         activeRequestId = requestId
         emptyHint.value = false
+
+    /**
+     * 中转站发送路径（send() 主体；网关失败回落也走这里）。
+     * reqId 复用 → 用户消息按 (requestId,role) 幂等；img/imgPath/extras/bubblePaths 全透传 → 重发不丢图。
+     */
+    fun sendViaRoute(
+        w: HomecomingChatWiring,
+        reqId: String,
+        txt: String,
+        promptText: String,
+        img: String,
+        imgPath: String,
+        extras: List<String>,
+        bubblePaths: List<String>
+    ) {
+        main.post {
+            sending.value = true
+            stopping = false
+            emptyHint.value = false
+            activeRequestId = reqId
+        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                w.engine.send(
+                    HomecomingChatEngine.ChatCommand(
+                        reqId,
+                        HomecomingChatWiring.TIMELINE,
+                        HomecomingChatWiring.RESPONDER,
+                        HomecomingChatWiring.USER,
+                        promptText,
+                        "main",
+                        modelKey,
+                        img,
+                        ""
+                    ),
+                    object : HomecomingChatEngine.Observer {
+                        override fun onChunk(chunk: String) {
+                            // 引擎在完成时一次性给出可见文本（控制标签已在引擎内剥离）
+                            main.post {
+                                pendingSegments.clear()
+                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(chunk))))
+                            }
+                        }
+
+                        override fun onComplete(messageId: String, completeText: String) {
+                            main.post {
+                                if (stopping) { stopping = false; return@post }
+                                sending.value = false
+                            }
+                            if (stopping) return
+                            speakReply(completeText)
+                            scope.launch(Dispatchers.IO) {
+                                reloadNow()
+                                // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片/视频通用）
+                                if (bubblePaths.any { it.isNotBlank() }) {
+                                    val latest = runCatching {
+                                        w.listMessages(HomecomingChatWiring.TIMELINE)
+                                            .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
+                                    }.getOrNull()
+                                    if (latest != null) {
+                                        com.aion.chat.compose.data.HomecomingChatImageStore.mapMany(
+                                            context, latest.id, bubblePaths.filter { it.isNotBlank() }
+                                        )
+                                    }
+                                }
+                                // 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写今天的日记
+                                if (txt.contains("晚安")) {
+                                    runCatching { generateTonightDiary(context) }
+                                }
+                                // 音乐卡在搜歌路径已入库（这里重复 add 会出双卡）
+                            }
+                        }
+
+                        override fun onFailure(code: String) {
+                            main.post {
+                                if (stopping) { stopping = false; return@post }
+                                sending.value = false
+                                sendError.value = SendError(
+                                    title = "回复失败（$code）",
+                                    reason = when {
+                                        code.startsWith("model_request_failed") -> {
+                                            val why = code.substringAfter("model_request_failed:")
+                                                .substringAfter(':', "")
+                                            when {
+                                                code.contains("UnknownHost") -> "域名解析失败——Base URL 拼写或网络 DNS 有问题"
+                                                code.contains("ConnectException") -> "连不上端点（连接被拒 / 网络不通）"
+                                                code.contains("SocketTimeout") -> "请求超时（线路太慢或不通）"
+                                                code.contains("SSL") -> "TLS 握手被拦（证书 / 网络拦截）"
+                                                code.contains("already running") -> "上一条还没跑完，等它结束再发"
+                                                else -> "请求没发出去" + (if (why.isNotBlank()) "：${why.take(90)}" else "")
+                                            }
+                                        }
+                                        code.startsWith("empty_model_reply") -> "线路通了，但模型回了空——多半是模型名不对或余额/权限问题"
+                                        code.contains("401") || code.contains("403") -> "Key 无效或没权限（HTTP 401/403）"
+                                        code.contains("404") -> "端点 404——Base URL 或模型名不对"
+                                        code.contains("429") -> "限流（HTTP 429），稍等再试"
+                                        else -> "线路返回异常（$code）"
+                                    },
+                                    solution = "去 设置 → 云线路 检查 Base URL / API Key / 模型，保存后立即生效，不用重启",
+                                    failedText = txt,
+                                    retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
+                                )
+                                Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                main.post {
+                    sending.value = false
+                    Toast.makeText(context, "发送失败：${e.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
         // ── 网关 SSE 后端（开关打开时走这里；旧中转站分支原样保留在后面） ──
         if (useGateway && !forceRoute) {
             val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
@@ -511,103 +627,28 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     override fun onFailure(code: String) {
                         main.post {
                             if (stopping) { stopping = false; return@post }
-                            // 网关没通（8790 服务端从未部署）→ 不吞消息：自动改走她的线路重发
-                            // （同一 requestId，commit 按 (requestId,role) 幂等，不会出双气泡）
+                            // 网关没通（8790 服务端从未部署）→ 不吞消息：回落到中转站路径重发。
+                            // P1-1/P1-2 修复：复用同一 requestId（commit 按 (requestId,role) 幂等，
+                            // 不出双气泡），并透传 原图/视频帧/多图/前缀——重发不再丢图丢上下文。
                             sending.value = false
                             thinkingLive.value = null; toolName.value = null; noticeText.value = null
-                            errorText.value = "网关没连上（$code），已自动改走你的线路重发"
-                            send(forcedText = text, promptPrefix = promptPrefix, forceRoute = true)
+                            val note = "网关没连上（$code），已自动改走你的线路重发"
+                            errorText.value = note
+                            main.postDelayed({ if (errorText.value == note) errorText.value = null }, 6000)
+                            sendViaRoute(w, requestId, text, prompt, image, imagePath, extraImagesForModel, imagesForBubble)
                         }
                     }
                 }
             )
             return
         }
-        scope.launch(Dispatchers.IO) {
-            try {
-                // 即时指令：有已完成的指令时，把用时反馈拼进这一轮（他就能知道她用了多久）
-                val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
-                val prefix = listOfNotNull(promptPrefix, cmdFeedback?.let { "[$it]" })
-                    .joinToString("\n").ifBlank { null }
-                val prompt = if (prefix != null) prefix + "\n" + text else text
-                w.engine.send(
-                    HomecomingChatEngine.ChatCommand(
-                        requestId,
-                        HomecomingChatWiring.TIMELINE,
-                        HomecomingChatWiring.RESPONDER,
-                        HomecomingChatWiring.USER,
-                        prompt,
-                        "main",
-                        modelKey,
-                        image,
-                        ""
-                    ),
-                    object : HomecomingChatEngine.Observer {
-                        override fun onChunk(chunk: String) {
-                            // 引擎在完成时一次性给出可见文本（控制标签已在引擎内剥离）
-                            main.post {
-                                pendingSegments.clear()
-                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(chunk))))
-                            }
-                        }
 
-                        override fun onComplete(messageId: String, completeText: String) {
-                            main.post {
-                                if (stopping) { stopping = false; return@post }
-                                sending.value = false
-                            }
-                            if (stopping) return
-                            speakReply(completeText)
-                            scope.launch(Dispatchers.IO) {
-                                reloadNow()
-                                // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片通用）
-                                if (imagePath.isNotBlank()) {
-                                    val latest = runCatching {
-                                        w.listMessages(HomecomingChatWiring.TIMELINE)
-                                            .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
-                                    }.getOrNull()
-                                    if (latest != null) {
-                                        com.aion.chat.compose.data.HomecomingChatImageStore.map(
-                                            context, latest.id, imagePath
-                                        )
-                                    }
-                                }
-                                // 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写今天的日记
-                                if (text.contains("晚安")) {
-                                    runCatching { generateTonightDiary(context) }
-                                }
-                                // 音乐卡在搜歌路径已入库（这里重复 add 会出双卡）
-                            }
-                        }
-
-                        override fun onFailure(code: String) {
-                            main.post {
-                                if (stopping) { stopping = false; return@post }
-                                sending.value = false
-                                sendError.value = SendError(
-                                    title = "回复失败（$code）",
-                                    reason = when {
-                                        code.startsWith("network") -> "连不上线路端点（超时 / 域名解析失败 / 连接被拒）"
-                                        code.contains("401") || code.contains("403") -> "Key 无效或没权限（HTTP 401/403）"
-                                        code.contains("404") -> "端点路径不对（HTTP 404）——Base URL 多半少了 /v1，或模型名写错"
-                                        code.contains("429") -> "限流了（HTTP 429），稍等再试"
-                                        else -> "线路返回异常（$code）"
-                                    },
-                                    solution = "去 设置 → 云线路 检查 Base URL / API Key / 模型，保存后立即生效，不用重启",
-                                    retryText = text
-                                )
-                                Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                )
-            } catch (e: Exception) {
-                main.post {
-                    sending.value = false
-                    Toast.makeText(context, "发送失败：${e.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+        // ── 中转站路径（网关失败也回落到这里） ──
+        val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
+        val prefix = listOfNotNull(promptPrefix, cmdFeedback?.let { "[$it]" })
+            .joinToString("\n").ifBlank { null }
+        val prompt = if (prefix != null) prefix + "\n" + text else text
+        sendViaRoute(w, requestId, text, prompt, image, imagePath, extraImagesForModel, imagesForBubble)
     }
 
     // ── 表情包：从相册导入小图，点一下当消息发出；长按删除 ──
@@ -854,7 +895,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
 
     LaunchedEffect(messages.size, pendingSegments.size) {
         val total = messages.size + pendingSegments.size
-        if (total > 0) listState.animateScrollToItem(maxOf(0, total - 1))
+        // 接近底部才自动跟随：她上翻读历史时不再被每条新气泡拽回底
+        if (total > 0 && !listState.canScrollForward) listState.animateScrollToItem(maxOf(0, total - 1))
     }
 
     // ── 界面 ──
@@ -1135,6 +1177,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 text = msg.text, imagePaths = imgPaths, videoPaths = videoPaths,
                                 skin = skin.value, alpha = bubbleAlpha.value,
                                 timeMs = msg.createdAt,
+                                // 发送失败的那条不标 ✓✓（红卡与对勾同屏语义矛盾）
+                                checkmark = sendError.value?.failedText != msg.text,
                                 onPlayVideo = { p -> playerVideo = p },
                                 onViewImage = { idx -> viewerPaths = imgPaths; viewerIndex = idx }
                             )
@@ -1209,9 +1253,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     }
                                 },
                                 onDeleteMessage = { id ->
+                                    // 本地先摘（省一次全量查询+4 次 ensure+逐条扫描），DB 后台删
+                                    main.post { messages.removeAll { it.id == id } }
                                     scope.launch(Dispatchers.IO) {
                                         runCatching { wiring?.chats?.deleteMessage(id) }
-                                        main.post { reloadNow() }
                                     }
                                 }
                             )
@@ -1332,7 +1377,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     modifier = Modifier.padding(top = 4.dp))
                                 Text(err.solution, fontSize = 11.sp, color = HomecomingColors.InkSoft,
                                     modifier = Modifier.padding(top = 3.dp))
-                                if (err.retryText != null) {
+                                if (err.retry != null) {
                                     Text(
                                         "重试",
                                         fontSize = 13.sp, color = HomecomingColors.Accent,
@@ -1341,9 +1386,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                             .padding(top = 8.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .clickable {
-                                                val t = err.retryText
+                                                val r = err.retry
                                                 sendError.value = null
-                                                send(forcedText = t, forceRoute = true)
+                                                r?.invoke()
                                             }
                                             .padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
@@ -1690,7 +1735,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
 
             // ── 回到底部浮动钮（仿TG）：往上翻过消息时浮出，点了滚到最新 ──
             val canScrollForward by remember { derivedStateOf { listState.canScrollForward } }
-            if (skin.value == 3 && canScrollForward) {
+            if (skin.value == 3 && canScrollForward && !showStickerPanel.value) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -2046,6 +2091,7 @@ fun UserBubbles(
     skin: Int,
     alpha: Float = 1f,
     timeMs: Long = 0L,
+    checkmark: Boolean = true,
     onPlayVideo: (String) -> Unit = {},
     onViewImage: (Int) -> Unit = {},
 ) {
@@ -2054,8 +2100,7 @@ fun UserBubbles(
     // StyleHub：字体大小 / 透明度 / 圆角（她的绿气泡同款接线）
     val ctxU = LocalContext.current
     val fontScaleU = com.aion.chat.compose.data.StyleSettings.fontScale(ctxU)
-    val bubbleOpU = com.aion.chat.compose.data.StyleSettings.bubbleOpacity(ctxU)
-    val bRadU = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxU).coerceIn(6, 28)
+    val bRadU = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxU).coerceIn(0, 40)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -2146,12 +2191,12 @@ fun UserBubbles(
                         Box(
                             modifier = Modifier
                                 .widthIn(max = 280.dp)
-                                .clip(RoundedCornerShape(rU, rU, (rU / 3.5f).coerceIn(2.dp, 9.dp), rU))
-                                .background(Color(0xFFDCF2C6).copy(alpha = (0.96f * bubbleOpU * alpha).coerceIn(0.3f, 1f)))
+                                .clip(RoundedCornerShape(rU, rU, (rU / 3.5f).coerceIn(0.dp, 9.dp), rU))
+                                .background(Color(0xFFDCF2C6).copy(alpha = (0.96f * alpha).coerceIn(0.3f, 1f)))
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                tgInline(text = seg, time = timeText, check = true, isLast = segIdx == segments.lastIndex, timeColor = Color(0xFF7FA05C)),
+                                tgInline(text = seg, time = timeText, check = checkmark, isLast = segIdx == segments.lastIndex, timeColor = Color(0xFF7FA05C)),
                                 fontSize = (14 * fontScaleU).sp, color = Color(0xFF3D4A30),
                                 lineHeight = (20 * fontScaleU).sp
                             )
@@ -2410,10 +2455,9 @@ private fun AssistantBubbleSingle(
         // StyleHub 四项：聊天字体大小 / 气泡透明度 / 气泡圆角 / 显示助手消息气泡
         val ctxB = LocalContext.current
         val fontScaleB = com.aion.chat.compose.data.StyleSettings.fontScale(ctxB)
-        val bubbleOpB = com.aion.chat.compose.data.StyleSettings.bubbleOpacity(ctxB)
-        val bRadB = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxB).coerceIn(6, 28)
+        val bRadB = com.aion.chat.compose.data.StyleSettings.bubbleRadius(ctxB).coerceIn(0, 40)
         val showAiBubbleB = com.aion.chat.compose.data.StyleSettings.showAiBubble(ctxB)
-        val tgShape = RoundedCornerShape(bRadB.dp, bRadB.dp, (bRadB / 3.5f).dp.coerceIn(2.dp, 9.dp), bRadB.dp)
+        val tgShape = RoundedCornerShape(bRadB.dp, bRadB.dp, (bRadB / 3.5f).dp.coerceIn(0.dp, 9.dp), bRadB.dp)
         MessageLongPressMenu(
             text = text,
             fullText = fullText.ifBlank { text },
@@ -2429,7 +2473,7 @@ private fun AssistantBubbleSingle(
                         .then(if (showAiBubbleB) Modifier.clip(tgShape) else Modifier)
                         .then(
                             if (showAiBubbleB) Modifier.background(
-                                Color.White.copy(alpha = (0.97f * bubbleOpB * alpha).coerceIn(0.3f, 1f))
+                                Color.White.copy(alpha = (0.97f * alpha).coerceIn(0.3f, 1f))
                             ) else Modifier
                         )
                         .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -2584,7 +2628,8 @@ private data class SendError(
     val title: String,
     val reason: String,
     val solution: String,
-    val retryText: String? = null
+    val failedText: String? = null,   // 失败那条的原文（✓✓ 不再标在失败消息上）
+    val retry: (() -> Unit)? = null   // 重试 = 带全部原参（图/帧/前缀/requestId）重走中转站路径
 )
 
 /** 聊天图片落盘：sticker=true 存表情包库（压到 ~256px），否则存聊天图片（~1024px）。失败返回空串。 */

@@ -98,7 +98,8 @@ fun MomentsScreen() {
     val isRefreshing = remember { mutableStateOf(false) }
     val viewerRef = remember { mutableStateOf<String?>(null) }
 
-    val routeStamp = remember { HomecomingRouteConfig.stamp(context) }
+    // stamp 订阅状态值：线路保存后 wiring 立即重建（0.3.86 同款 bug 的潜伏位）
+    val routeStamp = HomecomingRouteConfig.stamp(context)
     val wiring = remember(routeStamp) { HomecomingChatWiring.safeCreate(context) }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
     val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
