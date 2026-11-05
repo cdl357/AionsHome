@@ -276,6 +276,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     // 视频消息：抽帧给他看，气泡可点播
     var pendingVideo by remember { mutableStateOf<VideoDraft?>(null) }
     var playerVideo by remember { mutableStateOf<String?>(null) }
+    // 模型选择弹层（橘瓣 ModelSelector 同款）
+    var showModelSheet by remember { mutableStateOf(false) }
     // 图片消息的本地文件（气泡渲染真图/表情用），发送完成后挂到消息 id 上
     val pendingImagePath = remember { mutableStateOf("") }
     val showStickerPanel = remember { mutableStateOf(false) }
@@ -1015,12 +1017,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             )
                         }
                         Spacer(Modifier.weight(1f))
+                        // 点胶囊 = 换模型（橘瓣 ModelSelector 同款交互）
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .shadow(2.dp, RoundedCornerShape(22.dp))
                                 .clip(RoundedCornerShape(22.dp))
                                 .background(Color.White.copy(alpha = 0.85f))
+                                .clickable { showModelSheet = true }
                                 .padding(horizontal = 26.dp, vertical = 5.dp)
                         ) {
                             Text(
@@ -1028,13 +1032,15 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 fontSize = 15.sp, color = Color(0xFF4A3F34),
                                 fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp
                             )
+                            val currentModelName = activeProv?.second?.model?.takeLast(26)
+                                ?.substringAfterLast('/') ?: ""
                             Text(
                                 when {
-                                    connected -> "在线 · " + activeProv!!.first.name
+                                    connected -> "在线 · " + activeProv!!.first.name + " · " + currentModelName + " ▾"
                                     wiring == null -> "线路配置有误"
                                     else -> "未配置提供商"
                                 },
-                                fontSize = 10.sp,
+                                fontSize = 10.sp, maxLines = 1,
                                 color = when {
                                     connected -> HomecomingColors.Ok
                                     wiring == null -> HomecomingColors.Accent
@@ -1883,6 +1889,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 TextButton(onClick = { showSearch.value = false }) { Text("关闭", color = HomecomingColors.InkSoft) }
             }
         )
+    }
+
+    // ── 模型选择弹层（橘瓣同款） ──
+    if (showModelSheet) {
+        ModelPickerSheet(onDismiss = { showModelSheet = false })
     }
 
     // ── 图片查看器（审计#4：之前写了 130 行但从未挂载） ──
