@@ -98,8 +98,12 @@ object ProviderStore {
             })
             .put("active_id", activeId)
             .put("active_model", activeModelKey)
+        // 顺序即一致性：先写引擎吃的 routes.json（失败=抛出，prefs 不动 → 两源永不错位）
+        val routesOk = HomecomingRouteConfig.save(
+            context, JSONObject().put("chat", chatArray(providers, activeId, activeModelKey))
+        )
+        if (!routesOk) throw IllegalStateException("routes.json 写入失败")
         prefs(context).edit().putString("data", root.toString()).apply()
-        syncRoutes(context, providers, activeId, activeModelKey)
         bump()
     }
 
@@ -116,17 +120,22 @@ object ProviderStore {
         saveAll(context, list(context), id, modelKey)
     }
 
+    /** 自愈：按当前提供商状态重写 routes.json（修复写失败/半截/进程被杀导致的错位）。 */
+    fun resyncRoutes(context: Context) {
+        saveAll(context, list(context), activeId(context), activeModelKey(context))
+    }
+
     /**
      * routes.json 同步：启用的提供商各一条路由；active 额外镜像 route_id="main"
      * （active 模型排第一——旧调用方 wiring.mainModelKey() 解析 "main" 永不断）。
      */
-    private fun syncRoutes(
-        context: Context,
+    private fun chatArray(
         providers: List<Provider>,
         activeId: String,
         activeModelKey: String
-    ) {
+    ): JSONArray {
         val chat = JSONArray()
+        var mirrored = false
         providers.filter { it.enabled }.forEach { p ->
             val ordered = p.models.sortedByDescending { it.key == activeModelKey && p.id == activeId }
             val models = JSONArray().apply {
@@ -140,11 +149,23 @@ object ProviderStore {
                 .put("base_url", p.baseUrl).put("api_key", p.apiKey)
                 .put("models", models)
             chat.put(route)
-            if (p.id == activeId) {
-                chat.put(JSONObject(route.toString()).put("route_id", "main"))
+            // main 镜像兜底：active 指向停用/不存在的提供商时，镜像第一个启用的
+            // （戳一戳/语音/晚安日记/记忆引擎都解析 "main"，不能断）
+            if (p.id == activeId || (!mirrored && p.enabled)) {
+                val mirrorModel = if (p.id == activeId) activeModelKey else ""
+                val ordered2 = p.models.sortedByDescending { it.key == mirrorModel }
+                val mirror = JSONObject(route.toString())
+                    .put("route_id", "main")
+                    .put("models", JSONArray().apply {
+                        ordered2.forEach { m ->
+                            put(JSONObject().put("key", m.key).put("model", m.model).put("vision", true))
+                        }
+                    })
+                chat.put(mirror)
+                mirrored = true
             }
         }
-        HomecomingRouteConfig.save(context, JSONObject().put("chat", chat))
+        return chat
     }
 
     // ── 模型列表拉取（GET {base}/models，OpenAI 兼容） ──

@@ -63,6 +63,11 @@ public final class HomecomingChatRepository {
                 required(failureCode, "failureCode"));
     }
 
+    /** 重试前把 failed 状态拉回 pending（复用 requestId 的重试不被永久阻断）。 */
+    public void resetRequest(String requestId) {
+        backend.reset(required(requestId, "requestId"));
+    }
+
     /** 长按删除单条消息（本地删除；连带清掉图片/视频挂载映射）。 */
     public void deleteMessage(String id) {
         backend.deleteMessage(required(id, "id"));
@@ -166,6 +171,7 @@ public final class HomecomingChatRepository {
                 HomecomingOperationJournal.Operation operation,
                 boolean assistant);
         void fail(String requestId, String code);
+        void reset(String requestId);
         void deleteMessage(String id);
         default void begin(String requestId, String timelineId, long createdAt) {
         }
@@ -208,6 +214,17 @@ public final class HomecomingChatRepository {
             } finally {
                 database.endTransaction();
             }
+        }
+
+        @Override
+        public void reset(String requestId) {
+            SQLiteDatabase database = helper.getWritableDatabase();
+            ContentValues values = new ContentValues();
+            values.put("state", "pending");
+            values.put("failure_code", "");
+            values.put("updated_at", System.currentTimeMillis());
+            database.update(
+                    "chat_request", values, "request_id=?", new String[]{requestId});
         }
 
         @Override

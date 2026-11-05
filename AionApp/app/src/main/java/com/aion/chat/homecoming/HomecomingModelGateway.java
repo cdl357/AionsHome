@@ -45,6 +45,8 @@ public final class HomecomingModelGateway {
         HomecomingModelStreamNormalizer normalizer =
                 new HomecomingModelStreamNormalizer();
         StringBuilder complete = new StringBuilder();
+        // F5：推理型渠道只吐 reasoning_content 不吐 content 时，错误别再误导去查余额
+        final boolean[] sawReasoning = {false};
         try {
             NetworkRequest network = build(route, model, request);
             transport.execute(network, line -> {
@@ -56,6 +58,9 @@ public final class HomecomingModelGateway {
                     frame = parseFrame(route.provider, line);
                 } catch (Exception ignored) {
                     return;
+                }
+                if (frame.reasoningText != null && !frame.reasoningText.isEmpty()) {
+                    sawReasoning[0] = true;
                 }
                 String chunk = normalizer.acceptVisible(frame.visibleText);
                 if (!chunk.isEmpty()) {
@@ -72,7 +77,9 @@ public final class HomecomingModelGateway {
                     observer.onChunk(suffix);
                 }
                 if (complete.length() == 0) {
-                    observer.onFailure("empty_model_reply");
+                    observer.onFailure(sawReasoning[0]
+                            ? "empty_model_reply:reasoning_only"
+                            : "empty_model_reply");
                 } else {
                     observer.onComplete(complete.toString());
                 }

@@ -479,7 +479,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
         scope.launch(Dispatchers.IO) {
             try {
-                w.engine.send(
+                // ── 自愈（F3 双源错位根除）：按最新提供商状态重写 routes.json，
+                //    wiring 每次新建（不吃组合期旧快照），按最新 routes.json 装配 ──
+                com.aion.chat.compose.data.ProviderStore.resyncRoutes(context)
+                val wFresh = HomecomingChatWiring.safeCreate(context) ?: run {
+                    main.post {
+                        sending.value = false
+                        sendError.value = SendError(
+                            title = "线路装配失败",
+                            reason = "聊天运行时初始化失败（详见 设置 → 崩溃日志）",
+                            solution = "重存一次提供商通常可恢复；反复出现请反馈崩溃日志"
+                        )
+                    }
+                    return@launch
+                }
+                // failed 状态复位：复用 requestId 的重试不再被 "request already failed" 永久阻断
+                runCatching { wFresh.chats.resetRequest(reqId) }
+                wFresh.engine.send(
                     HomecomingChatEngine.ChatCommand(
                         reqId,
                         HomecomingChatWiring.TIMELINE,
@@ -506,6 +522,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             main.post {
                                 if (stopping) { stopping = false; return@post }
                                 sending.value = false
+                                // F4：空回复不再无声无息（控制标签剥完为空/思维模型只吐思考）
+                                if (completeText.isBlank()) {
+                                    sendError.value = SendError(
+                                        title = "他没说话（回复为空）",
+                                        reason = "线路通了、模型也回了，但正文是空的——多半是思维（thinking）模型只输出了思考",
+                                        solution = "在提供商的模型列表里换一个非 thinking 模型再试",
+                                        retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
+                                    )
+                                    return@post
+                                }
                             }
                             if (stopping) return
                             speakReply(completeText)
@@ -514,7 +540,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片/视频通用）
                                 if (bubblePaths.any { it.isNotBlank() }) {
                                     val latest = runCatching {
-                                        w.listMessages(HomecomingChatWiring.TIMELINE)
+                                        wFresh.listMessages(HomecomingChatWiring.TIMELINE)
                                             .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
                                     }.getOrNull()
                                     if (latest != null) {
@@ -538,6 +564,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 sendError.value = SendError(
                                     title = "回复失败（$code）",
                                     reason = when {
+                                        code == "empty_model_reply:reasoning_only" ->
+                                            "这个模型只输出了思考没有正文——换一个非 thinking 模型（如 claude-opus-4-6）再试"
+                                        code == "empty_model_reply" ->
+                                            "线路通了，但模型回了空——多半是模型名不对或余额/权限问题"
                                         code.startsWith("model_request_failed") -> {
                                             val why = code.substringAfter("model_request_failed:")
                                                 .substringAfter(':', "")
@@ -550,7 +580,6 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                                 else -> "请求没发出去" + (if (why.isNotBlank()) "：${why.take(90)}" else "")
                                             }
                                         }
-                                        code.startsWith("empty_model_reply") -> "线路通了，但模型回了空——多半是模型名不对或余额/权限问题"
                                         code.contains("401") || code.contains("403") -> "Key 无效或没权限（HTTP 401/403）"
                                         code.contains("404") -> "端点 404——Base URL 或模型名不对"
                                         code.contains("429") -> "限流（HTTP 429），稍等再试"
