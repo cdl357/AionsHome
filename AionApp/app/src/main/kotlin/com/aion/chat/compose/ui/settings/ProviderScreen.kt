@@ -259,7 +259,13 @@ private fun AddProviderDialog(
     val ctxAdd = LocalContext.current
     var name by remember { mutableStateOf("OpenAI") }
     var apiKey by remember { mutableStateOf("") }
-    var baseUrl by remember { mutableStateOf("") }
+    // 橘瓣同款：Base Url 预填真实默认值；初始全选（粘贴=整体替换，不会再"追加拼坏"）
+    var baseUrl by remember {
+        mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(
+            "https://api.openai.com/v1",
+            selection = androidx.compose.ui.text.TextRange(0, "https://api.openai.com/v1".length)
+        ))
+    }
     var apiPath by remember { mutableStateOf("/chat/completions") }
     var useResponseApi by remember { mutableStateOf(false) }
 
@@ -327,15 +333,21 @@ private fun AddProviderDialog(
             OutlinedTextField(
                 value = baseUrl, onValueChange = { baseUrl = it },
                 label = { Text("API Base Url") },
-                placeholder = { Text("https://api.openai.com/v1", fontSize = 13.sp, color = PgSub) },
+                isError = baseUrl.text.isNotBlank() &&
+                    !baseUrl.text.trim().startsWith("http://") &&
+                    !baseUrl.text.trim().startsWith("https://"),
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = apiPath, onValueChange = { apiPath = it },
-                label = { Text("API 路径") },
-                singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
+            // 橘瓣同款：勾了 Response API 就没有 API 路径一栏
+            if (!useResponseApi) {
+                OutlinedTextField(
+                    value = apiPath, onValueChange = { apiPath = it },
+                    label = { Text("API 路径") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             Spacer(Modifier.height(6.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -351,7 +363,7 @@ private fun AddProviderDialog(
                 Spacer(Modifier.width(8.dp))
                 TextButton(
                     onClick = {
-                        val u = baseUrl.trim()
+                        val u = baseUrl.text.trim()
                         if (!u.startsWith("http://") && !u.startsWith("https://")) {
                             android.widget.Toast.makeText(
                                 ctxAdd,
@@ -555,6 +567,9 @@ private fun ProviderDetailScreen(
                             OutlinedTextField(
                                 value = baseUrl, onValueChange = { baseUrl = it },
                                 label = { Text("API Base Url") },
+                                isError = baseUrl.isNotBlank() &&
+                                    !baseUrl.trim().startsWith("http://") &&
+                                    !baseUrl.trim().startsWith("https://"),
                                 singleLine = true,
                                 trailingIcon = {
                                     if (baseUrl.isNotEmpty()) Text("✕",
@@ -564,17 +579,20 @@ private fun ProviderDetailScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(Modifier.height(10.dp))
-                            OutlinedTextField(
-                                value = apiPath, onValueChange = { apiPath = it },
-                                label = { Text("API 路径") },
-                                singleLine = true, modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                "拼接规则：Base Url（少了 /v1 自动补）+ API 路径",
-                                fontSize = 11.sp, color = PgSub
-                            )
-                            Spacer(Modifier.height(12.dp))
+                            // 橘瓣同款：勾了 Response API 就没有 API 路径一栏
+                            if (!useResponseApi) {
+                                OutlinedTextField(
+                                    value = apiPath, onValueChange = { apiPath = it },
+                                    label = { Text("API 路径") },
+                                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "拼接规则：Base Url（少了 /v1 自动补）+ API 路径",
+                                    fontSize = 11.sp, color = PgSub
+                                )
+                                Spacer(Modifier.height(12.dp))
+                            }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
@@ -824,6 +842,15 @@ private fun ProviderDetailScreen(
                         fontSize = 12.sp, color = HomecomingColors.Danger,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
+                    if (listOf("api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com")
+                            .any { fetchErr.contains(it) }
+                    ) {
+                        Text(
+                            "这是官方域名，国内直连不通。去 配置 页把 Base Url 换成你的中转站地址（保存后回来重新拉取）",
+                            fontSize = 12.sp, color = Color(0xFF8A6D3B), lineHeight = 17.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
                     Text(
                         "重试", fontSize = 14.sp, color = PgAccent, fontWeight = FontWeight.Medium,
                         modifier = Modifier

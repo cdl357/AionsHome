@@ -80,6 +80,12 @@ public final class HomecomingChatRepository {
                 required(requestId, "requestId"), timelineId, createdAt);
     }
 
+    /** 把旧 epoch 的消息并回当前 epoch（当前时间线为空时才生效）——历史不因换代而"消失" */
+    public void healEpoch(String timelineId) {
+        validateTimeline(timelineId);
+        backend.healEpoch(timelineId, epochId);
+    }
+
     public List<Message> listMessages(
             String timelineId, long beforeCreatedAt, int limit) {
         validateTimeline(timelineId);
@@ -179,6 +185,9 @@ public final class HomecomingChatRepository {
                 String epochId, String timelineId, long beforeCreatedAt, int limit);
         default void recordControl(
                 String entityId, HomecomingOperationJournal.Operation operation) {
+        }
+        /** epoch 自愈：当前时间线为空而历史 epoch 有消息时并回（mode 位丢失换代过的补救） */
+        default void healEpoch(String timelineId, String currentEpoch) {
         }
     }
 
@@ -290,6 +299,22 @@ public final class HomecomingChatRepository {
             }
             Collections.reverse(rows);
             return Collections.unmodifiableList(rows);
+        }
+
+        @Override
+        public void healEpoch(String timelineId, String currentEpoch) {
+            SQLiteDatabase database = helper.getWritableDatabase();
+            try (Cursor cursor = database.rawQuery(
+                    "SELECT COUNT(*) FROM chat_message WHERE epoch_id=? AND timeline_id=?",
+                    new String[]{currentEpoch, timelineId})) {
+                if (cursor.moveToFirst() && cursor.getLong(0) > 0) {
+                    return; // 当前 epoch 有消息，不动
+                }
+            }
+            // 历史 epoch 的消息并回当前 epoch（消息一直在库里，之前只是被换代过滤掉了）
+            database.execSQL(
+                    "UPDATE chat_message SET epoch_id=? WHERE timeline_id=? AND epoch_id<>?",
+                    new Object[]{currentEpoch, timelineId, currentEpoch});
         }
 
         @Override

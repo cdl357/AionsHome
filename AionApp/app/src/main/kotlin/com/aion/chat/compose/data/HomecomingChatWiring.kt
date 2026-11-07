@@ -44,6 +44,11 @@ class HomecomingChatWiring(context: Context) {
         }
         epochId = modeStore.currentEpoch()
         chats = HomecomingChatRepository(database, epochId, deviceId)
+        // 历史 epoch 的消息并回当前 epoch（时间线为空才触发）——聊天记录不再"被消失"
+        runCatching {
+            chats.healEpoch(HomecomingChatWiring.TIMELINE)
+            chats.healEpoch("companion_private")
+        }
         identities = HomecomingIdentityRepository(database)
         memories = HomecomingMemoryRepository(database, epochId, deviceId)
         contextBuilder = HomecomingContextBuilder(identities, memories, chats::listMessages, 48_000)
