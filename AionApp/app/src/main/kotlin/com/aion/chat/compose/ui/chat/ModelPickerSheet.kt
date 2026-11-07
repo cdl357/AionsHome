@@ -42,6 +42,17 @@ import com.aion.chat.compose.ui.theme.HomecomingColors
  * 模型选择弹层（橘瓣 ChatInput.ModelSelector 同款交互）：
  * 搜索 + 按提供商分组的模型列表，点选即切换（ProviderStore.setActive → routes.json 镜像同步）。
  */
+/** 排序键：去掉开头的 [xxx] 括号前缀后小写——claude/gemini/gpt 各归一起，不再乱序。 */
+internal fun modelSortKey(id: String): String {
+    var t = id.trim()
+    while (t.startsWith("[")) {
+        val end = t.indexOf(']')
+        if (end < 0) break
+        t = t.substring(end + 1).trim()
+    }
+    return t.ifBlank { id }.lowercase()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModelPickerSheet(
@@ -49,12 +60,24 @@ fun ModelPickerSheet(
 ) {
     val context = LocalContext.current
     val rev = ProviderStore.rev
-    val providers = remember(rev) {
-        ProviderStore.list(context).filter { it.enabled && it.models.isNotEmpty() }
-    }
     val activeId = remember(rev) { ProviderStore.activeId(context) }
     val activeModel = remember(rev) { ProviderStore.activeModelKey(context) }
     var search by remember { mutableStateOf("") }
+    val providers = remember(rev, search) {
+        val list = ProviderStore.list(context)
+            .filter { it.enabled && it.models.isNotEmpty() }
+            .map { p ->
+                // 组内：当前用的排最前，其余按去掉括号前缀的模型名排
+                p.copy(models = p.models.sortedWith(
+                    compareByDescending<ProviderStore.Model> { it.key == activeModel && p.id == activeId }
+                        .thenBy { modelSortKey(it.model) }
+                ))
+            }
+        // 当前提供商排最前（搜索时保持字母序好找）
+        if (search.isBlank()) {
+            list.sortedByDescending { it.id == activeId }
+        } else list
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

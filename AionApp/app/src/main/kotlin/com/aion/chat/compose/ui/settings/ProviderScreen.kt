@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.aion.chat.compose.data.ProviderStore
+import com.aion.chat.compose.ui.chat.modelSortKey
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -691,7 +692,7 @@ private fun ProviderDetailScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 14.dp)
                         ) {
-                            models.forEach { m ->
+                            models.sortedBy { modelSortKey(it.model) }.forEach { m ->
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
@@ -792,7 +793,7 @@ private fun ProviderDetailScreen(
             val (list, msg) = withContext(Dispatchers.IO) {
                 ProviderStore.fetchModelIds(baseUrl.trim(), apiKey.trim())
             }
-            fetched = list
+            fetched = list.sortedBy { modelSortKey(it) }
             fetchErr = if (list.isEmpty()) msg else ""
         }
         ModalBottomSheet(
