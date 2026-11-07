@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class PushServiceStartPolicy {
+public final class PushServiceStartPolicy {
     static final String ACTION_SET_FOREGROUND = "set_foreground";
     static final String PREF_LAST_ACTIVE_URL = "last_active_url";
 

@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class PhoneCameraCaptureTiming {
+public final class PhoneCameraCaptureTiming {
     static final long MIN_SESSION_SETTLE_MS = 700L;
 
     private PhoneCameraCaptureTiming() {

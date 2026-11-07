@@ -348,12 +348,12 @@ public final class AppSupervisionStore {
         return value.trim();
     }
 
-    interface Backend {
+    public interface Backend {
         String getString(String key, String defaultValue);
         void putString(String key, String value);
     }
 
-    private static final class SharedPreferencesBackend implements Backend {
+    public static final class SharedPreferencesBackend implements Backend {
         private final SharedPreferences preferences;
 
         SharedPreferencesBackend(SharedPreferences preferences) {

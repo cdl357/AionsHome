@@ -129,7 +129,7 @@ public final class HomecomingTtsEngine {
         void stop();
     }
 
-    private static final class Batch {
+    public static final class Batch {
         final String timelineId;
         final String messageId;
         final List<Slot> slots = new ArrayList<>();
@@ -142,7 +142,7 @@ public final class HomecomingTtsEngine {
         }
     }
 
-    private static final class Slot {
+    public static final class Slot {
         byte[] audio;
         boolean ready;
         boolean failed;

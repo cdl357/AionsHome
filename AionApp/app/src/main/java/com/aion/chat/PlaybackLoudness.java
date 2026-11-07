@@ -6,7 +6,7 @@ import android.media.audiofx.LoudnessEnhancer;
 import android.util.Log;
 
 /** The phone's shared loudness setting for speech and camera cues. */
-final class PlaybackLoudness {
+public final class PlaybackLoudness {
     private static final String PREF = "tts_loudness_db";
 
     static int getGainDb(Context context) {

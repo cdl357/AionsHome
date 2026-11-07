@@ -1095,7 +1095,7 @@ public class AionPushService extends Service {
         }
     }
 
-    private class RingBackgroundSync {
+    public class RingBackgroundSync {
         private static final String PREFS_NAME = "aion_ring_ble";
         private static final String KEY_DEVICE_ADDRESS = "device_address";
         private static final String KEY_DEVICE_NAME = "device_name";
@@ -2122,7 +2122,7 @@ public class AionPushService extends Service {
             currentDevice = null;
         }
 
-        private class RingBleService {
+        public class RingBleService {
             final UUID service;
             final UUID write;
             final UUID notify;
@@ -2537,7 +2537,7 @@ public class AionPushService extends Service {
                 android.text.TextUtils.join("\n", lines)).commit();
     }
 
-    private static final class StoredCommandResult {
+    public static final class StoredCommandResult {
         final boolean success;
         final String reason;
         StoredCommandResult(boolean success, String reason) {

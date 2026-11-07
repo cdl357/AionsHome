@@ -3,8 +3,8 @@ package com.aion.chat;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-final class PhoneCameraState {
-    enum Decision {
+public final class PhoneCameraState {
+    public enum Decision {
         ACCEPTED,
         DISARMED,
         EXPIRED,

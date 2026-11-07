@@ -43,7 +43,7 @@ public final class BleBridge {
     private static final UUID CCCD_UUID = uuid(0x2902);
     private static WeakReference<BleBridge> activeBridge = new WeakReference<>(null);
 
-    private enum ToyProfile {
+    public enum ToyProfile {
         SOSEXY("sosexy", "SOSEXY", uuid(0xee01), uuid(0xee03), uuid(0xee02)),
         SVAKOM("svakom", "SL278", uuid(0xffe0), uuid(0xffe1), uuid(0xffe2)),
         ANKNI("ankni", "ANKNI", uuid(0xdddd), uuid(0xddd1), uuid(0xddd2));

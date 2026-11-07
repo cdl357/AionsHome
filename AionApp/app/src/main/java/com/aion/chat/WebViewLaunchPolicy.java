@@ -5,7 +5,7 @@ import java.net.URLEncoder;
 import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 
-final class WebViewLaunchPolicy {
+public final class WebViewLaunchPolicy {
 
     private WebViewLaunchPolicy() {
     }

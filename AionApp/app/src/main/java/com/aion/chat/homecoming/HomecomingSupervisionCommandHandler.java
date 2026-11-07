@@ -111,7 +111,7 @@ public final class HomecomingSupervisionCommandHandler {
         return "execution_failed";
     }
 
-    interface RuntimePort {
+    public interface RuntimePort {
         RuntimeResult apply(
                 String action,
                 String groupId,
@@ -168,7 +168,7 @@ public final class HomecomingSupervisionCommandHandler {
         }
     }
 
-    private static final class Parsed {
+    public static final class Parsed {
         final String action;
         final String groupId;
         final int minutes;

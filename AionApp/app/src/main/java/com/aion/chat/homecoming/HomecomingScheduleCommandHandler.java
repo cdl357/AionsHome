@@ -145,7 +145,7 @@ public final class HomecomingScheduleCommandHandler {
         return null;
     }
 
-    interface SchedulePort {
+    public interface SchedulePort {
         HomecomingScheduleRepository.Schedule find(String id);
         HomecomingScheduleRepository.Schedule createWithId(
                 String id, String type, long triggerAt, String content,
@@ -158,7 +158,7 @@ public final class HomecomingScheduleCommandHandler {
         void cancel(String scheduleId);
     }
 
-    private static final class RepositoryAdapter implements SchedulePort {
+    public static final class RepositoryAdapter implements SchedulePort {
         private final HomecomingScheduleRepository repository;
         RepositoryAdapter(HomecomingScheduleRepository repository) {
             if (repository == null) {

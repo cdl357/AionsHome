@@ -148,11 +148,11 @@ public final class HomecomingKeyStore implements HomecomingBackupClient.KeyPort 
         }
     }
 
-    interface SecretStore {
+    public interface SecretStore {
         void store(byte[] plaintext) throws Exception;
     }
 
-    static final class AndroidEncryptedSecretStore implements SecretStore {
+    public static final class AndroidEncryptedSecretStore implements SecretStore {
         private final Context context;
         private final KeyStore keyStore;
 
@@ -232,7 +232,7 @@ public final class HomecomingKeyStore implements HomecomingBackupClient.KeyPort 
         }
     }
 
-    static final class RouteCryptoCodec {
+    public static final class RouteCryptoCodec {
         private static final String ENVELOPE_ALGORITHM =
                 "RSA-OAEP-256-MGF1-SHA1+A256GCM";
         private static final OAEPParameterSpec OAEP_SHA256 = new OAEPParameterSpec(
@@ -348,7 +348,7 @@ public final class HomecomingKeyStore implements HomecomingBackupClient.KeyPort 
         }
     }
 
-    static final class ReturnSigningCodec {
+    public static final class ReturnSigningCodec {
         static final String ALGORITHM_LABEL = "SHA256withRSA/PSS";
         private static final PSSParameterSpec PARAMETERS = new PSSParameterSpec(
                 "SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1);

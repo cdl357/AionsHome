@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class CameraPreviewSessionGate {
+public final class CameraPreviewSessionGate {
     private long generation;
     private boolean active;
 

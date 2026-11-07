@@ -2,7 +2,7 @@ package com.aion.chat.widget;
 
 import java.io.File;
 
-final class WidgetAssetSyncDecision {
+public final class WidgetAssetSyncDecision {
     private WidgetAssetSyncDecision() {}
 
     static boolean needsDownload(String cachedVersion, String cachedPath,

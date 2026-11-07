@@ -53,7 +53,7 @@ public final class HugPillowInfraredBridge {
         }
     }
 
-    interface IrTransmitter {
+    public interface IrTransmitter {
         boolean hasEmitter();
 
         boolean supportsCarrier(int carrierHz);
@@ -61,7 +61,7 @@ public final class HugPillowInfraredBridge {
         void transmit(int carrierHz, int[] pattern);
     }
 
-    private static final class AndroidIrTransmitter implements IrTransmitter {
+    public static final class AndroidIrTransmitter implements IrTransmitter {
         private final ConsumerIrManager manager;
 
         AndroidIrTransmitter(Context context) {

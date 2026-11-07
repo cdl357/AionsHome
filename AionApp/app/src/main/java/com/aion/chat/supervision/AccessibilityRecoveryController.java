@@ -138,7 +138,7 @@ public class AccessibilityRecoveryController {
         scheduler.schedule(this::attemptRestore, delayMs);
     }
 
-    private static final class AndroidSecureSettingsWriter implements SecureSettingsWriter {
+    public static final class AndroidSecureSettingsWriter implements SecureSettingsWriter {
         private final Context context;
 
         AndroidSecureSettingsWriter(Context context) {
@@ -184,7 +184,7 @@ public class AccessibilityRecoveryController {
         }
     }
 
-    private static final class HandlerRetryScheduler implements RetryScheduler {
+    public static final class HandlerRetryScheduler implements RetryScheduler {
         private final Handler handler = new Handler(Looper.getMainLooper());
         @Override public void schedule(Runnable runnable, long delayMs) {
             handler.removeCallbacksAndMessages(null);

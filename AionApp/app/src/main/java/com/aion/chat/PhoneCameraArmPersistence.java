@@ -1,7 +1,7 @@
 package com.aion.chat;
 
-final class PhoneCameraArmPersistence {
-    interface Store {
+public final class PhoneCameraArmPersistence {
+    public interface Store {
         boolean getBoolean(String key, boolean fallback);
         String getString(String key, String fallback);
         float getFloat(String key, float fallback);

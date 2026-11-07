@@ -81,16 +81,16 @@ public final class HomecomingSupervisionAdapter {
         }
     }
 
-    interface RuntimePort {
+    public interface RuntimePort {
         boolean enabled();
         JSONObject state() throws Exception;
     }
 
-    interface PermissionPort {
+    public interface PermissionPort {
         String readiness();
     }
 
-    interface CommandPort {
+    public interface CommandPort {
         HomecomingSupervisionCommandHandler.RuntimeResult apply(
                 String action,
                 String groupId,
@@ -101,7 +101,7 @@ public final class HomecomingSupervisionAdapter {
                 long expiresWallMs);
     }
 
-    interface SnapshotSource {
+    public interface SnapshotSource {
         Snapshot snapshot();
     }
 
@@ -117,7 +117,7 @@ public final class HomecomingSupervisionAdapter {
         }
     }
 
-    private static final class AndroidRuntimePort
+    public static final class AndroidRuntimePort
             implements RuntimePort, CommandPort {
         final AppSupervisionRuntime runtime;
 
@@ -177,7 +177,7 @@ public final class HomecomingSupervisionAdapter {
         }
     }
 
-    private static final class AndroidPermissionPort implements PermissionPort {
+    public static final class AndroidPermissionPort implements PermissionPort {
         private final Context context;
 
         AndroidPermissionPort(Context context) {

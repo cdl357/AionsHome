@@ -10,7 +10,7 @@ import okhttp3.HttpUrl;
 
 /** Shares WebView authentication and device cookies with background OkHttp calls. */
 public final class WebViewCookieJar implements CookieJar {
-    interface Store {
+    public interface Store {
         String get(String url);
         void set(String url, String cookie);
         void flush();
@@ -57,7 +57,7 @@ public final class WebViewCookieJar implements CookieJar {
         return cookies;
     }
 
-    private static final class AndroidStore implements Store {
+    public static final class AndroidStore implements Store {
         private final CookieManager manager = CookieManager.getInstance();
 
         @Override public String get(String url) {

@@ -65,11 +65,11 @@ public final class HomecomingIdentityRepository {
         }
     }
 
-    interface Source {
+    public interface Source {
         String load();
     }
 
-    private static final class SQLiteSource implements Source {
+    public static final class SQLiteSource implements Source {
         private final HomecomingDatabase helper;
         SQLiteSource(HomecomingDatabase helper) { this.helper = helper; }
         @Override public String load() {

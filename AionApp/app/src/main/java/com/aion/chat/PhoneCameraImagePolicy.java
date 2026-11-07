@@ -3,7 +3,7 @@ package com.aion.chat;
 import java.util.ArrayList;
 import java.util.List;
 
-final class PhoneCameraImagePolicy {
+public final class PhoneCameraImagePolicy {
     static final int MAX_LONG_EDGE = 1280;
     static final int MAX_JPEG_BYTES = 800 * 1024;
     static final int INITIAL_JPEG_QUALITY = 80;

@@ -4,7 +4,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 
 /** Keeps public and private connection routes isolated. */
-final class ConnectionEndpoint {
+public final class ConnectionEndpoint {
     static final String CLOUDFLARE_HOST = "chat.example.com";
     static final String CLOUDFLARE_ACCESS_HOST = "cloudflareaccess.com";
     static final String LEGACY_CLOUDFLARE_WS_HOST = "legacy-ws.example.com";

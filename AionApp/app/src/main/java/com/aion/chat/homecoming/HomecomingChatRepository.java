@@ -165,7 +165,7 @@ public final class HomecomingChatRepository {
         }
     }
 
-    interface Backend {
+    public interface Backend {
         Message commit(
                 Message candidate,
                 HomecomingOperationJournal.Operation operation,
@@ -182,7 +182,7 @@ public final class HomecomingChatRepository {
         }
     }
 
-    private static final class SQLiteBackend implements Backend {
+    public static final class SQLiteBackend implements Backend {
         private final HomecomingDatabase helper;
 
         SQLiteBackend(HomecomingDatabase helper) {

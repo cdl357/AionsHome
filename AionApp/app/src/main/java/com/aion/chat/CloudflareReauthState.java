@@ -3,7 +3,7 @@ package com.aion.chat;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Coordinates one real Cloudflare navigation while keeping persistent assets cached. */
-final class CloudflareReauthState {
+public final class CloudflareReauthState {
     private final AtomicBoolean inProgress = new AtomicBoolean(false);
     private final AtomicBoolean bypassMainDocumentOnce = new AtomicBoolean(false);
 

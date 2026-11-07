@@ -50,12 +50,12 @@ public final class HomecomingScheduleReconciler {
         return new Result(registered, missed, failed);
     }
 
-    interface SchedulePort {
+    public interface SchedulePort {
         List<HomecomingScheduleRepository.Schedule> listActive();
         void markMissed(String scheduleId, long now);
     }
 
-    private static final class RepositoryAdapter implements SchedulePort {
+    public static final class RepositoryAdapter implements SchedulePort {
         private final HomecomingScheduleRepository repository;
         RepositoryAdapter(HomecomingScheduleRepository repository) {
             if (repository == null) {

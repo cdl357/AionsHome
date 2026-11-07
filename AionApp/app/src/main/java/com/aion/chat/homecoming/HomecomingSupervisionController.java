@@ -80,17 +80,17 @@ public final class HomecomingSupervisionController {
         return value;
     }
 
-    interface ModePort {
+    public interface ModePort {
         boolean isActive();
     }
 
-    interface RuntimePort {
+    public interface RuntimePort {
         void setListener(StateListener listener);
         JSONObject buildStatePayload(
                 String eventType, String groupId, long checkpointMs) throws Exception;
     }
 
-    interface EventPort {
+    public interface EventPort {
         HomecomingSupervisionRepository.Event enqueue(
                 String eventId,
                 String groupId,
@@ -101,15 +101,15 @@ public final class HomecomingSupervisionController {
         List<HomecomingSupervisionRepository.Event> recoverable(long now);
     }
 
-    interface DispatchPort {
+    public interface DispatchPort {
         void fire(String eventId);
     }
 
-    interface StateListener {
+    public interface StateListener {
         void onStateEvent(String eventType, String groupId, long checkpointMs);
     }
 
-    interface Clock {
+    public interface Clock {
         long now();
     }
 }

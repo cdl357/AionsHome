@@ -6,7 +6,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
-final class CheckpointDeadlineScheduler {
+public final class CheckpointDeadlineScheduler {
     private final AppSupervisionRuntime.Scheduler testScheduler;
     private final ScheduledExecutorService executor;
     private long generation;

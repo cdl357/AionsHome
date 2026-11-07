@@ -187,14 +187,14 @@ public final class HomecomingBackupClient {
                 + (message == null ? "" : ":" + message);
     }
 
-    interface Transport {
+    public interface Transport {
         Download download(
                 String serverBaseUrl, String deviceId, String publicKeySpki,
                 String signingPublicKeySpki, String previousId)
                 throws IOException;
     }
 
-    interface KeyPort {
+    public interface KeyPort {
         String deviceId();
         String publicKeySpkiBase64() throws Exception;
         String signingPublicKeySpkiBase64() throws Exception;
@@ -202,7 +202,7 @@ public final class HomecomingBackupClient {
                 JSONObject envelope, String deviceId, String snapshotId) throws Exception;
     }
 
-    interface SnapshotImporter {
+    public interface SnapshotImporter {
         void importSnapshot(JSONObject payload) throws Exception;
     }
 
@@ -211,7 +211,7 @@ public final class HomecomingBackupClient {
         void onFailure(String code, String diagnostic);
     }
 
-    static final class Download {
+    public static final class Download {
         final int statusCode;
         final byte[] body;
         final String etag;

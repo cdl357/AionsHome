@@ -153,13 +153,13 @@ public final class HomecomingMemoryRepository
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
-    interface Backend {
+    public interface Backend {
         List<Memory> snapshots(String owner);
         List<Memory> locals(String owner);
         Memory save(Memory memory, HomecomingOperationJournal.Operation operation);
     }
 
-    private static final class SQLiteBackend implements Backend {
+    public static final class SQLiteBackend implements Backend {
         private final HomecomingDatabase helper;
         SQLiteBackend(HomecomingDatabase helper) { this.helper = helper; }
 

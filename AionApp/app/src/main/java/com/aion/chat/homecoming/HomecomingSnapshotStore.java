@@ -487,7 +487,7 @@ public final class HomecomingSnapshotStore {
         throw new IllegalArgumentException("unterminated JSON container");
     }
 
-    static final class JsonRange {
+    public static final class JsonRange {
         final int start;
         final int end;
 
@@ -497,13 +497,13 @@ public final class HomecomingSnapshotStore {
         }
     }
 
-    interface FileOperations {
+    public interface FileOperations {
         boolean mkdirs(File directory);
         boolean rename(File source, File target);
         boolean deleteTree(File target);
     }
 
-    static class DefaultFileOperations implements FileOperations {
+    public static class DefaultFileOperations implements FileOperations {
         @Override
         public boolean mkdirs(File directory) {
             return directory.mkdirs() || directory.isDirectory();

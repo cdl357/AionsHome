@@ -21,7 +21,7 @@ public final class SvakomCommandScheduler {
         void onError(String message);
     }
 
-    private static final class HoldRecord {
+    public static final class HoldRecord {
         Cancellation cancellation;
         final int generation;
         final List<SvakomProtocol.Command> restores;
@@ -31,7 +31,7 @@ public final class SvakomCommandScheduler {
         }
     }
 
-    private static final class Timeline {
+    public static final class Timeline {
         final SvakomProtocol.Command sequence;
         final int generation;
         int index;

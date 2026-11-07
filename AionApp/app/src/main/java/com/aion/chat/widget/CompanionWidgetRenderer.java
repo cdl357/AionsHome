@@ -13,7 +13,7 @@ import com.aion.chat.R;
 
 import java.util.List;
 
-final class CompanionWidgetRenderer {
+public final class CompanionWidgetRenderer {
     private CompanionWidgetRenderer() {}
 
     static RemoteViews render(Context context) {

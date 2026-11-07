@@ -11,7 +11,7 @@ import java.security.MessageDigest;
 import java.util.Locale;
 
 /** Small persistent JSON snapshots shared across all WebView origins. */
-final class SharedJsonStore {
+public final class SharedJsonStore {
     private static final int MAX_VALUE_BYTES = 1024 * 1024;
     private final File directory;
 

@@ -2,7 +2,7 @@ package com.aion.chat.widget;
 
 import java.util.List;
 
-final class WidgetMemoPresentation {
+public final class WidgetMemoPresentation {
     final boolean emptyHintVisible;
     final boolean firstVisible;
     final boolean secondVisible;

@@ -129,7 +129,7 @@ public final class HomecomingSupervisionRepository {
                 ? text : text.substring(0, MAX_DIAGNOSTIC_LENGTH);
     }
 
-    interface Backend {
+    public interface Backend {
         Event putIfAbsent(Event event);
         Event find(String eventId);
         List<Event> recoverable(long staleBefore);
@@ -143,7 +143,7 @@ public final class HomecomingSupervisionRepository {
         void fail(String eventId, String diagnostic, long now);
     }
 
-    private static final class SQLiteBackend implements Backend {
+    public static final class SQLiteBackend implements Backend {
         private final HomecomingDatabase helper;
 
         SQLiteBackend(HomecomingDatabase helper) {

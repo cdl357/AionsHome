@@ -19,7 +19,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 /** An acknowledgement inside the app, independent of the device focus timer. */
-final class AttentionCallDialog {
+public final class AttentionCallDialog {
     private AttentionCallDialog() {}
 
     static Dialog show(Activity activity, String message, Runnable onConfirm) {

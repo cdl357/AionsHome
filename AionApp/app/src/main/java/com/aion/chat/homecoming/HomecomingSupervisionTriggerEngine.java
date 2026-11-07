@@ -139,14 +139,14 @@ public final class HomecomingSupervisionTriggerEngine {
                 + "请依据当前监督状态、近期对话和记忆自然地检查并回应用户。";
     }
 
-    interface EventPort {
+    public interface EventPort {
         HomecomingSupervisionRepository.Event find(String eventId);
         HomecomingSupervisionRepository.Claim claim(String eventId, long now);
         void complete(String eventId, String messageId, String resultText, long now);
         void fail(String eventId, String diagnostic, long now);
     }
 
-    interface ContextPort {
+    public interface ContextPort {
         List<HomecomingModelGateway.ChatMessage> build(
                 HomecomingSupervisionRepository.Event event,
                 String ownerId,
@@ -155,7 +155,7 @@ public final class HomecomingSupervisionTriggerEngine {
                 long now);
     }
 
-    interface GatewayPort {
+    public interface GatewayPort {
         void stream(
                 String requestId,
                 String routeId,
@@ -164,7 +164,7 @@ public final class HomecomingSupervisionTriggerEngine {
                 HomecomingModelGateway.StreamObserver observer);
     }
 
-    interface MessagePort {
+    public interface MessagePort {
         String commit(
                 HomecomingSupervisionRepository.Event event,
                 String ownerId,
@@ -173,7 +173,7 @@ public final class HomecomingSupervisionTriggerEngine {
                 long now);
     }
 
-    interface ControlPort {
+    public interface ControlPort {
         void apply(
                 HomecomingSupervisionRepository.Event event,
                 String ownerId,
@@ -182,7 +182,7 @@ public final class HomecomingSupervisionTriggerEngine {
                 long now);
     }
 
-    interface Clock {
+    public interface Clock {
         long now();
     }
 
@@ -192,7 +192,7 @@ public final class HomecomingSupervisionTriggerEngine {
         void onDuplicate();
     }
 
-    private static final class RoleTarget {
+    public static final class RoleTarget {
         final String ownerId;
         final String timelineId;
 

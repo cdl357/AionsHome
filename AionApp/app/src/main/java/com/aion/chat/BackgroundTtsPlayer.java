@@ -14,7 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Owns background speech without relying on a running WebView or its callbacks. */
-final class BackgroundTtsPlayer {
+public final class BackgroundTtsPlayer {
     private final Context context;
     private final Handler handler;
     private final Runnable stateChanged;

@@ -4,7 +4,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 
 /** Conversation destination and intent keys for supervision attention calls. */
-final class AttentionCall {
+public final class AttentionCall {
     static final String EXTRA_MESSAGE = "attention_call_message";
 
     private AttentionCall() {}

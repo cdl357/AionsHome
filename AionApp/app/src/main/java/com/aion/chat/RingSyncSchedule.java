@@ -3,7 +3,7 @@ package com.aion.chat;
 import java.util.Calendar;
 
 /** Schedules failed ring syncs at the next fixed ten-minute slot. */
-final class RingSyncSchedule {
+public final class RingSyncSchedule {
     private static final long MINUTE_MS = 60_000L;
 
     private RingSyncSchedule() {}

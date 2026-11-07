@@ -8,7 +8,7 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
-final class RingHealthSnapshot {
+public final class RingHealthSnapshot {
     private static final int RECORD_LENGTH = 20;
 
     final double measuredAt;

@@ -109,7 +109,7 @@ public final class HomecomingContextBuilder {
         value.append(line.trim());
     }
 
-    interface MemoryRecall {
+    public interface MemoryRecall {
         List<HomecomingMemoryRepository.Memory> recall(
                 String owner, String query, int limit);
     }

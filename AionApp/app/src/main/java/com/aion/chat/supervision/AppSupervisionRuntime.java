@@ -919,7 +919,7 @@ public final class AppSupervisionRuntime {
         }
     }
 
-    private static final class MainScheduler implements Scheduler {
+    public static final class MainScheduler implements Scheduler {
         private final Handler handler = new Handler(Looper.getMainLooper());
         @Override public long elapsedRealtime() { return SystemClock.elapsedRealtime(); }
         @Override public long currentTimeMillis() { return System.currentTimeMillis(); }

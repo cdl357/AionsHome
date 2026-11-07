@@ -3,7 +3,7 @@ package com.aion.chat;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /** Keep only the latest unsent vibration frame; OFF supersedes pending intensity frames. */
-final class SvakomWriteQueue {
+public final class SvakomWriteQueue {
     private final ThreadPoolExecutor executor;
     private Runnable pendingVibration;
 

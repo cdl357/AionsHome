@@ -37,10 +37,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-final class PhoneCameraController {
+public final class PhoneCameraController {
     private static final String TAG = "PhoneCameraController";
 
-    interface CaptureCallback {
+    public interface CaptureCallback {
         void onSuccess(byte[] jpeg, JSONObject metadata);
         void onFailure(String error);
     }
@@ -580,7 +580,7 @@ final class PhoneCameraController {
         }
     }
 
-    private static final class CameraChoice {
+    public static final class CameraChoice {
         final String cameraId;
         final CameraCharacteristics characteristics;
         final float minZoom;

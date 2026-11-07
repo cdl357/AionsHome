@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-final class HomecomingReturnPackageCoordinator
+public final class HomecomingReturnPackageCoordinator
         implements HomecomingReturnController.PackagePort {
     private final HomecomingDatabase database;
     private final HomecomingReturnPackageRepository repository;

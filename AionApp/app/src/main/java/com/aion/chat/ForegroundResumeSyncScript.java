@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class ForegroundResumeSyncScript {
+public final class ForegroundResumeSyncScript {
     private ForegroundResumeSyncScript() {}
 
     static String build() {

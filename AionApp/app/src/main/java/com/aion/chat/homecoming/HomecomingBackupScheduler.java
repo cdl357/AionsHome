@@ -232,22 +232,22 @@ public final class HomecomingBackupScheduler {
         return compact.length() > 240 ? compact.substring(0, 240) : compact;
     }
 
-    interface Clock {
+    public interface Clock {
         long nowMs();
     }
 
-    interface RequestSink {
+    public interface RequestSink {
         void request(
                 String baseUrl,
                 HomecomingBackupClient.RefreshReason reason,
                 Runnable completion);
     }
 
-    interface ModeState {
+    public interface ModeState {
         boolean isActive();
     }
 
-    interface NetworkState {
+    public interface NetworkState {
         boolean isAvailable();
     }
 }

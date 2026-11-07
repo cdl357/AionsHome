@@ -287,7 +287,7 @@ public final class HomecomingModelGateway {
         void onFailure(String code);
     }
 
-    private static final class ProviderFrame {
+    public static final class ProviderFrame {
         static final ProviderFrame EMPTY = new ProviderFrame("", "");
 
         final String visibleText;

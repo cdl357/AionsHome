@@ -7,7 +7,7 @@ import android.content.Intent;
 
 import java.util.TimeZone;
 
-final class WidgetRefreshScheduler {
+public final class WidgetRefreshScheduler {
     private WidgetRefreshScheduler() {}
 
     static void scheduleNext(Context context) {

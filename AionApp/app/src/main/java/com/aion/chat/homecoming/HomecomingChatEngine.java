@@ -197,7 +197,7 @@ public final class HomecomingChatEngine {
         gateway.cancel(requestId);
     }
 
-    interface RepositoryPort {
+    public interface RepositoryPort {
         void commitUser(ChatCommand command, long now);
         default void prepareAssistant(ChatCommand command, long now) {
         }
@@ -207,24 +207,24 @@ public final class HomecomingChatEngine {
                 String requestId, List<HomecomingControlParser.ControlEvent> controls);
     }
 
-    interface ContextPort {
+    public interface ContextPort {
         List<HomecomingModelGateway.ChatMessage> build(
                 String timelineId, String responderOwner, String trigger,
                 long now, String locationState);
     }
 
-    interface GatewayPort {
+    public interface GatewayPort {
         void stream(
                 HomecomingModelGateway.ChatRequest request,
                 HomecomingModelGateway.StreamObserver observer) throws Exception;
         void cancel(String requestId);
     }
 
-    interface Clock {
+    public interface Clock {
         long now();
     }
 
-    interface ControlPort {
+    public interface ControlPort {
         void apply(
                 ChatCommand command,
                 List<HomecomingControlParser.ControlEvent> controls,

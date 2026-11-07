@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-final class HomecomingRuntime {
+public final class HomecomingRuntime {
     private final HomecomingDatabase database;
     private final HomecomingRouteVault vault;
     private final HomecomingChatRepository chats;
@@ -885,11 +885,11 @@ final class HomecomingRuntime {
         return !"user".equals(role);
     }
 
-    interface EventSink {
+    public interface EventSink {
         void emit(JSONObject event);
     }
 
-    private static final class RouteChoice {
+    public static final class RouteChoice {
         final String routeId;
         final String modelId;
         RouteChoice(String routeId, String modelId) {
@@ -898,7 +898,7 @@ final class HomecomingRuntime {
         }
     }
 
-    private static final class MessageProjection {
+    public static final class MessageProjection {
         final String id;
         final String sender;
         final String text;

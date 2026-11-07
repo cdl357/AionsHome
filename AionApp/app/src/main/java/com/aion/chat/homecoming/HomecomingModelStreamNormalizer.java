@@ -2,7 +2,7 @@ package com.aion.chat.homecoming;
 
 import java.util.Locale;
 
-final class HomecomingModelStreamNormalizer {
+public final class HomecomingModelStreamNormalizer {
     private static final String OPEN_TAG = "<think>";
     private static final String CLOSE_TAG = "</think>";
 

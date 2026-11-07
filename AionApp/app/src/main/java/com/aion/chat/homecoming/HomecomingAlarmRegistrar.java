@@ -70,7 +70,7 @@ public final class HomecomingAlarmRegistrar
         }
     }
 
-    interface Platform {
+    public interface Platform {
         boolean exactPermissionRequired();
         boolean canScheduleExact();
         void schedule(
@@ -79,7 +79,7 @@ public final class HomecomingAlarmRegistrar
         void cancel(int requestCode, String scheduleId, String epochId);
     }
 
-    private static final class AndroidPlatform implements Platform {
+    public static final class AndroidPlatform implements Platform {
         private final Context context;
         private final AlarmManager alarms;
 

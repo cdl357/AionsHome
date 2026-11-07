@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class PhoneCameraRetryPolicy {
+public final class PhoneCameraRetryPolicy {
     private static final int MAX_ATTEMPTS = 6;
     private static final long DEADLINE_SAFETY_MS = 1_000L;
     private static final long MIN_CAPTURE_ATTEMPT_MS = 500L;

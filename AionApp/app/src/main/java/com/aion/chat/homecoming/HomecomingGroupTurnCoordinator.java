@@ -6,7 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-final class HomecomingGroupTurnCoordinator {
+public final class HomecomingGroupTurnCoordinator {
     private final List<String> owners;
     private final ReplyPort replies;
     private final Set<String> stopped = Collections.synchronizedSet(new HashSet<>());
@@ -59,7 +59,7 @@ final class HomecomingGroupTurnCoordinator {
                 });
     }
 
-    interface ReplyPort {
+    public interface ReplyPort {
         void start(
                 String parentRequestId,
                 String childRequestId,
@@ -69,12 +69,12 @@ final class HomecomingGroupTurnCoordinator {
         void cancel(String parentRequestId);
     }
 
-    interface ReplyCompletion {
+    public interface ReplyCompletion {
         void onComplete(String messageId, String text);
         void onFailure(String code);
     }
 
-    interface Observer {
+    public interface Observer {
         void onReplyComplete(String ownerId, String messageId, String text);
         void onReplyFailure(String ownerId, String code);
         void onTurnComplete();

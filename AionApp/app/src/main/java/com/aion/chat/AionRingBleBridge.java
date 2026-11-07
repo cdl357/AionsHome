@@ -58,7 +58,7 @@ public class AionRingBleBridge {
     private static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final int[] RING_COMPANY_IDS = {0x7810, 0x7811, 0x7812, 0x7813, 0xFEC5};
 
-    private static class RingService {
+    public static class RingService {
         final UUID service;
         final UUID write;
         final UUID notify;

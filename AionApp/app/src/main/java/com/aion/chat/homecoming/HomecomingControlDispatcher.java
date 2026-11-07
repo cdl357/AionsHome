@@ -124,7 +124,7 @@ public final class HomecomingControlDispatcher
         return value == null || value.trim().isEmpty() ? "AI" : value.trim();
     }
 
-    interface SchedulePort {
+    public interface SchedulePort {
         HomecomingScheduleCommandHandler.ApplyResult apply(
                 String requestId,
                 int index,
@@ -134,7 +134,7 @@ public final class HomecomingControlDispatcher
                 long now);
     }
 
-    interface SupervisionPort {
+    public interface SupervisionPort {
         HomecomingSupervisionCommandHandler.ApplyResult apply(
                 String requestId,
                 int index,
@@ -143,7 +143,7 @@ public final class HomecomingControlDispatcher
                 long now);
     }
 
-    interface ResultPort {
+    public interface ResultPort {
         void defer(
                 String requestId,
                 HomecomingControlParser.ControlEvent event,
@@ -155,7 +155,7 @@ public final class HomecomingControlDispatcher
                 long now);
     }
 
-    interface NamePort {
+    public interface NamePort {
         String resolve(String timelineId, String ownerId);
     }
 }

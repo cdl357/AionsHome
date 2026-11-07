@@ -4,8 +4,8 @@ import java.lang.ref.WeakReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-final class PhoneCameraPreviewCoordinator {
-    interface Client {
+public final class PhoneCameraPreviewCoordinator {
+    public interface Client {
         void pauseForEvent(Runnable released);
         void resumeAfterEvent();
     }

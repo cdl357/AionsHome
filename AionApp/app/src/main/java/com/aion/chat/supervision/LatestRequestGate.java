@@ -1,6 +1,6 @@
 package com.aion.chat.supervision;
 
-final class LatestRequestGate {
+public final class LatestRequestGate {
     private long generation;
 
     synchronized long next() {

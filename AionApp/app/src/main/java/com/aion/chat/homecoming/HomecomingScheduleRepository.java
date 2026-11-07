@@ -240,7 +240,7 @@ public final class HomecomingScheduleRepository {
         }
     }
 
-    interface Backend {
+    public interface Backend {
         List<Schedule> snapshotSchedules();
         List<Schedule> localSchedules();
         Schedule writeLocal(
@@ -255,7 +255,7 @@ public final class HomecomingScheduleRepository {
         void fail(String executionId, String diagnostic, long now);
     }
 
-    private static final class SQLiteBackend implements Backend {
+    public static final class SQLiteBackend implements Backend {
         private final HomecomingDatabase helper;
 
         SQLiteBackend(HomecomingDatabase helper) {
@@ -553,7 +553,7 @@ public final class HomecomingScheduleRepository {
         }
     }
 
-    static final class Execution {
+    public static final class Execution {
         final String executionId;
         final String scheduleId;
         final long triggerAt;

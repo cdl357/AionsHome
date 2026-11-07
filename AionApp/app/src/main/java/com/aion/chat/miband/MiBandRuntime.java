@@ -26,7 +26,7 @@ public final class MiBandRuntime implements MiBandGattSession.Listener {
 
     public interface Completion { void onComplete(boolean success); }
 
-    private interface Operation { void run() throws Exception; }
+    public interface Operation { void run() throws Exception; }
 
     private static volatile MiBandRuntime instance;
 

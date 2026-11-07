@@ -3,7 +3,7 @@ package com.aion.chat.widget;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-final class WidgetInteractionController {
+public final class WidgetInteractionController {
     static final long DOUBLE_TAP_MILLIS = 450L;
     static final String TARGET_LEFT = "left";
     static final String TARGET_RIGHT = "right";

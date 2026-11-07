@@ -185,14 +185,14 @@ public final class HomecomingReturnClient
         return value.trim();
     }
 
-    interface Transport {
+    public interface Transport {
         TransportResponse execute(
                 String method, String url, String contentType, byte[] body,
                 Map<String, String> headers) throws Exception;
         void cancel();
     }
 
-    static final class TransportResponse {
+    public static final class TransportResponse {
         final int statusCode;
         final byte[] body;
 
@@ -202,7 +202,7 @@ public final class HomecomingReturnClient
         }
     }
 
-    static final class OkHttpTransport implements Transport {
+    public static final class OkHttpTransport implements Transport {
         private final OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)

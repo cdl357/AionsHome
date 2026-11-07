@@ -32,7 +32,7 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 /** Bounded, host-independent LRU cache for replayable chat media. */
-final class MediaCacheStore {
+public final class MediaCacheStore {
     private static final String PREFS = "aion_prefs";
     private static final String KEY_LIMIT_MB = "media_cache_limit_mb";
     private static final int DEFAULT_LIMIT_MB = 1024;

@@ -7,7 +7,7 @@ import org.json.JSONArray;
 
 import java.io.File;
 
-final class WidgetStateStore {
+public final class WidgetStateStore {
     private static final String PREFS = "widget_control_state";
 
     private final SharedPreferences prefs;

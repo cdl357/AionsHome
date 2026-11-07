@@ -298,15 +298,15 @@ public final class HomecomingMemorySummarizer {
         return value.trim();
     }
 
-    interface MessageSource {
+    public interface MessageSource {
         List<SourceMessage> load(String ownerId, String afterMessageId);
     }
 
-    interface SummaryModel {
+    public interface SummaryModel {
         String summarize(String ownerId, List<SourceMessage> messages) throws Exception;
     }
 
-    interface MemoryStore {
+    public interface MemoryStore {
         String anchor(String ownerId);
         void commitGroup(
                 String ownerId, String lastMessageId,
@@ -314,7 +314,7 @@ public final class HomecomingMemorySummarizer {
                 List<MemoryDraft> drafts, long now) throws Exception;
     }
 
-    interface EmbeddingProvider {
+    public interface EmbeddingProvider {
         byte[] embed(String content) throws Exception;
     }
 
@@ -380,7 +380,7 @@ public final class HomecomingMemorySummarizer {
         }
     }
 
-    private static final class SqliteMessageSource implements MessageSource {
+    public static final class SqliteMessageSource implements MessageSource {
         private final HomecomingDatabase helper;
         private final String epochId;
 
@@ -419,7 +419,7 @@ public final class HomecomingMemorySummarizer {
         }
     }
 
-    private static final class SqliteMemoryStore implements MemoryStore {
+    public static final class SqliteMemoryStore implements MemoryStore {
         private final HomecomingDatabase helper;
         private final String epochId;
         private final String deviceId;
@@ -594,7 +594,7 @@ public final class HomecomingMemorySummarizer {
         return output.toString();
     }
 
-    private static final class NativeEmbeddingProvider implements EmbeddingProvider {
+    public static final class NativeEmbeddingProvider implements EmbeddingProvider {
         private static final MediaType JSON =
                 MediaType.get("application/json; charset=utf-8");
         private final HomecomingRouteVault vault;

@@ -5,8 +5,8 @@ import java.util.LinkedHashSet;
 import java.util.TreeMap;
 
 /** Main-thread queue for the same segmented speech protocol used by the chat pages. */
-final class BackgroundTtsQueue {
-    private static final class Message {
+public final class BackgroundTtsQueue {
+    public static final class Message {
         final TreeMap<Integer, String> chunks = new TreeMap<>();
         int next;
         boolean finished;

@@ -134,7 +134,7 @@ public final class HomecomingTriggerEngine {
         return prompt.toString();
     }
 
-    interface SchedulePort {
+    public interface SchedulePort {
         HomecomingScheduleRepository.Schedule find(String id);
         HomecomingScheduleRepository.ExecutionClaim claim(
                 String scheduleId, long triggerAt, long now);
@@ -142,14 +142,14 @@ public final class HomecomingTriggerEngine {
         void fail(String executionId, String diagnostic, long now);
     }
 
-    interface ContextPort {
+    public interface ContextPort {
         List<HomecomingModelGateway.ChatMessage> build(
                 HomecomingScheduleRepository.Schedule schedule,
                 String trigger,
                 long now);
     }
 
-    interface GatewayPort {
+    public interface GatewayPort {
         void stream(
                 String requestId,
                 String routeId,
@@ -158,7 +158,7 @@ public final class HomecomingTriggerEngine {
                 HomecomingModelGateway.StreamObserver observer);
     }
 
-    interface MessagePort {
+    public interface MessagePort {
         String commit(
                 HomecomingScheduleRepository.Schedule schedule,
                 String executionId,
@@ -166,7 +166,7 @@ public final class HomecomingTriggerEngine {
                 long now);
     }
 
-    interface ControlPort {
+    public interface ControlPort {
         void apply(
                 String executionId,
                 HomecomingScheduleRepository.Schedule schedule,
@@ -174,7 +174,7 @@ public final class HomecomingTriggerEngine {
                 long now);
     }
 
-    interface Clock {
+    public interface Clock {
         long now();
     }
 

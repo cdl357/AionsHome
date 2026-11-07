@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class PhoneCameraCaptureGate {
+public final class PhoneCameraCaptureGate {
     private long generation;
     private boolean busy;
 

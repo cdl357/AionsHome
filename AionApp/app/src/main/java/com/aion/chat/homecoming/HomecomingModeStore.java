@@ -152,7 +152,7 @@ public final class HomecomingModeStore {
         backend.putString(KEY_PENDING_PACKAGE, packageId.trim());
     }
 
-    interface Backend {
+    public interface Backend {
         String getString(String key, String defaultValue);
         long getLong(String key, long defaultValue);
         boolean getBoolean(String key, boolean defaultValue);
@@ -162,7 +162,7 @@ public final class HomecomingModeStore {
         void remove(String key);
     }
 
-    private static final class SharedPreferencesBackend implements Backend {
+    public static final class SharedPreferencesBackend implements Backend {
         private final SharedPreferences preferences;
 
         SharedPreferencesBackend(SharedPreferences preferences) {

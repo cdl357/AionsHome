@@ -40,14 +40,14 @@ import okhttp3.ResponseBody;
  * "clear cache" action does not remove the verified frontend bundle. Cache
  * entries are activated only after the selected route returns a fresh manifest.
  */
-final class SharedAssetCache {
-    enum RefreshResult {
+public final class SharedAssetCache {
+    public enum RefreshResult {
         REFRESHED,
         NOT_REFRESHED,
         AUTH_REQUIRED
     }
 
-    interface Completion {
+    public interface Completion {
         void onComplete(RefreshResult result);
     }
 
@@ -483,7 +483,7 @@ final class SharedAssetCache {
         return result.toString();
     }
 
-    private static final class Entry {
+    public static final class Entry {
         final String sha256;
         final long size;
         final String contentType;
@@ -501,7 +501,7 @@ final class SharedAssetCache {
         }
     }
 
-    private static final class ParsedManifest {
+    public static final class ParsedManifest {
         final String version;
         final Map<String, Entry> entries;
 

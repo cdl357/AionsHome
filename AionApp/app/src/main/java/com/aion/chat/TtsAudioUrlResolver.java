@@ -2,7 +2,7 @@ package com.aion.chat;
 
 import java.net.URI;
 
-final class TtsAudioUrlResolver {
+public final class TtsAudioUrlResolver {
     private TtsAudioUrlResolver() {
     }
 

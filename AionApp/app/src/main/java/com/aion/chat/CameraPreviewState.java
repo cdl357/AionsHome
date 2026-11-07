@@ -1,6 +1,6 @@
 package com.aion.chat;
 
-final class CameraPreviewState {
+public final class CameraPreviewState {
     private boolean running;
     private long lastFrameAt;
     private boolean appForeground;
