@@ -98,6 +98,18 @@ object HomecomingThemeState {
             .edit().putString(KEY_MODE, "custom").putFloat(KEY_HUE, hue).apply()
     }
 
+    /** 样式中心读取当前选择：返回 preset key 或 "custom" */
+    fun currentKey(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return when (val mode = prefs.getString(KEY_MODE, "preset:wulan")) {
+            "custom" -> "custom"
+            else -> (mode ?: "preset:wulan").removePrefix("preset:")
+        }
+    }
+
+    fun currentHue(context: Context): Float =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getFloat(KEY_HUE, 200f)
+
     private fun apply(p: Palette) {
         HomecomingColors.Accent = p.accent
         HomecomingColors.AccentSoft = p.accent.copy(alpha = 0.20f)

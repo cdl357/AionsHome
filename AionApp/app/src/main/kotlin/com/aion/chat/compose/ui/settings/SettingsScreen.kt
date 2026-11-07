@@ -148,28 +148,6 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
         }
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) {
-            val ok = runCatching {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    SettingsBg.backgroundFile(context).outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                } != null
-            }.getOrDefault(false)
-            if (ok) {
-                SettingsBg.bump()
-                // 同步备份到 Downloads：卸载重装背景不丢
-                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    SettingsBg.backupToDownloads(context)
-                }
-                Toast.makeText(context, "背景已换好（重装也不丢）", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "没读出这张图，换一张试试", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -177,81 +155,10 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             .padding(18.dp)
     ) {
         Text("设置", fontSize = 22.sp, color = HomecomingColors.Ink)
-        Text("背景 / 主题 / 云线路 / MCP / 备份，都在这", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+        Text("云线路 / MCP / 备份都在这；背景和主题在样式中心", fontSize = 12.sp, color = HomecomingColors.InkSoft)
         Spacer(Modifier.height(14.dp))
 
-        // ── 主题（布局定稿·方案 C）：五预设 + 单主色调色盘 ──
-        val themeState = remember { androidx.compose.runtime.mutableStateOf(HomecomingThemeState.PRESETS[1]) }
-        val customHue = remember { androidx.compose.runtime.mutableStateOf(200f) }
-        FrostCard {
-            Text("主题", fontSize = 15.sp, color = HomecomingColors.Ink)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomecomingThemeState.PRESETS.forEach { p ->
-                    Text(
-                        p.name,
-                        fontSize = 13.sp,
-                        color = if (themeState.value.key == p.key) Color.White else HomecomingColors.Ink,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(p.accent)
-                            .clickable {
-                                themeState.value = p
-                                HomecomingThemeState.applyPreset(context, p.key)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Text("调色盘：只调一个主色，其余自动配", fontSize = 12.sp, color = HomecomingColors.InkSoft)
-            androidx.compose.material3.Slider(
-                value = customHue.value,
-                onValueChange = { hue ->
-                    customHue.value = hue
-                    HomecomingThemeState.applyCustomHue(context, hue)
-                },
-                valueRange = 0f..360f
-            )
-            Text(
-                "暖橙区会自动压饱和（无橘色）",
-                fontSize = 10.sp, color = HomecomingColors.InkSoft
-            )
-        }
-
-        FrostCard {
-            Text("主页背景图", fontSize = 15.sp, color = HomecomingColors.Ink)
-            Text(
-                "从手机相册选一张，回家页立即换上；选竖图效果最好",
-                fontSize = 12.sp,
-                color = HomecomingColors.InkSoft
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("选一张照片") }
-                OutlinedButton(
-                    onClick = {
-                        val f = SettingsBg.backgroundFile(context)
-                        if (f.exists() && f.delete()) {
-                            SettingsBg.bump()
-                            SettingsBg.deleteBackup(context)
-                            Toast.makeText(context, "已恢复默认背景", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "现在用的就是默认背景", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("恢复默认") }
-            }
-        }
-
+        // 主题 / 主页背景图已搬进 样式中心（0.3.112）
         // ── 样式中心（从更多页收进来：聊天长什么样在这里调） ──
         FrostCard {
             Row(
@@ -262,7 +169,7 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("样式中心", fontSize = 15.sp, color = HomecomingColors.Ink)
-                    Text("气泡透明度 · 颜色 · 字体 · 气泡背景图，都在这", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    Text("主题 · 背景图 · 气泡透明度 · 字体 · 气泡背景图，都在这", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
                 Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }

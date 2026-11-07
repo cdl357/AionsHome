@@ -43,8 +43,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.data.StyleSettings
 import com.aion.chat.compose.ui.theme.HomecomingColors
+import com.aion.chat.compose.ui.theme.HomecomingThemeState
 import kotlin.math.roundToInt
 
 /**
@@ -62,6 +65,8 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
 
     val ink = Color(0xFF4E4638)
     val soft = Color(0xFF9A8F7E)
+    var themeKey by remember { mutableStateOf(HomecomingThemeState.currentKey(context)) }
+    var themeHue by remember { mutableStateOf(HomecomingThemeState.currentHue(context)) }
 
     Column(
         modifier = Modifier
@@ -96,6 +101,47 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
         // ══════ 主题外观 ══════
         SectionTitle("主题外观")
         Card {
+            Text(
+                "主题", fontSize = 14.sp, color = Color(0xFF4E4638),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 14.dp)) {
+                HomecomingThemeState.PRESETS.forEach { p ->
+                    Text(
+                        p.name,
+                        fontSize = 13.sp,
+                        color = if (themeKey == p.key) Color.White else ink,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(p.accent)
+                            .clickable {
+                                themeKey = p.key
+                                HomecomingThemeState.applyPreset(context, p.key)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            Text(
+                "调色盘：只调一个主色，其余自动配",
+                fontSize = 11.sp, color = soft,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+            androidx.compose.material3.Slider(
+                value = themeHue,
+                onValueChange = { hue ->
+                    themeHue = hue
+                    themeKey = "custom"
+                    HomecomingThemeState.applyCustomHue(context, hue)
+                },
+                valueRange = 0f..360f,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            Text(
+                "暖橙区会自动压饱和（无橘色）",
+                fontSize = 10.sp, color = soft,
+                modifier = Modifier.padding(horizontal = 14.dp)
+            )
             SwitchRow("界面实时渲染", "为玻璃界面启用实时背景渲染", StyleSettings.glassBlur(context)) {
                 StyleSettings.setGlassBlur(context, it)
             }
@@ -179,6 +225,12 @@ fun StyleHubScreen(onBack: () -> Unit = {}) {
             )
             ImageRow("用户头像挂件", "选择一张图片作为头像装饰框", StyleSettings.SLOT_USER_PENDANT)
             ImageRow("AI头像挂件", "选择一张图片作为AI头像装饰框", StyleSettings.SLOT_AI_PENDANT)
+        }
+
+        // ══════ 背景图 ══════
+        SectionTitle("背景图")
+        Card {
+            HomeBgRow()
         }
 
         Text(
@@ -369,3 +421,88 @@ private fun ImageRow(title: String, sub: String, slot: String) {
     }
 }
 
+
+
+@Composable
+private fun HomeBgRow() {
+    val context = LocalContext.current
+    val bgStamp = remember { mutableStateOf(SettingsBg.stamp) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            val ok = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    SettingsBg.backgroundFile(context).outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } != null
+            }.getOrDefault(false)
+            if (ok) {
+                SettingsBg.bump()
+                bgStamp.value = SettingsBg.stamp
+                // 同步备份到 Downloads：卸载重装背景不丢
+                Thread { runCatching { SettingsBg.backupToDownloads(context) } }.start()
+                Toast.makeText(context, "主页背景已换好（重装也不丢）", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "没读出这张图，换一张试试", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        val bmp = remember(bgStamp.value) {
+            runCatching {
+                val f = SettingsBg.backgroundFile(context)
+                if (!f.exists()) return@runCatching null
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(f.absolutePath, bounds)
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 96) sample *= 2
+                BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+            }.getOrNull()
+        }
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(1.dp, Color(0x33000000), RoundedCornerShape(10.dp))
+            )
+            Spacer(Modifier.size(10.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text("主页背景图", fontSize = 14.sp, color = Color(0xFF4E4638))
+            Text("回家页的背景；选竖图效果最好，重装也不丢", fontSize = 11.sp, color = Color(0xFF9A8F7E))
+        }
+        Text(
+            "选择图片", fontSize = 12.sp, color = Color(0xFF7FA8D9),
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+        )
+        if (SettingsBg.backgroundFile(context).exists()) {
+            Text(
+                "恢复默认", fontSize = 12.sp, color = Color(0xFFC97B7B),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val f = SettingsBg.backgroundFile(context)
+                        if (f.exists() && f.delete()) {
+                            SettingsBg.bump()
+                            bgStamp.value = SettingsBg.stamp
+                            SettingsBg.deleteBackup(context)
+                            Toast.makeText(context, "已恢复默认背景", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
