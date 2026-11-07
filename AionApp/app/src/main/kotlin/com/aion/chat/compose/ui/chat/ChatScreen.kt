@@ -1036,9 +1036,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .shadow(2.dp, CircleShape)
                                 .clip(CircleShape)
                                 .background(Color.White.copy(alpha = 0.85f))
+                                .border(0.5.dp, Color.Black.copy(alpha = 0.06f), CircleShape)
                                 .clickable { showChatDrawer.value = true },
                             contentAlignment = Alignment.Center
                         ) {
@@ -1051,17 +1051,18 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         }
                         Spacer(Modifier.weight(1f))
                         // 点胶囊 = 换模型（橘瓣同款）；装配失败时点 = 重试装配
+                        // 不用 shadow：半透明底会透出阴影层，胶囊中间显出一条白/灰带（伪影）
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
-                                .shadow(2.dp, RoundedCornerShape(22.dp))
-                                .clip(RoundedCornerShape(22.dp))
+                                .clip(RoundedCornerShape(99.dp))
                                 .background(Color.White.copy(alpha = 0.85f))
+                                .border(0.5.dp, Color.Black.copy(alpha = 0.06f), RoundedCornerShape(99.dp))
                                 .clickable {
                                     if (wiring == null) wiringRetry++
                                     else showModelSheet = true
                                 }
-                                .padding(horizontal = 26.dp, vertical = 5.dp)
+                                .padding(horizontal = 26.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 seanRemarkTg,
