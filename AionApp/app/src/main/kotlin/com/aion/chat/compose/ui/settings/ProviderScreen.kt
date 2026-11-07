@@ -258,7 +258,7 @@ private fun AddProviderDialog(
     val ctxAdd = LocalContext.current
     var name by remember { mutableStateOf("OpenAI") }
     var apiKey by remember { mutableStateOf("") }
-    var baseUrl by remember { mutableStateOf("https://api.openai.com/v1") }
+    var baseUrl by remember { mutableStateOf("") }
     var apiPath by remember { mutableStateOf("/chat/completions") }
     var useResponseApi by remember { mutableStateOf(false) }
 
@@ -326,6 +326,7 @@ private fun AddProviderDialog(
             OutlinedTextField(
                 value = baseUrl, onValueChange = { baseUrl = it },
                 label = { Text("API Base Url") },
+                placeholder = { Text("https://api.openai.com/v1", fontSize = 13.sp, color = PgSub) },
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
@@ -349,11 +350,20 @@ private fun AddProviderDialog(
                 Spacer(Modifier.width(8.dp))
                 TextButton(
                     onClick = {
+                        val u = baseUrl.trim()
+                        if (!u.startsWith("http://") && !u.startsWith("https://")) {
+                            android.widget.Toast.makeText(
+                                ctxAdd,
+                                "Base Url 要以 http:// 或 https:// 开头（如 https://api.openai.com/v1）",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            return@TextButton
+                        }
                         onAdd(
                             ProviderStore.Provider(
                                 id = "p_" + System.currentTimeMillis(),
                                 name = name.trim().ifBlank { "OpenAI" },
-                                baseUrl = baseUrl.trim(), apiKey = apiKey.trim(),
+                                baseUrl = u, apiKey = apiKey.trim(),
                                 enabled = true, models = emptyList(),
                                 apiPath = apiPath.trim().ifBlank { "/chat/completions" },
                                 useResponseApi = useResponseApi
@@ -532,13 +542,25 @@ private fun ProviderDetailScreen(
                             OutlinedTextField(
                                 value = apiKey, onValueChange = { apiKey = it },
                                 label = { Text("API Key") },
-                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                                singleLine = true,
+                                trailingIcon = {
+                                    if (apiKey.isNotEmpty()) Text("✕",
+                                        fontSize = 13.sp, color = PgSub,
+                                        modifier = Modifier.clickable { apiKey = "" }.padding(4.dp))
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(Modifier.height(10.dp))
                             OutlinedTextField(
                                 value = baseUrl, onValueChange = { baseUrl = it },
                                 label = { Text("API Base Url") },
-                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                                singleLine = true,
+                                trailingIcon = {
+                                    if (baseUrl.isNotEmpty()) Text("✕",
+                                        fontSize = 13.sp, color = PgSub,
+                                        modifier = Modifier.clickable { baseUrl = "" }.padding(4.dp))
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(Modifier.height(10.dp))
                             OutlinedTextField(

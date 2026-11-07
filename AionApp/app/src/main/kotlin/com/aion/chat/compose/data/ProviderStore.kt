@@ -222,7 +222,7 @@ object ProviderStore {
                 val body = runCatching {
                     conn.errorStream?.bufferedReader()?.readText()?.take(150)
                 }.getOrNull()
-                return emptyList<String>() to "HTTP ${conn.responseCode}" + (if (body.isNullOrBlank()) "" else " · $body")
+                return emptyList<String>() to "HTTP ${conn.responseCode} @ $url" + (if (body.isNullOrBlank()) "" else " · $body")
             }
             val arr = JSONObject(conn.inputStream.bufferedReader().readText())
                 .optJSONArray("data") ?: return emptyList<String>() to "响应没有 data 字段"
