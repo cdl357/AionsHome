@@ -24,6 +24,9 @@ object SupabaseClient {
     internal const val TAG = "SupabaseClient"
 
     const val URL = "https://byqqwypdfiwvalozihgs.supabase.co"
+
+    /** service_role key（照橘瓣朋友圈的直连方式）：绕过 RLS，直连成功率高；只在本 app 内使用 */
+    const val SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzY1NDA4MCwiZXhwIjoyMDk5MjMwMDgwfQ.LIbE9DFsLSRhOig5bUUfUP4r7t1ykdNy8L0gZM_xtGw"
     const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NTQwODAsImV4cCI6MjA5OTIzMDA4MH0.Gacxi6TVGzL3pNn-KdUHkPTYW8dvSpt7A05FpmkZlyc"
 
     /** VPS 中转主线路：8783 端口（安全组已放行，外部实测 200）。 */
@@ -32,7 +35,8 @@ object SupabaseClient {
     /** 备用中转：18443（个别网络环境可能放行）。 */
     const val RELAY_URL_ALT = "http://134.175.7.196:18443/supabase"
 
-    internal val BASES = arrayOf(RELAY_URL, RELAY_URL_ALT, URL)
+    // 直连（橘瓣朋友圈同款：service_role 绕 RLS）排最前——她手机上橘瓣就是这么连上的
+    internal val BASES = arrayOf(URL, RELAY_URL, RELAY_URL_ALT)
 
     /** 最近一次成功的线路：下次直接从它开始，别每条请求都从第一条死线等满超时（同步慢的主因）。 */
     @JvmStatic @Volatile
@@ -82,8 +86,10 @@ internal suspend fun supabaseRequest(
         try {
             val conn = URL(reqUrl).openConnection() as HttpURLConnection
             conn.requestMethod = method
-            conn.setRequestProperty("apikey", SupabaseClient.ANON_KEY)
-            conn.setRequestProperty("Authorization", "Bearer " + SupabaseClient.ANON_KEY)
+            // 直连基线用 service_role（橘瓣同款），中转线路用 anon
+            val key = if (base == SupabaseClient.URL) SupabaseClient.SERVICE_KEY else SupabaseClient.ANON_KEY
+            conn.setRequestProperty("apikey", key)
+            conn.setRequestProperty("Authorization", "Bearer " + key)
             if (body != null) {
                 conn.setRequestProperty("Content-Type", contentType)
                 conn.setRequestProperty("Prefer", "return=minimal")
