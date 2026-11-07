@@ -114,7 +114,7 @@ public final class HomecomingContextBuilder {
                 String owner, String query, int limit);
     }
 
-    interface MessageHistory {
+    public interface MessageHistory {
         List<HomecomingChatRepository.Message> list(
                 String timelineId, long beforeCreatedAt, int limit);
     }

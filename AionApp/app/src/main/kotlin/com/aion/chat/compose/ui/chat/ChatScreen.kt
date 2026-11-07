@@ -148,13 +148,22 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val routeStamp = HomecomingRouteConfig.stamp(context)
     // 加载失败时把真实原因带给界面（“未配置”三个字解决不了任何问题）
     var wiringError by remember(routeStamp) { mutableStateOf<String?>(null) }
-    val wiring = remember(routeStamp) {
+    var wiringTrace by remember(routeStamp) { mutableStateOf<String?>(null) }
+    var showWiringDiag by remember { mutableStateOf(false) }
+    var wiringRetry by remember { mutableStateOf(0) }
+    val wiring = remember(routeStamp, wiringRetry) {
         runCatching { HomecomingChatWiring(context) }
             .onFailure {
                 com.aion.chat.compose.data.AppCrashLog.write(context, it)
-                wiringError = it.javaClass.simpleName + (it.message?.let { m -> ": ${m.take(80)}" } ?: "")
+                wiringError = it.javaClass.simpleName +
+                    (it.message?.let { m -> ": $m" } ?: "")   // 完整原因，不再截断
+                wiringTrace = it.stackTraceToString().take(4000)
             }
             .getOrNull()
+    }
+    // 点重试后仍失败：自动弹出诊断卡（完整堆栈/复制）——组合外写状态
+    LaunchedEffect(wiring, wiringRetry) {
+        if (wiring == null && wiringRetry > 0 && wiringError != null) showWiringDiag = true
     }
     val route = remember(routeStamp) { HomecomingRouteConfig.mainRoute(context) }
     val modelKey = remember(routeStamp) { wiring?.mainModelKey() ?: "" }
@@ -393,7 +402,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             Toast.makeText(
                 context,
                 when {
-                    wiring == null -> "线路配置解析失败——去 设置 → 模型提供商 重存一次"
+                    wiring == null -> "引擎装配失败：" +
+                        (wiringError ?: "未知原因") + "——点顶栏胶囊重试"
                     else -> "先去 设置 → 模型提供商 新增提供商（URL+Key），拉模型列表选好，设为聊天使用"
                 },
                 Toast.LENGTH_SHORT
@@ -1017,14 +1027,17 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             )
                         }
                         Spacer(Modifier.weight(1f))
-                        // 点胶囊 = 换模型（橘瓣 ModelSelector 同款交互）
+                        // 点胶囊 = 换模型（橘瓣同款）；装配失败时点 = 重试装配
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .shadow(2.dp, RoundedCornerShape(22.dp))
                                 .clip(RoundedCornerShape(22.dp))
                                 .background(Color.White.copy(alpha = 0.85f))
-                                .clickable { showModelSheet = true }
+                                .clickable {
+                                    if (wiring == null) wiringRetry++
+                                    else showModelSheet = true
+                                }
                                 .padding(horizontal = 26.dp, vertical = 5.dp)
                         ) {
                             Text(
@@ -1037,7 +1050,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             Text(
                                 when {
                                     connected -> "在线 · " + activeProv!!.first.name + " · " + currentModelName + " ▾"
-                                    wiring == null -> "线路配置有误"
+                                    wiring == null -> if (wiringRetry > 0) "还没修好 · 再点一次试试"
+                                                      else "线路异常 · 点重试"
                                     else -> "未配置提供商"
                                 },
                                 fontSize = 10.sp, maxLines = 1,
@@ -1088,7 +1102,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             Text(
                                 if (connected && useGateway) "  已连接 · 网关SSE（实验模式）"
                                 else if (connected) "  已连接 · ${route?.optString("label", "我的线路")}"
-                                else if (wiringError != null) "  线路加载失败：$wiringError · 点这里去设置"
+                                else if (wiringError != null) "  线路加载失败 · 点这里去设置"
                                 else if (route == null) "  还没有线路配置 · 点这里去设置"
                                 else "  线路未生效 · 点这里去设置",
                                 fontSize = 11.sp,
@@ -1894,6 +1908,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     // ── 模型选择弹层（橘瓣同款） ──
     if (showModelSheet) {
         ModelPickerSheet(onDismiss = { showModelSheet = false })
+    }
+
+    // ── 线路装配诊断卡（胶囊点重试仍失败时自动弹出） ──
+    if (showWiringDiag && wiringError != null) {
+        WiringDiagDialog(
+            error = wiringError ?: "",
+            trace = wiringTrace,
+            onRetry = { showWiringDiag = false; wiringRetry++ },
+            onDismiss = { showWiringDiag = false }
+        )
     }
 
     // ── 图片查看器（审计#4：之前写了 130 行但从未挂载） ──

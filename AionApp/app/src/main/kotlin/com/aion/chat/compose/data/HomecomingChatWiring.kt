@@ -87,9 +87,16 @@ class HomecomingChatWiring(context: Context) {
          * 唯一合法的构造入口：引擎组装（数据库/身份/记忆/线路加密）任一步失败
          * 都只记崩溃日志并返回 null，绝不把异常抛进 UI 合成期（点页闪退的根源）。
          */
+        /** 最近一次装配失败的原因（聊天页胶囊直接显示，不用再翻日志）。 */
+        var lastCreateError: String? = null
+
         fun safeCreate(context: Context): HomecomingChatWiring? =
             runCatching { HomecomingChatWiring(context) }
-                .onFailure { AppCrashLog.write(context, it) }
+                .onFailure {
+                    AppCrashLog.write(context, it)
+                    lastCreateError = it.javaClass.simpleName +
+                        (it.message?.take(80)?.let { m -> "：$m" } ?: "")
+                }
                 .getOrNull()
     }
 }
