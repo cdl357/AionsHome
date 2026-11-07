@@ -134,6 +134,20 @@ object ProviderStore {
         saveAll(context, list(context), activeId(context), activeModelKey(context))
     }
 
+    /** 单个提供商即时落库（橘瓣行为：加模型/改模型立即生效）。 */
+    fun upsert(context: Context, p: Provider) {
+        val all = list(context).filter { it.id != p.id } + p
+        val aid = activeId(context)
+        val amk = activeModelKey(context)
+        val keepActive = if (aid == p.id) p.id else aid
+        val keepModel = if (aid == p.id) {
+            p.models.firstOrNull { it.key == amk }?.key
+                ?: p.models.firstOrNull()?.key
+                ?: amk
+        } else amk
+        saveAll(context, all, keepActive, keepModel)
+    }
+
     /**
      * routes.json 同步：启用的提供商各一条路由；active 额外镜像 route_id="main"
      * （active 模型排第一——旧调用方 wiring.mainModelKey() 解析 "main" 永不断）。

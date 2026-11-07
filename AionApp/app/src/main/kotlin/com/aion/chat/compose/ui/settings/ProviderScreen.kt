@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -58,17 +61,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 模型提供商（橘瓣 SettingProviderPage / SettingProviderDetailPage 1:1 移植）：
- * 列表页（搜索 + 两列网格：头像圈 / ⋯菜单 / 名称 / 启用·N个模型 chips / +新增卡）→
- * 编辑页（‹ + 头像圈 + 名称 + 分享；OpenAI/Google/Claude 分段；是否启用；名称/Key/BaseUrl/API路径；
- * Response API；获取账户余额（可展开）；底部 链接/删除/刷新/保存；底部 配置|模型 双 tab；
- * 模型 tab = 模型卡列表（icon+名称+聊天chip+✕）+ 添加新模型 pill → 拉取列表多选勾选）。
+ * 模型提供商（橘瓣 SettingProviderPage/SettingProviderDetailPage 交互 1:1 移植）：
+ * ① 列表页：‹ 提供商 +（右上+）+ 搜索 + 两列网格卡（头像圈/⋯菜单/名称/启用·N个模型 chips）
+ *    + 添加提供商 = 居中弹窗（预填 名称=OpenAI、Base Url=api.openai.com/v1，取消|添加）
+ * ② 详情页：‹ 头像圈 名称 ⇱分享 + 配置|模型 底部双 tab
+ *    配置 tab：分段(OpenAI✓/Google/Claude) + 是否启用 + 名称/Key/BaseUrl/API路径 + Response API
+ *    + 获取账户余额（可展开）+ 🔗/删除/刷新/保存
+ *    模型 tab：模型卡列表（✳圈+模型名+聊天chip+✕移除）+ 添加新模型
+ *    → 底部弹层「可用模型 全选(N)」+ 筛选框 + 每行 ➕（橘瓣同款）
+ * 所有变更即时落库（ProviderStore.upsert）。
  */
 private val PgBg = Color(0xFFF2F3F5)
+private val PgCard = Color(0xFFF7F8FA)
 private val PgInk = Color(0xFF26211C)
 private val PgSub = Color(0xFF8A8378)
 private val PgAccent = Color(0xFF7FA6C9)
 private val PgAccentBg = Color(0xFFBFD6EC)
+private val PgAccentSoft = Color(0xFFD6E5F5)
 private val ChipGreenBg = Color(0xFFDFF0DC)
 private val ChipGreenFg = Color(0xFF3E7A3A)
 private val ChipBlueBg = Color(0xFFDDEBFA)
@@ -84,7 +93,7 @@ fun ProviderScreen(onClose: () -> Unit) {
     val activeId = remember(rev) { ProviderStore.activeId(context) }
     var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<ProviderStore.Provider?>(null) }
-    var creating by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<ProviderStore.Provider?>(null) }
 
     Dialog(
@@ -93,7 +102,7 @@ fun ProviderScreen(onClose: () -> Unit) {
     ) {
         Box(Modifier.fillMaxSize().background(PgBg)) {
             Column(Modifier.fillMaxSize()) {
-                // 顶栏：‹ + 提供商 + 「+」
+                // 顶栏：‹ 提供商 +（右上+）
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)
@@ -108,10 +117,12 @@ fun ProviderScreen(onClose: () -> Unit) {
                     Text("提供商", fontSize = 24.sp, color = PgInk, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
                     Text("+", fontSize = 26.sp, color = PgInk,
-                        modifier = Modifier.clickable { creating = true }.padding(horizontal = 6.dp))
+                        modifier = Modifier
+                            .clickable { showAddDialog = true }
+                            .padding(horizontal = 6.dp))
                 }
 
-                // 搜索（圆角 50，照截图）
+                // 搜索（圆角 50）
                 OutlinedTextField(
                     value = search, onValueChange = { search = it },
                     placeholder = { Text("搜索提供商", fontSize = 14.sp, color = PgSub) },
@@ -134,22 +145,6 @@ fun ProviderScreen(onClose: () -> Unit) {
                     ),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    item(key = "__add") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(110.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.White)
-                                .border(1.dp, PgAccent.copy(alpha = 0.55f), RoundedCornerShape(14.dp))
-                                .clickable { creating = true },
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text("+", fontSize = 24.sp, color = PgAccent)
-                            Text("新增提供商", fontSize = 13.sp, color = PgAccent, fontWeight = FontWeight.Medium)
-                        }
-                    }
                     shown.forEach { p ->
                         item(key = p.id) {
                             ProviderCardView(
@@ -167,7 +162,7 @@ fun ProviderScreen(onClose: () -> Unit) {
         }
     }
 
-    // ⋯ 菜单（列表卡右上角）
+    // ⋯ 菜单
     menuFor?.let { p ->
         DropdownMenu(expanded = true, onDismissRequest = { menuFor = null }) {
             DropdownMenuItem(text = { Text("编辑") }, onClick = { menuFor = null; editing = p })
@@ -185,18 +180,20 @@ fun ProviderScreen(onClose: () -> Unit) {
         }
     }
 
-    // 编辑页
-    editing?.let { p ->
-        ProviderEditorScreen(provider = p, onClose = { editing = null })
-    }
-    if (creating) {
-        ProviderEditorScreen(
-            provider = ProviderStore.Provider(
-                id = "p_" + System.currentTimeMillis(), name = "", baseUrl = "", apiKey = "",
-                enabled = true, models = emptyList()
-            ),
-            onClose = { creating = false }
+    // 添加提供商（居中弹窗，预填 橘瓣同款：名称=OpenAI、Base Url=api.openai.com/v1）
+    if (showAddDialog) {
+        AddProviderDialog(
+            onDismiss = { showAddDialog = false },
+            onAdd = { p ->
+                ProviderStore.upsert(context, p)
+                showAddDialog = false
+            }
         )
+    }
+
+    // 详情页
+    editing?.let { p ->
+        ProviderDetailScreen(provider = p, onClose = { editing = null })
     }
 }
 
@@ -251,10 +248,129 @@ private fun Chip(text: String, bg: Color, fg: Color) {
     )
 }
 
-// ────────────────────────── 编辑页（配置 | 模型 双 tab） ──────────────────────────
+// ────────────────────────── 添加提供商（居中弹窗，预填橘瓣同款） ──────────────────────────
 
 @Composable
-private fun ProviderEditorScreen(
+private fun AddProviderDialog(
+    onDismiss: () -> Unit,
+    onAdd: (ProviderStore.Provider) -> Unit
+) {
+    val ctxAdd = LocalContext.current
+    var name by remember { mutableStateOf("OpenAI") }
+    var apiKey by remember { mutableStateOf("") }
+    var baseUrl by remember { mutableStateOf("https://api.openai.com/v1") }
+    var apiPath by remember { mutableStateOf("/chat/completions") }
+    var useResponseApi by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(PgCard)
+                .padding(16.dp)
+        ) {
+            Text("添加提供商", fontSize = 16.sp, color = PgInk, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50))
+                    .background(PgBg)
+            ) {
+                listOf("OpenAI", "Google", "Claude").forEachIndexed { i, label ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (i == 0) PgAccentSoft else Color.Transparent)
+                            .clickable {
+                                if (i != 0) android.widget.Toast.makeText(
+                                    ctxAdd, "Google / Claude 原生协议在后面的版本",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            (if (i == 0) "✓ " else "") + label,
+                            fontSize = 13.sp,
+                            color = if (i == 0) PgInk else PgSub,
+                            fontWeight = if (i == 0) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("是否启用", fontSize = 13.sp, color = PgInk, modifier = Modifier.weight(1f))
+                Checkbox(checked = true, onCheckedChange = null,
+                    colors = CheckboxDefaults.colors(checkedColor = PgAccent))
+            }
+            OutlinedTextField(
+                value = name, onValueChange = { name = it },
+                label = { Text("名称") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = apiKey, onValueChange = { apiKey = it },
+                label = { Text("API Key") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = baseUrl, onValueChange = { baseUrl = it },
+                label = { Text("API Base Url") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = apiPath, onValueChange = { apiPath = it },
+                label = { Text("API 路径") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Response API", fontSize = 13.sp, color = PgInk, modifier = Modifier.weight(1f))
+                Checkbox(checked = useResponseApi, onCheckedChange = { useResponseApi = it },
+                    colors = CheckboxDefaults.colors(checkedColor = PgAccent))
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss) { Text("取消", color = PgSub) }
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        onAdd(
+                            ProviderStore.Provider(
+                                id = "p_" + System.currentTimeMillis(),
+                                name = name.trim().ifBlank { "OpenAI" },
+                                baseUrl = baseUrl.trim(), apiKey = apiKey.trim(),
+                                enabled = true, models = emptyList(),
+                                apiPath = apiPath.trim().ifBlank { "/chat/completions" },
+                                useResponseApi = useResponseApi
+                            )
+                        )
+                    }
+                ) { Text("添加", color = PgAccent, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
+}
+
+// ────────────────────────── 详情页（配置 | 模型） ──────────────────────────
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ProviderDetailScreen(
     provider: ProviderStore.Provider,
     onClose: () -> Unit
 ) {
@@ -273,18 +389,17 @@ private fun ProviderEditorScreen(
 
     var testing by remember { mutableStateOf(false) }
     var testMsg by remember { mutableStateOf("") }
-    var showModelPicker by remember { mutableStateOf(false) }
+    var showModelSheet by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
 
-    fun persist(): Boolean {
-        if (name.isBlank() || baseUrl.isBlank() || apiKey.isBlank() || models.isEmpty()) {
+    fun persistFields(): Boolean {
+        if (name.isBlank() || baseUrl.isBlank() || apiKey.isBlank()) {
             android.widget.Toast.makeText(
                 context,
                 when {
                     name.isBlank() -> "名称必填"
                     baseUrl.isBlank() -> "API Base Url 必填"
-                    apiKey.isBlank() -> "API Key 必填"
-                    else -> "先拉取模型列表并添加至少一个模型"
+                    else -> "API Key 必填"
                 },
                 android.widget.Toast.LENGTH_SHORT
             ).show()
@@ -296,22 +411,8 @@ private fun ProviderEditorScreen(
             apiPath = apiPath.trim().ifBlank { "/chat/completions" },
             useResponseApi = useResponseApi, fetchBalance = fetchBalance
         )
-        val all = ProviderStore.list(context).filter { it.id != p.id } + p
-        val activeIdNow = ProviderStore.activeId(context)
-        val activeModelNow = ProviderStore.activeModelKey(context)
-        val keepActive = if (activeIdNow == p.id) p.id else activeIdNow
-        val keepModel = when {
-            activeIdNow == p.id -> p.models.firstOrNull { it.key == activeModelNow }?.key
-                ?: p.models.first().key
-            else -> activeModelNow
-        }
-        return try {
-            ProviderStore.saveAll(context, all, keepActive, keepModel)
-            true
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "保存失败：${e.message}", android.widget.Toast.LENGTH_LONG).show()
-            false
-        }
+        ProviderStore.upsert(context, p)
+        return true
     }
 
     Dialog(
@@ -320,7 +421,7 @@ private fun ProviderEditorScreen(
     ) {
         Box(Modifier.fillMaxSize().background(PgBg)) {
             Column(Modifier.fillMaxSize()) {
-                // 顶栏：‹ + 头像圈 + 名称 + 分享（复制配置 JSON）
+                // 顶栏：‹ + 头像圈 + 名称（实时） + ⇱ 分享
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)
@@ -344,12 +445,10 @@ private fun ProviderEditorScreen(
                             fontSize = 15.sp, color = PgInk, fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.width(10.dp))
-                    Text(
-                        if (name.isBlank()) "新增提供商" else name,
+                    Text(if (name.isBlank()) "新增提供商" else name,
                         fontSize = 19.sp, color = PgInk, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                        modifier = Modifier.weight(1f))
                     Text("⇱", fontSize = 19.sp, color = PgInk,
                         modifier = Modifier
                             .clickable {
@@ -396,7 +495,7 @@ private fun ProviderEditorScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(50))
-                                            .background(if (i == 0) PgAccentBg else Color.Transparent)
+                                            .background(if (i == 0) PgAccentSoft else Color.Transparent)
                                             .clickable {
                                                 if (i != 0) android.widget.Toast.makeText(
                                                     context, "Google / Claude 原生协议在后面的版本",
@@ -494,7 +593,7 @@ private fun ProviderEditorScreen(
                             }
                         }
                         Spacer(Modifier.height(12.dp))
-                        // 底部操作行：链接 / 删除 / 刷新 / 保存（橘瓣同位）
+                        // 底部操作行：🔗 / 删除 / 刷新 / 保存
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -540,6 +639,7 @@ private fun ProviderEditorScreen(
                                             if (ids.isNotEmpty()) {
                                                 val added = ids.map { ProviderStore.Model(it, it) }
                                                 models = (models + added).distinctBy { it.key }
+                                                ProviderStore.upsert(context, provider.copy(models = models))
                                                 android.widget.Toast.makeText(
                                                     context,
                                                     "拉到 ${ids.size} 个模型，已并入（切「模型」tab 查看/移除）",
@@ -553,7 +653,7 @@ private fun ProviderEditorScreen(
                             Button(
                                 enabled = !testing,
                                 onClick = {
-                                    if (persist()) android.widget.Toast.makeText(context, "已保存", android.widget.Toast.LENGTH_SHORT).show()
+                                    if (persistFields()) android.widget.Toast.makeText(context, "已保存", android.widget.Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier.width(110.dp)
                             ) { Text(if (testing) "测试中…" else "保存", color = Color(0xFF2B3440)) }
@@ -595,14 +695,17 @@ private fun ProviderEditorScreen(
                                     }
                                     Text("✕", fontSize = 15.sp, color = PgSub,
                                         modifier = Modifier
-                                            .clickable { models = models.filter { it.key != m.key } }
+                                            .clickable {
+                                                models = models.filter { it.key != m.key }
+                                                ProviderStore.upsert(context, provider.copy(models = models))
+                                            }
                                             .padding(6.dp))
                                 }
                                 Spacer(Modifier.height(8.dp))
                             }
                             if (models.isEmpty()) {
                                 Text(
-                                    "还没有模型\n点「+ 添加新模型」拉取列表勾选",
+                                    "暂无模型\n点击下方按钮添加模型",
                                     fontSize = 12.sp, color = PgSub, textAlign = TextAlign.Center,
                                     lineHeight = 20.sp,
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 30.dp)
@@ -615,7 +718,7 @@ private fun ProviderEditorScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(50))
                                         .background(PgAccentBg)
-                                        .clickable { showModelPicker = true }
+                                        .clickable { showModelSheet = true }
                                         .padding(horizontal = 18.dp, vertical = 10.dp)
                                 ) {
                                     Text("🧰", fontSize = 14.sp)
@@ -627,7 +730,7 @@ private fun ProviderEditorScreen(
                     }
                 }
 
-                // ── 底部双 tab：配置 | 模型（橘瓣同位） ──
+                // ── 底部双 tab：配置 | 模型 ──
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -640,7 +743,7 @@ private fun ProviderEditorScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(50))
-                                .background(if (sel) PgAccentBg else Color.Transparent)
+                                .background(if (sel) PgAccentSoft else Color.Transparent)
                                 .clickable { tab = idx }
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
@@ -657,79 +760,109 @@ private fun ProviderEditorScreen(
         }
     }
 
-    // ── 拉模型多选弹窗 ──
-    if (showModelPicker) {
-        var fetched by remember(showModelPicker) { mutableStateOf<List<String>>(emptyList()) }
-        var picked by remember(showModelPicker) { mutableStateOf(setOf<String>()) }
-        var fetchErr by remember(showModelPicker) { mutableStateOf("") }
-        var fetchTick by remember(showModelPicker) { mutableStateOf(0) }
-        LaunchedEffect(showModelPicker, fetchTick) {
+    // ── 添加新模型：底部弹层（橘瓣同款：可用模型 全选(N) + 筛选 + 每行 ➕） ──
+    if (showModelSheet) {
+        var fetched by remember(showModelSheet) { mutableStateOf<List<String>>(emptyList()) }
+        var fetchErr by remember(showModelSheet) { mutableStateOf("") }
+        var fetchTick by remember(showModelSheet) { mutableStateOf(0) }
+        var filter by remember(showModelSheet) { mutableStateOf("") }
+        LaunchedEffect(showModelSheet, fetchTick) {
             val (list, msg) = withContext(Dispatchers.IO) {
                 ProviderStore.fetchModelIds(baseUrl.trim(), apiKey.trim())
             }
             fetched = list
             fetchErr = if (list.isEmpty()) msg else ""
         }
-        Dialog(onDismissRequest = { showModelPicker = false }) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    if (fetched.isEmpty()) "拉取模型列表"
-                    else "拉到 ${fetched.size} 个模型 · 勾选添加",
-                    fontSize = 15.sp, color = PgInk, fontWeight = FontWeight.Medium
-                )
-                Spacer(Modifier.height(10.dp))
-                if (fetched.isEmpty()) {
-                    // 失败原因如实显示（401/超时/中转站响应体）+ 重试
+        ModalBottomSheet(
+            onDismissRequest = { showModelSheet = false },
+            containerColor = Color.White
+        ) {
+            Column(Modifier.fillMaxWidth().imePadding()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                ) {
+                    Text("可用模型", fontSize = 15.sp, color = PgInk, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f))
                     Text(
-                        "拉取失败：${if (fetchErr.isNotBlank()) fetchErr else "网络或 Key 问题"}",
+                        "全选(${fetched.size})",
+                        fontSize = 13.sp, color = PgAccent,
+                        modifier = Modifier.clickable {
+                            val added = fetched.map { ProviderStore.Model(it, it) }
+                            models = (models + added).distinctBy { it.key }
+                            ProviderStore.upsert(context, provider.copy(models = models))
+                        }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                if (fetchErr.isNotBlank() && fetched.isEmpty()) {
+                    Text(
+                        "拉取失败：$fetchErr",
                         fontSize = 12.sp, color = HomecomingColors.Danger,
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
                     Text(
                         "重试", fontSize = 14.sp, color = PgAccent, fontWeight = FontWeight.Medium,
                         modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { fetchTick++ }
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 } else {
                     LazyColumn(
-                        Modifier.fillMaxWidth().heightIn(max = 360.dp)
+                        Modifier.fillMaxWidth().heightIn(max = 420.dp)
                     ) {
-                        items(fetched) { id ->
+                        val addedKeys = models.map { it.key }.toSet()
+                        val shown = fetched.filter { filter.isBlank() || it.contains(filter, true) }
+                        items(shown) { id ->
+                            val already = id in addedKeys
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { picked = if (id in picked) picked - id else picked + id }
-                                    .padding(vertical = 8.dp)
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
                             ) {
-                                Text(if (id in picked) "☑" else "☐", fontSize = 16.sp, color = PgAccent)
-                                Spacer(Modifier.width(8.dp))
-                                Text(id, fontSize = 13.sp, color = PgInk, maxLines = 1)
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(PgAccentBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✳", fontSize = 12.sp, color = PgInk)
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Text(id, fontSize = 13.sp, color = PgInk, maxLines = 1,
+                                    modifier = Modifier.weight(1f))
+                                Text(
+                                    if (already) "✓" else "＋",
+                                    fontSize = 16.sp,
+                                    color = if (already) Color(0xFF3E7A3A) else PgAccent,
+                                    modifier = Modifier
+                                        .clickable {
+                                            if (!already) {
+                                                val m = ProviderStore.Model(id, id)
+                                                models = models + m
+                                                ProviderStore.upsert(
+                                                    context,
+                                                    provider.copy(models = models)
+                                                )
+                                            }
+                                        }
+                                        .padding(6.dp)
+                                )
                             }
                         }
                     }
+                    OutlinedTextField(
+                        value = filter, onValueChange = { filter = it },
+                        placeholder = { Text("输入模型名称筛选", fontSize = 13.sp, color = PgSub) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
                 }
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { showModelPicker = false }) { Text("取消", color = PgSub) }
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(
-                        enabled = picked.isNotEmpty(),
-                        onClick = {
-                            val added = picked.map { ProviderStore.Model(it, it) }
-                            models = (models + added).distinctBy { it.key }
-                            showModelPicker = false
-                        }
-                    ) { Text("添加所选（${picked.size}）", color = PgAccent) }
-                }
             }
         }
     }
