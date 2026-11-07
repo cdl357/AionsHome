@@ -184,12 +184,19 @@ public final class HomecomingChatEngine {
                         }
                     });
         } catch (Exception exception) {
+            // 失败码带真实异常：哪一步炸的、为什么，错误卡上直接可见（不再吞成同一个词）
+            String detail = exception.getClass().getSimpleName()
+                    + (exception.getMessage() == null ? "" : ":" + exception.getMessage());
+            if (detail.length() > 220) {
+                detail = detail.substring(0, 220);
+            }
+            String code = "request_setup_failed:" + detail;
             try {
-                repository.fail(command.requestId, "request_setup_failed");
+                repository.fail(command.requestId, code);
             } catch (RuntimeException ignored) {
                 // The user commit may not exist yet.
             }
-            observer.onFailure("request_setup_failed");
+            observer.onFailure(code);
         }
     }
 

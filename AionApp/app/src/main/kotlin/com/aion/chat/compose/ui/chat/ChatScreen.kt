@@ -365,7 +365,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 messages.clear()
                 messages.addAll(list)
             }
-        } catch (e: Exception) { /* 首次库为空保持安静 */ }
+        } catch (e: Exception) {
+            // 读库失败被吞会让时间线看着"全空"——记入崩溃日志，别再无声
+            com.aion.chat.compose.data.AppCrashLog.write(context, e)
+        }
     }
 
     // ── 发送：引擎 commitUser + 完成后分条冒泡 ──

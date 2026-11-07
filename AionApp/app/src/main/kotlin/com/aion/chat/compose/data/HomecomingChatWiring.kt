@@ -35,7 +35,13 @@ class HomecomingChatWiring(context: Context) {
     val vault: HomecomingRouteVault
 
     init {
-        if (!modeStore.isActive()) modeStore.activate()
+        // epoch 连续性：epoch 还在就续用（mode 位丢了只是恢复 active，不换代）——
+        // 换代 = 聊天时间线按 epoch_id 过滤会整条变空（历史还在库里但全被过滤）
+        if (modeStore.currentEpoch().isEmpty()) {
+            modeStore.activate()
+        } else if (!modeStore.isActive() && !modeStore.isFrozen() && !modeStore.isReturning()) {
+            modeStore.resumeActive()
+        }
         epochId = modeStore.currentEpoch()
         chats = HomecomingChatRepository(database, epochId, deviceId)
         identities = HomecomingIdentityRepository(database)
