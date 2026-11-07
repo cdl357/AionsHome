@@ -42,6 +42,7 @@ object XinchaoClient {
     /** GET，中转优先直连兜底；任何一条线路失败（含 4xx——可能只是那条中转配置不对）都换下一条。 */
     private suspend fun getJson(path: String): JSONObject? = withContext(Dispatchers.IO) {
         for (base in BASES) {
+            val t0 = android.os.SystemClock.elapsedRealtime()
             try {
                 val conn = URL("$base$path").openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
@@ -49,10 +50,13 @@ object XinchaoClient {
                 conn.readTimeout = 20_000
                 val code = conn.responseCode
                 if (code in 200..299) {
+                    RequestLog.add(null, "GET", "$base$path", code, android.os.SystemClock.elapsedRealtime() - t0)
                     return@withContext JSONObject(conn.inputStream.bufferedReader().readText())
                 }
+                RequestLog.add(null, "GET", "$base$path", code, android.os.SystemClock.elapsedRealtime() - t0)
                 android.util.Log.w("Xinchao", "GET $path @ $base -> HTTP $code，换下一条")
             } catch (e: Exception) {
+                RequestLog.add(null, "GET", "$base$path", 0, android.os.SystemClock.elapsedRealtime() - t0, e.javaClass.simpleName)
                 android.util.Log.w("Xinchao", "GET $path @ $base -> ${e.javaClass.simpleName}，换下一条")
             }
         }
@@ -61,6 +65,7 @@ object XinchaoClient {
 
     private suspend fun getArray(path: String): org.json.JSONArray? = withContext(Dispatchers.IO) {
         for (base in BASES) {
+            val t0 = android.os.SystemClock.elapsedRealtime()
             try {
                 val conn = URL("$base$path").openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
@@ -68,10 +73,13 @@ object XinchaoClient {
                 conn.readTimeout = 20_000
                 val code = conn.responseCode
                 if (code in 200..299) {
+                    RequestLog.add(null, "GET", "$base$path", code, android.os.SystemClock.elapsedRealtime() - t0)
                     return@withContext org.json.JSONArray(conn.inputStream.bufferedReader().readText())
                 }
+                RequestLog.add(null, "GET", "$base$path", code, android.os.SystemClock.elapsedRealtime() - t0)
                 android.util.Log.w("Xinchao", "GET $path @ $base -> HTTP $code，换下一条")
             } catch (e: Exception) {
+                RequestLog.add(null, "GET", "$base$path", 0, android.os.SystemClock.elapsedRealtime() - t0, e.javaClass.simpleName)
                 android.util.Log.w("Xinchao", "GET $path @ $base -> ${e.javaClass.simpleName}，换下一条")
             }
         }

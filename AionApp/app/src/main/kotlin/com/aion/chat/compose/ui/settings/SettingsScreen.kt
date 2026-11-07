@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -529,19 +529,19 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             )
         }
 
-        val lastCrash = remember { AppCrashLog.last(context) }
-
-        // ── 版本与崩溃日志（便于反馈问题） ──
+        // ── 请求日志（照橘瓣 Logs 页：HTTP 请求 + 崩溃记录，一键清空/复制） ──
         FrostCard {
-            Text("版本 v0.3.1（今日构建）", fontSize = 15.sp, color = HomecomingColors.Ink)
-            Text("当前安装的回家 App 版本", fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
-        }
-
-        if (lastCrash != null) {
-            FrostCard {
-                Text("上次崩溃日志", fontSize = 15.sp, color = HomecomingColors.Danger)
-                Text(lastCrash, fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 6.dp))
-                Text("把这段发给 Sean 就能定位问题", fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenRequestLog() }
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("请求日志", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("查看 HTTP 请求日志和崩溃记录，发给小鑫定位问题", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }
         }
     }

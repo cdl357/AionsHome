@@ -58,12 +58,15 @@ public final class HomecomingModelGateway {
         StringBuilder complete = new StringBuilder();
         // F5：推理型渠道只吐 reasoning_content 不吐 content 时，错误别再误导去查余额
         final boolean[] sawReasoning = {false};
+        String reqUrl = null;
         try {
             NetworkRequest network = build(route, model, request);
+            reqUrl = network.url;
             // 自定义请求（他的配置页）：额外请求头 + 正文参数最后合并，可覆盖默认值
             if (!extraHeaders.isEmpty() || extraBody.length() > 0) {
                 network = mergeCustom(network);
             }
+            final long reqT0 = android.os.SystemClock.elapsedRealtime();
             transport.execute(network, line -> {
                 if (cancelled.get()) {
                     return;
@@ -83,6 +86,8 @@ public final class HomecomingModelGateway {
                     observer.onChunk(chunk);
                 }
             }, cancelled::get);
+            com.aion.chat.compose.data.RequestLog.add(null, "POST", network.url, 200,
+                    android.os.SystemClock.elapsedRealtime() - reqT0);
             if (cancelled.get()) {
                 observer.onFailure("cancelled");
             } else {
@@ -105,6 +110,10 @@ public final class HomecomingModelGateway {
             } else {
                 // 失败码带原因：provider/URL/网络哪一环断的，错误卡上要能看出来
                 String why = exception.getMessage();
+                com.aion.chat.compose.data.RequestLog.add(null, "POST",
+                        reqUrl == null ? request.routeId : reqUrl, 0,
+                        android.os.SystemClock.elapsedRealtime() - reqT0,
+                        exception.getClass().getSimpleName() + ":" + (why == null ? "" : why));
                 observer.onFailure("model_request_failed:"
                         + exception.getClass().getSimpleName()
                         + (why == null ? "" : ":" + why));

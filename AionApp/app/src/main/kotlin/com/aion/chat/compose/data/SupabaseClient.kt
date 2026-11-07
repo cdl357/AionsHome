@@ -77,8 +77,10 @@ internal suspend fun supabaseRequest(
     val goodBase = SupabaseClient.lastGoodBase
     val ordered = (listOfNotNull(goodBase) + SupabaseClient.BASES).distinct()
     for (base in ordered) {
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        val reqUrl = "$base/$path"
         try {
-            val conn = URL("$base/$path").openConnection() as HttpURLConnection
+            val conn = URL(reqUrl).openConnection() as HttpURLConnection
             conn.requestMethod = method
             conn.setRequestProperty("apikey", SupabaseClient.ANON_KEY)
             conn.setRequestProperty("Authorization", "Bearer " + SupabaseClient.ANON_KEY)
@@ -112,6 +114,7 @@ internal suspend fun supabaseRequest(
             }
             val bodyText = runCatching { conn.errorStream?.bufferedReader()?.readText()?.take(200) }.getOrNull()
             Log.w(SupabaseClient.TAG, "[HTTP $code] $method /$path -> $kind body=$bodyText")
+            RequestLog.add(null, method, reqUrl, code, android.os.SystemClock.elapsedRealtime() - t0, bodyText?.take(120) ?: "")
             lastDetail = "HTTP $code @ " + hostOf(base) + (bodyText?.take(60)?.let { " · $it" } ?: "")
             // 401/403 是线路无关的语义性失败（权限/表结构），换线也一样；4xx/5xx 都换线再试
             if (code in 401..403) return@withContext CloudReply(error = kind)
@@ -119,18 +122,22 @@ internal suspend fun supabaseRequest(
             continue
         } catch (e: UnknownHostException) {
             Log.w(SupabaseClient.TAG, "[NET/DNS] $method $base/$path 域名解析失败: ${e.message}")
+            RequestLog.add(null, method, reqUrl, 0, android.os.SystemClock.elapsedRealtime() - t0, "DNS解析失败")
             lastError = CloudErrorKind.NETWORK
             lastDetail = hostOf(base) + " 域名解析失败"
         } catch (e: SocketTimeoutException) {
             Log.w(SupabaseClient.TAG, "[NET/TIMEOUT] $method $base/$path 连接或读取超时")
+            RequestLog.add(null, method, reqUrl, 0, android.os.SystemClock.elapsedRealtime() - t0, "超时")
             lastError = CloudErrorKind.NETWORK
             lastDetail = hostOf(base) + " 超时（这条线路到不了）"
         } catch (e: javax.net.ssl.SSLException) {
             Log.w(SupabaseClient.TAG, "[NET/TLS] $method $base/$path TLS 握手被拦: ${e.message?.take(120)}")
+            RequestLog.add(null, method, reqUrl, 0, android.os.SystemClock.elapsedRealtime() - t0, "TLS被拦")
             lastError = CloudErrorKind.NETWORK
             lastDetail = hostOf(base) + " TLS 被拦"
         } catch (e: Exception) {
             Log.w(SupabaseClient.TAG, "[NET] $method $base/$path ${e.javaClass.simpleName}: ${e.message?.take(120)}")
+            RequestLog.add(null, method, reqUrl, 0, android.os.SystemClock.elapsedRealtime() - t0, e.javaClass.simpleName)
             lastError = CloudErrorKind.NETWORK
             lastDetail = hostOf(base) + " " + e.javaClass.simpleName
         }

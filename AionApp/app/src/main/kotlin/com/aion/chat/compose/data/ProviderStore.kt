@@ -211,6 +211,7 @@ object ProviderStore {
             if (!base.endsWith("/v1")) base = "$base/v1"
         }
         val url = if (base.endsWith("/models")) base else "$base/models"
+        val t0 = android.os.SystemClock.elapsedRealtime()
         return try {
             val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 15_000
@@ -222,6 +223,7 @@ object ProviderStore {
                 val body = runCatching {
                     conn.errorStream?.bufferedReader()?.readText()?.take(150)
                 }.getOrNull()
+                RequestLog.add(null, "GET", url, conn.responseCode, android.os.SystemClock.elapsedRealtime() - t0, body?.take(120) ?: "")
                 return emptyList<String>() to "HTTP ${conn.responseCode} @ $url" + (if (body.isNullOrBlank()) "" else " · $body")
             }
             val arr = JSONObject(conn.inputStream.bufferedReader().readText())
@@ -229,8 +231,10 @@ object ProviderStore {
             val ids = (0 until arr.length()).mapNotNull { i ->
                 arr.getJSONObject(i).optString("id", "").takeIf { it.isNotBlank() }
             }
+            RequestLog.add(null, "GET", url, 200, android.os.SystemClock.elapsedRealtime() - t0)
             ids to "通了 · ${ids.size} 个模型"
         } catch (e: Exception) {
+            RequestLog.add(null, "GET", url, 0, android.os.SystemClock.elapsedRealtime() - t0, e.javaClass.simpleName)
             emptyList<String>() to "${e.javaClass.simpleName}: ${e.message?.take(90)}"
         }
     }
