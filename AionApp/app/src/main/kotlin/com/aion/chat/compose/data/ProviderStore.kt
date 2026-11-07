@@ -199,11 +199,16 @@ object ProviderStore {
         val url = if (base.endsWith("/models")) base else "$base/models"
         return try {
             val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 20_000
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 30_000
             conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.setRequestProperty("Accept", "application/json")
             if (conn.responseCode !in 200..299) {
-                return emptyList<String>() to "HTTP ${conn.responseCode}"
+                // 带回中转站的错误响应体（401/欠费/限权的具体原因都在里面）
+                val body = runCatching {
+                    conn.errorStream?.bufferedReader()?.readText()?.take(150)
+                }.getOrNull()
+                return emptyList<String>() to "HTTP ${conn.responseCode}" + (if (body.isNullOrBlank()) "" else " · $body")
             }
             val arr = JSONObject(conn.inputStream.bufferedReader().readText())
                 .optJSONArray("data") ?: return emptyList<String>() to "响应没有 data 字段"

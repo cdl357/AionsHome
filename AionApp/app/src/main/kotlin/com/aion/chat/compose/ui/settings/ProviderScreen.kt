@@ -661,10 +661,14 @@ private fun ProviderEditorScreen(
     if (showModelPicker) {
         var fetched by remember(showModelPicker) { mutableStateOf<List<String>>(emptyList()) }
         var picked by remember(showModelPicker) { mutableStateOf(setOf<String>()) }
-        LaunchedEffect(showModelPicker) {
-            fetched = withContext(Dispatchers.IO) {
-                ProviderStore.fetchModelIds(baseUrl.trim(), apiKey.trim()).first
+        var fetchErr by remember(showModelPicker) { mutableStateOf("") }
+        var fetchTick by remember(showModelPicker) { mutableStateOf(0) }
+        LaunchedEffect(showModelPicker, fetchTick) {
+            val (list, msg) = withContext(Dispatchers.IO) {
+                ProviderStore.fetchModelIds(baseUrl.trim(), apiKey.trim())
             }
+            fetched = list
+            fetchErr = if (list.isEmpty()) msg else ""
         }
         Dialog(onDismissRequest = { showModelPicker = false }) {
             Column(
@@ -675,12 +679,25 @@ private fun ProviderEditorScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    "拉到 ${fetched.size} 个模型 · 勾选添加",
+                    if (fetched.isEmpty()) "拉取模型列表"
+                    else "拉到 ${fetched.size} 个模型 · 勾选添加",
                     fontSize = 15.sp, color = PgInk, fontWeight = FontWeight.Medium
                 )
                 Spacer(Modifier.height(10.dp))
                 if (fetched.isEmpty()) {
-                    Text("列表是空的——这个 Key 可能没有可用模型", fontSize = 12.sp, color = PgSub)
+                    // 失败原因如实显示（401/超时/中转站响应体）+ 重试
+                    Text(
+                        "拉取失败：${if (fetchErr.isNotBlank()) fetchErr else "网络或 Key 问题"}",
+                        fontSize = 12.sp, color = HomecomingColors.Danger,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    Text(
+                        "重试", fontSize = 14.sp, color = PgAccent, fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { fetchTick++ }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
                 } else {
                     LazyColumn(
                         Modifier.fillMaxWidth().heightIn(max = 360.dp)
