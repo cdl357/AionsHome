@@ -39,7 +39,7 @@ object XinchaoClient {
         val driveZh: String
     )
 
-    /** GET，中转优先直连兜底；网络异常换线路，4xx 直接终止。 */
+    /** GET，中转优先直连兜底；任何一条线路失败（含 4xx——可能只是那条中转配置不对）都换下一条。 */
     private suspend fun getJson(path: String): JSONObject? = withContext(Dispatchers.IO) {
         for (base in BASES) {
             try {
@@ -51,8 +51,10 @@ object XinchaoClient {
                 if (code in 200..299) {
                     return@withContext JSONObject(conn.inputStream.bufferedReader().readText())
                 }
-                if (code in 400..499) return@withContext null
-            } catch (e: Exception) { /* 这条线路不通 → 试下一条 */ }
+                android.util.Log.w("Xinchao", "GET $path @ $base -> HTTP $code，换下一条")
+            } catch (e: Exception) {
+                android.util.Log.w("Xinchao", "GET $path @ $base -> ${e.javaClass.simpleName}，换下一条")
+            }
         }
         null
     }
@@ -68,8 +70,10 @@ object XinchaoClient {
                 if (code in 200..299) {
                     return@withContext org.json.JSONArray(conn.inputStream.bufferedReader().readText())
                 }
-                if (code in 400..499) return@withContext null
-            } catch (e: Exception) { }
+                android.util.Log.w("Xinchao", "GET $path @ $base -> HTTP $code，换下一条")
+            } catch (e: Exception) {
+                android.util.Log.w("Xinchao", "GET $path @ $base -> ${e.javaClass.simpleName}，换下一条")
+            }
         }
         null
     }

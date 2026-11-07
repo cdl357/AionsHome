@@ -184,8 +184,19 @@ fun MomentsScreen() {
                 }
             }
             // ② 动态和评论并行拉（原来串行，慢一倍）
+            // fetchMoments 本身不该抛——抛了就把真实异常带给横幅（以前吞成 NETWORK 无 detail，没法排查）
             val momentsDef = async {
-                runCatching { com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments() }.getOrNull()
+                try {
+                    com.aion.chat.compose.data.SupabaseMomentsStore.fetchMoments()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("Moments", "fetchMoments threw", e)
+                    com.aion.chat.compose.data.CloudResult(
+                        null, com.aion.chat.compose.data.CloudErrorKind.NETWORK,
+                        "拉取异常:${e.javaClass.simpleName}:${e.message?.take(90)}"
+                    )
+                }
             }
             val commentsDef = async {
                 runCatching { com.aion.chat.compose.data.SupabaseMomentsStore.fetchMomentComments() }.getOrNull()
@@ -193,14 +204,22 @@ fun MomentsScreen() {
             val res = momentsDef.await()
             var remote: List<com.aion.chat.compose.data.SupabaseMomentsStore.RemoteMoment>? = null
             var kind = res?.error
+            var extraDetail = res?.detail
             if (res == null || res.error != null) {
                 // 权限/网络被挡 → 服务器心潮后端的只读代理兜底（密钥不出服务器）
-                val proxied = runCatching {
+                val proxied = try {
                     com.aion.chat.compose.data.XinchaoClient.fetchMomentsViaXinchao()
-                }.getOrNull()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("Moments", "xinchao 兜底 threw", e)
+                    extraDetail = (extraDetail?.plus(" · ") ?: "") + "兜底异常:${e.javaClass.simpleName}"
+                    null
+                }
                 if (proxied != null) {
                     remote = proxied
                     kind = null
+                    extraDetail = null
                 }
             }
             if (remote == null) {
@@ -208,7 +227,8 @@ fun MomentsScreen() {
                 main.post {
                     if (reloadVersion.get() != myRun) return@post
                     cloudError.value = kind ?: com.aion.chat.compose.data.CloudErrorKind.NETWORK
-                    cloudErrorDetail.value = res?.detail
+                    cloudErrorDetail.value = extraDetail
+                        ?: if (res == null) "两路都失败（原因见上一轮横幅/日志）" else null
                     isRefreshing.value = false
                 }
                 return@launch
