@@ -53,7 +53,11 @@ class HomecomingChatWiring(context: Context) {
         memories = HomecomingMemoryRepository(database, epochId, deviceId)
         contextBuilder = HomecomingContextBuilder(identities, memories, chats::listMessages, 48_000)
         vault = buildVault(appContext)
-        gateway = HomecomingModelGateway(vault, HomecomingModelGateway.OkHttpSseTransport())
+        val customReq = loadCustomRequest(appContext)
+        gateway = HomecomingModelGateway(
+            vault, HomecomingModelGateway.OkHttpSseTransport(),
+            customReq?.first, customReq?.second
+        )
         engine = HomecomingChatEngine(chats, contextBuilder, gateway)
     }
 
@@ -91,6 +95,32 @@ class HomecomingChatWiring(context: Context) {
         const val TIMELINE = "main_private"
         const val RESPONDER = "main"
         const val USER = "user"
+
+        /** 自定义请求存 prefs("sean_ext").custom_request = {"headers":{...},"body":{...}} */
+        fun loadCustomRequest(context: Context): Pair<Map<String, String>, org.json.JSONObject>? =
+            runCatching {
+                val raw = context.getSharedPreferences("sean_ext", Context.MODE_PRIVATE)
+                    .getString("custom_request", null) ?: return null
+                if (raw.isBlank()) return null
+                val root = org.json.JSONObject(raw)
+                val headers = mutableMapOf<String, String>()
+                root.optJSONObject("headers")?.let { h ->
+                    h.keys().forEach { k -> if (h.optString(k).isNotBlank()) headers[k] = h.optString(k) }
+                }
+                Pair(headers.toMap(), root.optJSONObject("body") ?: org.json.JSONObject())
+            }.getOrNull()
+
+        /** 返回 null=保存成功；非 null=错误说明（JSON 格式不对等） */
+        fun saveCustomRequest(context: Context, headersJson: String, bodyJson: String): String? {
+            return runCatching {
+                val headers = if (headersJson.isBlank()) org.json.JSONObject() else org.json.JSONObject(headersJson)
+                val body = if (bodyJson.isBlank()) org.json.JSONObject() else org.json.JSONObject(bodyJson)
+                val out = org.json.JSONObject().put("headers", headers).put("body", body)
+                context.getSharedPreferences("sean_ext", Context.MODE_PRIVATE)
+                    .edit().putString("custom_request", out.toString()).apply()
+                null
+            }.getOrElse { e -> e.message ?: "JSON 格式不对" }
+        }
 
         fun chatBackgroundFile(context: Context): File = File(context.filesDir, "chat_bg.jpg")
 

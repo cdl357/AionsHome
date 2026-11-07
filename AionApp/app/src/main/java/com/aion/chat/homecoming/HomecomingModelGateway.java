@@ -25,10 +25,21 @@ public final class HomecomingModelGateway {
     private final HomecomingRouteVault vault;
     private final Transport transport;
     private final Map<String, AtomicBoolean> cancellations = new ConcurrentHashMap<>();
+    // 自定义请求（他的配置页 → 自定义请求）：额外请求头 + 正文参数，合并进每次请求
+    private final Map<String, String> extraHeaders;
+    private final org.json.JSONObject extraBody;
 
     public HomecomingModelGateway(HomecomingRouteVault vault, Transport transport) {
+        this(vault, transport, null, null);
+    }
+
+    public HomecomingModelGateway(HomecomingRouteVault vault, Transport transport,
+                                  Map<String, String> extraHeaders, org.json.JSONObject extraBody) {
         this.vault = vault;
         this.transport = transport;
+        this.extraHeaders = extraHeaders == null
+                ? java.util.Collections.emptyMap() : extraHeaders;
+        this.extraBody = extraBody == null ? new org.json.JSONObject() : extraBody;
     }
 
     public void stream(ChatRequest request, StreamObserver observer) throws Exception {
@@ -49,6 +60,10 @@ public final class HomecomingModelGateway {
         final boolean[] sawReasoning = {false};
         try {
             NetworkRequest network = build(route, model, request);
+            // 自定义请求（他的配置页）：额外请求头 + 正文参数最后合并，可覆盖默认值
+            if (!extraHeaders.isEmpty() || extraBody.length() > 0) {
+                network = mergeCustom(network);
+            }
             transport.execute(network, line -> {
                 if (cancelled.get()) {
                     return;
@@ -104,6 +119,27 @@ public final class HomecomingModelGateway {
         if (signal != null) {
             signal.set(true);
         }
+    }
+
+    /** 自定义请求合并：extraBody 并进正文（坏 JSON 原样发，别把请求弄死），extraHeaders 覆盖同名默认头。 */
+    private NetworkRequest mergeCustom(NetworkRequest r) {
+        String bodyJson = r.body;
+        try {
+            if (extraBody.length() > 0) {
+                JSONObject body = new JSONObject(r.body);
+                java.util.Iterator<String> it = extraBody.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    body.put(k, extraBody.get(k));
+                }
+                bodyJson = HomecomingSnapshotStore.canonicalJson(body);
+            }
+        } catch (Exception ignored) {
+            return r;
+        }
+        Map<String, String> headers = new LinkedHashMap<>(r.headers);
+        headers.putAll(extraHeaders);
+        return new NetworkRequest(r.url, bodyJson, headers);
     }
 
     public void cancelAll() {

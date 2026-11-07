@@ -159,8 +159,12 @@ object CommandStore {
                 if (!c.moveToFirst()) return
                 val root = JSONObject(c.getString(0))
                 val sp = root.optString("system_prompt", "")
-                if (sp.contains("[即时指令]")) return
-                root.put("system_prompt", sp + KNOWLEDGE)
+                val on = SeanExt.on(context, "ext_cmd")
+                val cleaned = if (on) sp
+                    else sp.replace(Regex("\n\n\\[即时指令\\][\\s\\S]*?(?=\n\n\\[|\\z)"), "")
+                val next = if (on && !cleaned.contains("[即时指令]")) cleaned + KNOWLEDGE else cleaned
+                if (next == sp) return
+                root.put("system_prompt", next)
                 db.execSQL(
                     "UPDATE identity_snapshot SET payload_json=? WHERE identity_id='identity'",
                     arrayOf(root.toString())

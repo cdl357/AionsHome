@@ -215,7 +215,7 @@ object SeanImageGenStore {
 
     private fun sig(context: Context): String {
         val (b, k, m) = config(context)
-        return Integer.toHexString((b + "|" + m + "|" + (k.length)).hashCode())
+        return Integer.toHexString((b + "|" + m + "|" + (k.length) + "|ext=" + SeanExt.on(context, "ext_paint")).hashCode())
     }
 
     /** [画笔] 段落按配置签名刷新（照 [素材库] 的边界约定，段落互不吃）。 */
@@ -231,7 +231,7 @@ object SeanImageGenStore {
                 val root = JSONObject(c.getString(0))
                 val sp0 = root.optString("system_prompt", "")
                 val cleaned = sp0.replace(Regex("\n\n\\[画笔\\][\\s\\S]*?(?=\n\n\\[|\\z)"), "")
-                val next = if (configured(context)) cleaned + section(context) else cleaned
+                val next = if (configured(context) && SeanExt.on(context, "ext_paint")) cleaned + section(context) else cleaned
                 root.put("system_prompt", next)
                 db.execSQL(
                     "UPDATE identity_snapshot SET payload_json=? WHERE identity_id='identity'",

@@ -222,6 +222,18 @@ object StudyRoomStore {
                 if (!c.moveToFirst()) return
                 val root = JSONObject(c.getString(0))
                 var sp = root.optString("system_prompt", "")
+                // 扩展开关（他的配置页）：关掉就整段剥掉
+                if (!SeanExt.on(context, "ext_study")) {
+                    val stripped = sp.replace(Regex("\n\n\\[书房\\][\\s\\S]*?(?=\n\n\\[|\\z)"), "")
+                    if (stripped != sp) {
+                        root.put("system_prompt", stripped)
+                        db.execSQL(
+                            "UPDATE identity_snapshot SET payload_json=? WHERE identity_id='identity'",
+                            arrayOf(root.toString())
+                        )
+                    }
+                    return
+                }
                 // 旧版花编号错位（列了不存在的 20-25，漏 6-9/16-18，figs 写 0-46）——迁移替换
                 val oldSection = "\n\n[书房] 你们共有一间书房，桌上摆着花和玩偶。她让你换桌上的花时，你可以在回复里嵌 " +
                     "<studyflower>编号</studyflower>（共 19 种：0 雏菊绿绣球、1 郁金香、2 绣球、3 百合、4 薰衣草、5 香槟玫瑰、" +

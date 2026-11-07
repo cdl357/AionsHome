@@ -464,6 +464,20 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         val requestId = "req_" + System.currentTimeMillis()
         activeRequestId = requestId
         emptyHint.value = false
+        // 乐观气泡（总入口，网关路径/中转路径/回落全覆盖）：发送中立刻上屏。
+        // key 去重——回落重试再进来不会重复（重复 key 会让 LazyColumn 崩）
+        if (messages.none { it.id == "temp_" + requestId }) {
+            runCatching {
+                messages.add(
+                    HomecomingChatRepository.Message(
+                        "temp_" + requestId, requestId, "", HomecomingChatWiring.TIMELINE, "user",
+                        HomecomingChatWiring.USER, text,
+                        if (imagePath.isNotBlank()) "image" else "",
+                        "", System.currentTimeMillis(), "sent"
+                    )
+                )
+            }
+        }
 
     /**
      * 中转站发送路径（send() 主体；网关失败回落也走这里）。
@@ -484,17 +498,6 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             stopping = false
             emptyHint.value = false
             activeRequestId = reqId
-            // 乐观气泡：点了发送立刻上屏（成功/失败后 reloadNow 会用库里真身整体替换）
-            runCatching {
-                messages.add(
-                    HomecomingChatRepository.Message(
-                        "temp_" + reqId, reqId, "", HomecomingChatWiring.TIMELINE, "user",
-                        HomecomingChatWiring.USER, txt,
-                        if (imgPath.isNotBlank()) "image" else "",
-                        "", System.currentTimeMillis(), "sent"
-                    )
-                )
-            }
         }
         // 橘瓣式：路由/模型由提供商体系决定（routes.json 里 active 提供商已镜像为 "main"）
         val act = com.aion.chat.compose.data.ProviderStore.active(context)

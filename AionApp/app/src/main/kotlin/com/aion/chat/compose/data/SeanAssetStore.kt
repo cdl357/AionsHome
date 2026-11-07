@@ -272,7 +272,7 @@ object SeanAssetStore {
 
     private fun assetsSignature(context: Context): String {
         val items = list(context)
-        val sig = items.joinToString("|") { "${it.id}:${it.kind}:${it.name}" } + "#" + remark(context)
+        val sig = items.joinToString("|") { "${it.id}:${it.kind}:${it.name}" } + "#" + remark(context) + "#ext=" + SeanExt.on(context, "ext_sticker")
         return Integer.toHexString(sig.hashCode())
     }
 
@@ -293,7 +293,7 @@ object SeanAssetStore {
                 val root = JSONObject(c.getString(0))
                 val sp0 = root.optString("system_prompt", "")
                 val cleaned = sp0.replace(Regex("\n\n\\[素材库\\][\\s\\S]*?(?=\n\n\\[|\\z)"), "")
-                root.put("system_prompt", cleaned + buildSection(context))
+                root.put("system_prompt", cleaned + if (SeanExt.on(context, "ext_sticker")) buildSection(context) else "")
                 db.execSQL(
                     "UPDATE identity_snapshot SET payload_json=? WHERE identity_id='identity'",
                     arrayOf(root.toString())

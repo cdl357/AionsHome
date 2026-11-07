@@ -96,6 +96,10 @@ fun SeanConfigScreen(
     var editingPrompt by remember { mutableStateOf<String?>(null) }
     var savedTip by remember { mutableStateOf(false) }
     var memories by remember { mutableStateOf(listOf<String>()) }
+    var extState by remember { mutableStateOf(mapOf<String, Boolean>()) }
+    var reqHeaders by remember { mutableStateOf("") }
+    var reqBody by remember { mutableStateOf("") }
+    var reqTip by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -109,6 +113,14 @@ fun SeanConfigScreen(
                     ?.map { it.content }
                     ?: emptyList()
             }.getOrDefault(emptyList())
+            extState = com.aion.chat.compose.data.SeanExt.ITEMS.associate { (k, _) ->
+                k to com.aion.chat.compose.data.SeanExt.on(context, k)
+            }
+            val cr = com.aion.chat.compose.data.HomecomingChatWiring.loadCustomRequest(context)
+            if (cr != null) {
+                reqHeaders = org.json.JSONObject(cr.first).toString()
+                reqBody = cr.second.toString()
+            }
         }
     }
 
@@ -237,12 +249,65 @@ fun SeanConfigScreen(
             }
         }
 
+        // ── 扩展管理（真开关：关掉即从他的系统提示里剥掉对应段落） ──
+        SectionCard(title = "扩展管理", subtitle = "他的能力开关，关掉下一条消息起生效") {
+            com.aion.chat.compose.data.SeanExt.ITEMS.forEach { (key, label) ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
+                ) {
+                    Text(label, fontSize = 13.sp, color = PgInk, lineHeight = 17.sp, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Checkbox(
+                        checked = extState[key] ?: true,
+                        onCheckedChange = { v ->
+                            extState = extState + (key to v)
+                            com.aion.chat.compose.data.SeanExt.set(context, key, v)
+                        },
+                        colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = PgAccent)
+                    )
+                }
+            }
+        }
+
+        // ── 自定义请求（真功能：额外请求头 + 正文参数，合并进每次聊天请求） ──
+        SectionCard(title = "自定义请求", subtitle = "给聊天请求加自定义请求头 / 正文参数（JSON）") {
+            OutlinedTextField(
+                value = reqHeaders,
+                onValueChange = { reqHeaders = it },
+                label = { Text("请求头 JSON，如 {\"X-Flag\":\"1\"}", fontSize = 11.sp, color = PgSub) },
+                minLines = 2, maxLines = 5,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
+            )
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = reqBody,
+                onValueChange = { reqBody = it },
+                label = { Text("正文参数 JSON，如 {\"temperature\":0.9}", fontSize = 11.sp, color = PgSub) },
+                minLines = 2, maxLines = 5,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            ) {
+                Text(
+                    reqTip,
+                    fontSize = 12.sp,
+                    color = if (reqTip.startsWith("已保存")) Color(0xFF5B8A5E) else Color(0xFFB4574E),
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = {
+                    val err = com.aion.chat.compose.data.HomecomingChatWiring
+                        .saveCustomRequest(context, reqHeaders, reqBody)
+                    reqTip = err ?: "已保存 ✓ 下一条消息起生效"
+                }) { Text("保存", color = PgAccent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+            }
+        }
+
         // ── 后续版本 ──
         listOf(
-            "扩展管理" to "管理提示词注入、世界书和技能等扩展",
-            "自定义请求" to "配置自定义请求头和正文参数",
-            "MCP" to "为他配置 MCP 服务器工具",
-            "本地工具" to "启用本地工具（如 JavaScript 引擎）"
+            "MCP" to "为他配置 MCP 服务器工具（需要单独版本）",
+            "本地工具" to "启用本地工具，如 JavaScript 引擎（需要单独版本）"
         ).forEach { (t, s) ->
             SectionCard(title = t, subtitle = s, comingSoon = true) {}
         }
