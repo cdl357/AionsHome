@@ -257,13 +257,15 @@ private fun AddProviderDialog(
     onAdd: (ProviderStore.Provider) -> Unit
 ) {
     val ctxAdd = LocalContext.current
-    var name by remember { mutableStateOf("OpenAI") }
+    var name by remember { mutableStateOf("sean") }
     var apiKey by remember { mutableStateOf("") }
-    // 橘瓣同款：Base Url 预填真实默认值；初始全选（粘贴=整体替换，不会再"追加拼坏"）
+    // 预填她的真实中转（重装重加不再"URL 变了"）；初始全选——粘贴=整体替换，不会追加拼坏
+    val herRelay = com.aion.chat.compose.data.SupabaseClient.RELAY_URL
+        .removeSuffix("/supabase").replace(":8783", ":41337") + "/v1"
     var baseUrl by remember {
         mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(
-            "https://api.openai.com/v1",
-            selection = androidx.compose.ui.text.TextRange(0, "https://api.openai.com/v1".length)
+            herRelay,
+            selection = androidx.compose.ui.text.TextRange(0, herRelay.length)
         ))
     }
     var apiPath by remember { mutableStateOf("/chat/completions") }
@@ -375,7 +377,7 @@ private fun AddProviderDialog(
                         onAdd(
                             ProviderStore.Provider(
                                 id = "p_" + System.currentTimeMillis(),
-                                name = name.trim().ifBlank { "OpenAI" },
+                                name = name.trim().ifBlank { "sean" },
                                 baseUrl = u, apiKey = apiKey.trim(),
                                 enabled = true, models = emptyList(),
                                 apiPath = apiPath.trim().ifBlank { "/chat/completions" },

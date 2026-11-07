@@ -184,6 +184,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val showSkinDialog = remember { mutableStateOf(false) }
     // 聊天设置抽屉（左缘右滑 / 左上角滑杆图标呼出）
     val showChatDrawer = remember { mutableStateOf(false) }
+    val showSeanConfig = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
     val chatDrawerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -371,6 +372,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // ── 进页面/回页面就加载历史：以前只在发送成功后 reload——重进聊天页必然"全空" ──
+    LaunchedEffect(wiring, routeStamp) {
+        if (wiring != null) withContext(Dispatchers.IO) { reloadNow() }
+    }
+
     // ── 发送：引擎 commitUser + 完成后分条冒泡 ──
     fun isSongRequest(text: String): Boolean =
         text.contains("歌") && Regex("(放|来|点|听|播|想听)").containsMatchIn(text)
@@ -478,6 +484,17 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             stopping = false
             emptyHint.value = false
             activeRequestId = reqId
+            // 乐观气泡：点了发送立刻上屏（成功/失败后 reloadNow 会用库里真身整体替换）
+            runCatching {
+                messages.add(
+                    HomecomingChatRepository.Message(
+                        "temp_" + reqId, reqId, "", HomecomingChatWiring.TIMELINE, "user",
+                        HomecomingChatWiring.USER, txt,
+                        if (imgPath.isNotBlank()) "image" else "",
+                        "", System.currentTimeMillis(), "sent"
+                    )
+                )
+            }
         }
         // 橘瓣式：路由/模型由提供商体系决定（routes.json 里 active 提供商已镜像为 "main"）
         val act = com.aion.chat.compose.data.ProviderStore.active(context)
@@ -576,6 +593,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             main.post {
                                 if (stopping) { stopping = false; return@post }
                                 sending.value = false
+                                // 失败也要刷：她的消息在引擎里已落库，不上屏会像"没发出去"
+                                scope.launch(Dispatchers.IO) { reloadNow() }
                                 sendError.value = SendError(
                                     title = "回复失败（$code）",
                                     reason = when {
@@ -612,6 +631,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             } catch (e: Exception) {
                 main.post {
                     sending.value = false
+                    scope.launch(Dispatchers.IO) { reloadNow() }   // 乐观气泡下线，回归库内真身
                     Toast.makeText(context, "发送失败：${e.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -1913,6 +1933,19 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         ModelPickerSheet(onDismiss = { showModelSheet = false })
     }
 
+    // ── 他的配置页（对话页左侧进入，橘瓣式） ──
+    if (showSeanConfig.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFF3F1EC))) {
+            SeanConfigScreen(
+                onBack = { showSeanConfig.value = false },
+                onPickModel = {
+                    showSeanConfig.value = false
+                    showModelSheet = true
+                }
+            )
+        }
+    }
+
     // ── 线路装配诊断卡（胶囊点重试仍失败时自动弹出） ──
     if (showWiringDiag && wiringError != null) {
         WiringDiagDialog(
@@ -2042,6 +2075,16 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     modifier = Modifier.weight(1f)
                 ) { Text("气泡皮肤") }
             }
+            Spacer(Modifier.height(16.dp))
+
+            // 他的配置（橘瓣式助手配置页入口）
+            Button(
+                onClick = {
+                    showChatDrawer.value = false
+                    showSeanConfig.value = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("他的配置（人设 · 提示词 · 记忆）") }
             Spacer(Modifier.height(16.dp))
 
             Text("聊天背景图", fontSize = 14.sp, color = HomecomingColors.Ink)
