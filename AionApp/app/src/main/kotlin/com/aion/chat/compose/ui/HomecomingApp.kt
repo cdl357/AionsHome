@@ -193,7 +193,8 @@ fun HomecomingApp() {
                     SettingsScreen(
                         onOpenHerState = { navController.navigate("herstate") },
                         onOpenStyleHub = { navController.navigate("stylehub") },
-                        onOpenRequestLog = { navController.navigate("requestlog") }
+                        onOpenRequestLog = { navController.navigate("requestlog") },
+                        onOpenMcp = { navController.navigate("mcp") }
                     )
                 }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }

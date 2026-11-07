@@ -59,6 +59,7 @@ public final class HomecomingModelGateway {
         // F5：推理型渠道只吐 reasoning_content 不吐 content 时，错误别再误导去查余额
         final boolean[] sawReasoning = {false};
         String reqUrl = null;
+        final long reqT0 = android.os.SystemClock.elapsedRealtime();
         try {
             NetworkRequest network = build(route, model, request);
             reqUrl = network.url;
@@ -66,7 +67,6 @@ public final class HomecomingModelGateway {
             if (!extraHeaders.isEmpty() || extraBody.length() > 0) {
                 network = mergeCustom(network);
             }
-            final long reqT0 = android.os.SystemClock.elapsedRealtime();
             transport.execute(network, line -> {
                 if (cancelled.get()) {
                     return;

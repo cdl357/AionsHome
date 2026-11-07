@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -527,6 +527,22 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                 "聊天/记忆/日记/相册记录/梦境/头像/背景 打包成 zip 存到你选的位置；不含任何 API Key",
                 fontSize = 12.sp, color = HomecomingColors.InkSoft
             )
+        }
+
+        // ── MCP（照橘瓣：配置 MCP 服务器） ──
+        FrostCard {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenMcp() }
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("MCP", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("配置 MCP 服务器（SSE / Streamable HTTP）", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
+            }
         }
 
         // ── 请求日志（照橘瓣 Logs 页：HTTP 请求 + 崩溃记录，一键清空/复制） ──

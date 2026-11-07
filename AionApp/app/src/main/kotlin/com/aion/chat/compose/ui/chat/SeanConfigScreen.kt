@@ -88,7 +88,8 @@ private fun saveIdentity(context: android.content.Context, transform: (JSONObjec
 @Composable
 fun SeanConfigScreen(
     onBack: () -> Unit,
-    onPickModel: () -> Unit
+    onPickModel: () -> Unit,
+    onOpenMcp: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var id by remember { mutableStateOf(IdParts("小鑫", "Sean", "", null)) }
@@ -304,9 +305,11 @@ fun SeanConfigScreen(
             }
         }
 
+        // ── MCP（照橘瓣：真配置页） ──
+        SectionCard(title = "MCP", subtitle = "为他配置 MCP 服务器（SSE / Streamable HTTP）", onClick = onOpenMcp) {}
+
         // ── 后续版本 ──
         listOf(
-            "MCP" to "为他配置 MCP 服务器工具（需要单独版本）",
             "本地工具" to "启用本地工具，如 JavaScript 引擎（需要单独版本）"
         ).forEach { (t, s) ->
             SectionCard(title = t, subtitle = s, comingSoon = true) {}
@@ -321,6 +324,7 @@ private fun SectionCard(
     title: String,
     subtitle: String,
     comingSoon: Boolean = false,
+    onClick: (() -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     Column(
@@ -329,13 +333,13 @@ private fun SectionCard(
             .padding(horizontal = 12.dp, vertical = 5.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(PgCard)
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
             .padding(vertical = 6.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (comingSoon) Modifier else Modifier)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Column(Modifier.weight(1f)) {

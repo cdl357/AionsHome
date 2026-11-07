@@ -185,6 +185,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     // 聊天设置抽屉（左缘右滑 / 左上角滑杆图标呼出）
     val showChatDrawer = remember { mutableStateOf(false) }
     val showSeanConfig = remember { mutableStateOf(false) }
+    val showMcp = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
     val chatDrawerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1937,6 +1938,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         ModelPickerSheet(onDismiss = { showModelSheet = false })
     }
 
+    // ── MCP 配置页（他的配置 → MCP；设置页也有入口） ──
+    if (showMcp.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
+            com.aion.chat.compose.ui.settings.McpScreen(onBack = { showMcp.value = false })
+        }
+    }
+
     // ── 他的配置页（对话页左侧进入，橘瓣式） ──
     if (showSeanConfig.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFF3F1EC))) {
@@ -1945,6 +1953,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 onPickModel = {
                     showSeanConfig.value = false
                     showModelSheet = true
+                },
+                onOpenMcp = {
+                    showSeanConfig.value = false
+                    showMcp.value = true
                 }
             )
         }
