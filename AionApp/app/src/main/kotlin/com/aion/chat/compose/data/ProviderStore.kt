@@ -23,7 +23,10 @@ object ProviderStore {
         val baseUrl: String,
         val apiKey: String,
         val enabled: Boolean,
-        val models: List<Model>
+        val models: List<Model>,
+        val apiPath: String = "/chat/completions",     // 橘瓣「API 路径」栏
+        val useResponseApi: Boolean = false,           // 橘瓣「Response API」勾选
+        val fetchBalance: Boolean = false              // 橘瓣「获取账户余额」勾选
     )
 
     private val _rev = mutableStateOf(0)
@@ -56,7 +59,10 @@ object ProviderStore {
             Provider(
                 o.optString("id", ""), o.optString("name", ""),
                 o.optString("base_url", ""), o.optString("api_key", ""),
-                o.optBoolean("enabled", true), models
+                o.optBoolean("enabled", true), models,
+                o.optString("api_path", "/chat/completions"),
+                o.optBoolean("use_response_api", false),
+                o.optBoolean("fetch_balance", false)
             )
         }.filter { it.id.isNotBlank() }
     }.getOrDefault(emptyList())
@@ -93,7 +99,10 @@ object ProviderStore {
                         .put("enabled", p.enabled)
                         .put("models", JSONArray().apply {
                             p.models.forEach { m -> put(JSONObject().put("key", m.key).put("model", m.model)) }
-                        }))
+                        })
+                        .put("api_path", p.apiPath)
+                        .put("use_response_api", p.useResponseApi)
+                        .put("fetch_balance", p.fetchBalance))
                 }
             })
             .put("active_id", activeId)
@@ -146,7 +155,8 @@ object ProviderStore {
             val route = JSONObject()
                 .put("route_id", p.id).put("label", p.name)
                 .put("provider", "openai_compatible")
-                .put("base_url", p.baseUrl).put("api_key", p.apiKey)
+                .put("base_url", foldProviderUrl(p.baseUrl, p.apiPath))
+                .put("api_key", p.apiKey)
                 .put("models", models)
             chat.put(route)
             // main 镜像兜底：active 指向停用/不存在的提供商时，镜像第一个启用的
@@ -166,6 +176,17 @@ object ProviderStore {
             }
         }
         return chat
+    }
+
+    /** URL 折叠：Base Url + API 路径（/v1 归一）；引擎对 /chat/completions 结尾原样使用。 */
+    fun foldProviderUrl(baseUrl: String, apiPath: String): String {
+        var b = baseUrl.trim().trimEnd('/')
+        if (b.contains("?")) return b                       // 手填完整带 query 的 URL 原样
+        if (!b.endsWith("/v1") && !b.endsWith("/chat/completions")) b = "$b/v1"
+        var path = apiPath.trim()
+        if (path.isBlank()) path = "/chat/completions"
+        if (!path.startsWith("/")) path = "/$path"
+        return b + path
     }
 
     // ── 模型列表拉取（GET {base}/models，OpenAI 兼容） ──
