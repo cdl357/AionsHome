@@ -216,6 +216,12 @@ fun HomecomingApp() {
                 composable("stylehub") {
                     com.aion.chat.compose.ui.style.StyleHubScreen(onBack = { navController.popBackStack() })
                 }
+                composable("requestlog") {
+                    com.aion.chat.compose.ui.settings.RequestLogScreen(onBack = { navController.popBackStack() })
+                }
+                composable("mcp") {
+                    com.aion.chat.compose.ui.settings.McpScreen(onBack = { navController.popBackStack() })
+                }
                 composable("today") {
                     com.aion.chat.compose.ui.today.TodayScreen(onBack = { navController.popBackStack() })
                 }
