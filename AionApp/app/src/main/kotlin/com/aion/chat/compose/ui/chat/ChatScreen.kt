@@ -401,6 +401,178 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         text.replace(Regex("(请|帮我|给我|我想|想要|一起|陪我|现在|立刻|马上|然后|适合|一首|首歌|个|下|吧|呗|好吗|可以吗)"), " ")
             .replace(Regex("\\s+"), " ").trim()
 
+    fun sendViaRoute(
+        w: HomecomingChatWiring,
+        reqId: String,
+        txt: String,
+        promptText: String,
+        img: String,
+        imgPath: String,
+        extras: List<String>,
+        bubblePaths: List<String>,
+        regenParent: HomecomingChatRepository.Message? = null
+    ) {
+        main.post {
+            sending.value = true
+            stopping = false
+            emptyHint.value = false
+            activeRequestId = reqId
+        }
+        // 橘瓣式：路由/模型由提供商体系决定（routes.json 里 active 提供商已镜像为 "main"）
+        val act = com.aion.chat.compose.data.ProviderStore.active(context)
+        if (act == null) {
+            main.post {
+                sending.value = false
+                sendError.value = SendError(
+                    title = "还没有可用的提供商",
+                    reason = "设置 → 模型提供商 里没有启用中的提供商（或没添加模型）",
+                    solution = "去 设置 → 模型提供商 新增：填名称 / URL / Key，拉模型列表勾选，保存并设为聊天使用"
+                )
+            }
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                // ── 自愈（F3 双源错位根除）：按最新提供商状态重写 routes.json，
+                //    wiring 每次新建（不吃组合期旧快照），按最新 routes.json 装配 ──
+                com.aion.chat.compose.data.ProviderStore.resyncRoutes(context)
+                val wFresh = HomecomingChatWiring.safeCreate(context) ?: run {
+                    main.post {
+                        sending.value = false
+                        messages.removeAll { it.id == "temp_" + reqId }
+                        sendError.value = SendError(
+                            title = "线路装配失败",
+                            reason = "聊天运行时初始化失败（详见 设置 → 崩溃日志）",
+                            solution = "重存一次提供商通常可恢复；反复出现请反馈崩溃日志"
+                        )
+                    }
+                    return@launch
+                }
+                // failed 状态复位：复用 requestId 的重试不再被 "request already failed" 永久阻断
+                runCatching { wFresh.chats.resetRequest(reqId) }
+                // 消息树：重新生成时 prepare（上下文截断+挂父），完成/失败后 finish
+                if (regenParent != null) {
+                    wFresh.chats.prepareRegenerate(regenParent.id, regenParent.createdAt)
+                }
+                wFresh.engine.send(
+                    HomecomingChatEngine.ChatCommand(
+                        reqId,
+                        HomecomingChatWiring.TIMELINE,
+                        HomecomingChatWiring.RESPONDER,
+                        HomecomingChatWiring.USER,
+                        promptText,
+                        act.first.id,          // active 提供商自己的路由（routes.json 已同步）
+                        act.second.key,        // active 模型
+                        img,
+                        "",
+                        regenParent == null,   // 重新生成不落新用户消息（复用父消息）
+                        extras.filter { it.isNotBlank() }   // v7：中转站路径也带多图/视频帧
+                    ),
+                    object : HomecomingChatEngine.Observer {
+                        override fun onChunk(chunk: String) {
+                            // 引擎在完成时一次性给出可见文本（控制标签已在引擎内剥离）
+                            main.post {
+                                pendingSegments.clear()
+                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(chunk))))
+                            }
+                        }
+
+                        override fun onComplete(messageId: String, completeText: String) {
+                            runCatching { wFresh.chats.finishRegenerate() }
+                            main.post {
+                                if (stopping) { stopping = false; return@post }
+                                sending.value = false
+                                // 后台回话 → 横幅弹窗 + 锁屏显示
+                                com.aion.chat.compose.data.SeanNotifier.maybeNotifyReply(
+                                    context,
+                                    com.aion.chat.compose.data.SeanAssetStore.remark(context).ifBlank { "Sean" },
+                                    completeText
+                                )
+                                // F4：空回复不再无声无息（控制标签剥完为空/思维模型只吐思考）
+                                if (completeText.isBlank()) {
+                                    sendError.value = SendError(
+                                        title = "他没说话（回复为空）",
+                                        reason = "线路通了、模型也回了，但正文是空的——多半是思维（thinking）模型只输出了思考",
+                                        solution = "在提供商的模型列表里换一个非 thinking 模型再试",
+                                        retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
+                                    )
+                                    return@post
+                                }
+                            }
+                            if (stopping) return
+                            speakReply(completeText)
+                            scope.launch(Dispatchers.IO) {
+                                reloadNow()
+                                // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片/视频通用）
+                                if (bubblePaths.any { it.isNotBlank() }) {
+                                    val latest = runCatching {
+                                        wFresh.listMessages(HomecomingChatWiring.TIMELINE)
+                                            .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
+                                    }.getOrNull()
+                                    if (latest != null) {
+                                        com.aion.chat.compose.data.HomecomingChatImageStore.mapMany(
+                                            context, latest.id, bubblePaths.filter { it.isNotBlank() }
+                                        )
+                                    }
+                                }
+                                // 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写今天的日记
+                                if (txt.contains("晚安")) {
+                                    runCatching { generateTonightDiary(context) }
+                                }
+                                // 音乐卡在搜歌路径已入库（这里重复 add 会出双卡）
+                            }
+                        }
+
+                        override fun onFailure(code: String) {
+                            runCatching { wFresh.chats.finishRegenerate() }
+                            main.post {
+                                if (stopping) { stopping = false; return@post }
+                                sending.value = false
+                                // 失败也要刷：她的消息在引擎里已落库，不上屏会像"没发出去"
+                                scope.launch(Dispatchers.IO) { reloadNow() }
+                                sendError.value = SendError(
+                                    title = "回复失败（$code）",
+                                    reason = when {
+                                        code == "empty_model_reply:reasoning_only" ->
+                                            "这个模型只输出了思考没有正文——换一个非 thinking 模型（如 claude-opus-4-6）再试"
+                                        code == "empty_model_reply" ->
+                                            "线路通了，但模型回了空——多半是模型名不对或余额/权限问题"
+                                        code.startsWith("model_request_failed") -> {
+                                            val why = code.substringAfter("model_request_failed:")
+                                                .substringAfter(':', "")
+                                            when {
+                                                code.contains("UnknownHost") -> "域名解析失败——Base URL 拼写或网络 DNS 有问题"
+                                                code.contains("ConnectException") -> "连不上端点（连接被拒 / 网络不通）"
+                                                code.contains("SocketTimeout") -> "请求超时（线路太慢或不通）"
+                                                code.contains("SSL") -> "TLS 握手被拦（证书 / 网络拦截）"
+                                                code.contains("already running") -> "上一条还没跑完，等它结束再发"
+                                                else -> "请求没发出去" + (if (why.isNotBlank()) "：${why.take(90)}" else "")
+                                            }
+                                        }
+                                        code.contains("401") || code.contains("403") -> "Key 无效或没权限（HTTP 401/403）"
+                                        code.contains("404") -> "端点 404——Base URL 或模型名不对"
+                                        code.contains("429") -> "限流（HTTP 429），稍等再试"
+                                        else -> "线路返回异常（$code）"
+                                    },
+                                    solution = "去 设置 → 云线路 检查 Base URL / API Key / 模型，保存后立即生效，不用重启",
+                                    failedText = txt,
+                                    retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
+                                )
+                                Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                main.post {
+                    sending.value = false
+                    scope.launch(Dispatchers.IO) { reloadNow() }   // 乐观气泡下线，回归库内真身
+                    Toast.makeText(context, "发送失败：${e.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     fun send(forcedText: String? = null, promptPrefix: String? = null, preSong: com.aion.chat.compose.data.MusicClient.Song? = null, forceRoute: Boolean = false) {
         val text = (forcedText ?: input.value).trim()
         // 视频优先：抽帧给他看，气泡播本地 mp4
@@ -499,171 +671,6 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
      * 中转站发送路径（send() 主体；网关失败回落也走这里）。
      * reqId 复用 → 用户消息按 (requestId,role) 幂等；img/imgPath/extras/bubblePaths 全透传 → 重发不丢图。
      */
-    fun sendViaRoute(
-        w: HomecomingChatWiring,
-        reqId: String,
-        txt: String,
-        promptText: String,
-        img: String,
-        imgPath: String,
-        extras: List<String>,
-        bubblePaths: List<String>
-    ) {
-        main.post {
-            sending.value = true
-            stopping = false
-            emptyHint.value = false
-            activeRequestId = reqId
-        }
-        // 橘瓣式：路由/模型由提供商体系决定（routes.json 里 active 提供商已镜像为 "main"）
-        val act = com.aion.chat.compose.data.ProviderStore.active(context)
-        if (act == null) {
-            main.post {
-                sending.value = false
-                sendError.value = SendError(
-                    title = "还没有可用的提供商",
-                    reason = "设置 → 模型提供商 里没有启用中的提供商（或没添加模型）",
-                    solution = "去 设置 → 模型提供商 新增：填名称 / URL / Key，拉模型列表勾选，保存并设为聊天使用"
-                )
-            }
-            return
-        }
-        scope.launch(Dispatchers.IO) {
-            try {
-                // ── 自愈（F3 双源错位根除）：按最新提供商状态重写 routes.json，
-                //    wiring 每次新建（不吃组合期旧快照），按最新 routes.json 装配 ──
-                com.aion.chat.compose.data.ProviderStore.resyncRoutes(context)
-                val wFresh = HomecomingChatWiring.safeCreate(context) ?: run {
-                    main.post {
-                        sending.value = false
-                        messages.removeAll { it.id == "temp_" + reqId }
-                        sendError.value = SendError(
-                            title = "线路装配失败",
-                            reason = "聊天运行时初始化失败（详见 设置 → 崩溃日志）",
-                            solution = "重存一次提供商通常可恢复；反复出现请反馈崩溃日志"
-                        )
-                    }
-                    return@launch
-                }
-                // failed 状态复位：复用 requestId 的重试不再被 "request already failed" 永久阻断
-                runCatching { wFresh.chats.resetRequest(reqId) }
-                wFresh.engine.send(
-                    HomecomingChatEngine.ChatCommand(
-                        reqId,
-                        HomecomingChatWiring.TIMELINE,
-                        HomecomingChatWiring.RESPONDER,
-                        HomecomingChatWiring.USER,
-                        promptText,
-                        act.first.id,          // active 提供商自己的路由（routes.json 已同步）
-                        act.second.key,        // active 模型
-                        img,
-                        "",
-                        true,
-                        extras.filter { it.isNotBlank() }   // v7：中转站路径也带多图/视频帧
-                    ),
-                    object : HomecomingChatEngine.Observer {
-                        override fun onChunk(chunk: String) {
-                            // 引擎在完成时一次性给出可见文本（控制标签已在引擎内剥离）
-                            main.post {
-                                pendingSegments.clear()
-                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(chunk))))
-                            }
-                        }
-
-                        override fun onComplete(messageId: String, completeText: String) {
-                            main.post {
-                                if (stopping) { stopping = false; return@post }
-                                sending.value = false
-                                // 后台回话 → 横幅弹窗 + 锁屏显示
-                                com.aion.chat.compose.data.SeanNotifier.maybeNotifyReply(
-                                    context,
-                                    com.aion.chat.compose.data.SeanAssetStore.remark(context).ifBlank { "Sean" },
-                                    completeText
-                                )
-                                // F4：空回复不再无声无息（控制标签剥完为空/思维模型只吐思考）
-                                if (completeText.isBlank()) {
-                                    sendError.value = SendError(
-                                        title = "他没说话（回复为空）",
-                                        reason = "线路通了、模型也回了，但正文是空的——多半是思维（thinking）模型只输出了思考",
-                                        solution = "在提供商的模型列表里换一个非 thinking 模型再试",
-                                        retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
-                                    )
-                                    return@post
-                                }
-                            }
-                            if (stopping) return
-                            speakReply(completeText)
-                            scope.launch(Dispatchers.IO) {
-                                reloadNow()
-                                // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片/视频通用）
-                                if (bubblePaths.any { it.isNotBlank() }) {
-                                    val latest = runCatching {
-                                        wFresh.listMessages(HomecomingChatWiring.TIMELINE)
-                                            .lastOrNull { it.role == "user" && it.attachmentKind == "image" }
-                                    }.getOrNull()
-                                    if (latest != null) {
-                                        com.aion.chat.compose.data.HomecomingChatImageStore.mapMany(
-                                            context, latest.id, bubblePaths.filter { it.isNotBlank() }
-                                        )
-                                    }
-                                }
-                                // 雷打不动的约定（定稿三·补充）：说了晚安，Sean 必写今天的日记
-                                if (txt.contains("晚安")) {
-                                    runCatching { generateTonightDiary(context) }
-                                }
-                                // 音乐卡在搜歌路径已入库（这里重复 add 会出双卡）
-                            }
-                        }
-
-                        override fun onFailure(code: String) {
-                            main.post {
-                                if (stopping) { stopping = false; return@post }
-                                sending.value = false
-                                // 失败也要刷：她的消息在引擎里已落库，不上屏会像"没发出去"
-                                scope.launch(Dispatchers.IO) { reloadNow() }
-                                sendError.value = SendError(
-                                    title = "回复失败（$code）",
-                                    reason = when {
-                                        code == "empty_model_reply:reasoning_only" ->
-                                            "这个模型只输出了思考没有正文——换一个非 thinking 模型（如 claude-opus-4-6）再试"
-                                        code == "empty_model_reply" ->
-                                            "线路通了，但模型回了空——多半是模型名不对或余额/权限问题"
-                                        code.startsWith("model_request_failed") -> {
-                                            val why = code.substringAfter("model_request_failed:")
-                                                .substringAfter(':', "")
-                                            when {
-                                                code.contains("UnknownHost") -> "域名解析失败——Base URL 拼写或网络 DNS 有问题"
-                                                code.contains("ConnectException") -> "连不上端点（连接被拒 / 网络不通）"
-                                                code.contains("SocketTimeout") -> "请求超时（线路太慢或不通）"
-                                                code.contains("SSL") -> "TLS 握手被拦（证书 / 网络拦截）"
-                                                code.contains("already running") -> "上一条还没跑完，等它结束再发"
-                                                else -> "请求没发出去" + (if (why.isNotBlank()) "：${why.take(90)}" else "")
-                                            }
-                                        }
-                                        code.contains("401") || code.contains("403") -> "Key 无效或没权限（HTTP 401/403）"
-                                        code.contains("404") -> "端点 404——Base URL 或模型名不对"
-                                        code.contains("429") -> "限流（HTTP 429），稍等再试"
-                                        else -> "线路返回异常（$code）"
-                                    },
-                                    solution = "去 设置 → 云线路 检查 Base URL / API Key / 模型，保存后立即生效，不用重启",
-                                    failedText = txt,
-                                    retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
-                                )
-                                Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                )
-            } catch (e: Exception) {
-                main.post {
-                    sending.value = false
-                    scope.launch(Dispatchers.IO) { reloadNow() }   // 乐观气泡下线，回归库内真身
-                    Toast.makeText(context, "发送失败：${e.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
         // ── 网关 SSE 后端（开关打开时走这里；旧中转站分支原样保留在后面） ──
         if (useGateway && !forceRoute) {
             val cmdFeedback = com.aion.chat.compose.data.CommandStore.consumeFeedback(context)
@@ -776,6 +783,52 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 }.getOrNull()?.let { bytes -> saveChatImage(context, bytes, sticker = true) }
                 main.post { stickerVersion.value = System.currentTimeMillis() }
             }
+        }
+    }
+
+    /** 消息树：重新生成这条回复——旧回复的父用户消息作为上下文，新回复挂同一父（成为新版本） */
+    fun regenerateMessage(msgId: String) {
+        val w = wiring ?: return
+        if (sending.value) return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val wf = HomecomingChatWiring.safeCreate(context) ?: return@launch
+                val parent = runCatching { wf.chats.parentOf(msgId) }.getOrNull() ?: run {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "这条消息没有可重发的上下文", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                val act = com.aion.chat.compose.data.ProviderStore.active(context) ?: return@launch
+                com.aion.chat.compose.data.ProviderStore.resyncRoutes(context)
+                val reqId = "req_" + System.currentTimeMillis()
+                withContext(Dispatchers.Main) {
+                    sending.value = true
+                    stopping = false
+                    emptyHint.value = false
+                    activeRequestId = reqId
+                }
+                sendViaRoute(
+                    wf, reqId,
+                    parent.text, parent.text,
+                    "", "", emptyList(), emptyList(),
+                    regenParent = parent
+                )
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    sending.value = false
+                    Toast.makeText(context, "重新生成失败：${e.message?.take(60)}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /** 消息树：切换版本（±1），切完刷列表 */
+    fun switchVersion(msgId: String, delta: Int) {
+        val w = wiring ?: return
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching { w.chats.switchSibling(msgId, delta) }.getOrNull()
+            if (ok != null) withContext(Dispatchers.IO) { reloadNow() }
         }
     }
 
@@ -1401,7 +1454,18 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     scope.launch(Dispatchers.IO) {
                                         runCatching { wiring?.chats?.deleteMessage(id) }
                                     }
-                                }
+                                },
+                                onRegenerate = { regenerateMessage(msg.id) },
+                                versionInfo = remember(msg.id, messages.size) {
+                                    runCatching {
+                                        val w = wiring
+                                        if (w != null) {
+                                            val cnt = w.chats.siblingCountOf(msg.id)
+                                            if (cnt > 1) w.chats.siblingIndexOf(msg.id) to cnt else null
+                                        } else null
+                                    }.getOrNull()
+                                },
+                                onSwitchVersion = { delta -> switchVersion(msg.id, delta) }
                             )
                         }
                     }
@@ -2514,7 +2578,10 @@ fun AssistantBubbles(
     genFailed: Boolean = false,
     messageId: String? = null,
     onSpeakText: (String) -> Unit = {},
-    onDeleteMessage: (String) -> Unit = {}
+    onDeleteMessage: (String) -> Unit = {},
+    onRegenerate: (() -> Unit)? = null,
+    versionInfo: Pair<Int, Int>? = null,
+    onSwitchVersion: ((Int) -> Unit)? = null
 ) {
     val segments = splitBubbles(text)
     val timeText = if (timeMs > 0) timeText(timeMs) else ""
@@ -2570,7 +2637,10 @@ fun AssistantBubbles(
                     text = seg, skin = skin, alpha = alpha, timeText = timeText,
                     isLast = i == segments.lastIndex,
                     fullText = text, messageId = messageId,
-                    onSpeakText = onSpeakText, onDeleteMessage = onDeleteMessage
+                    onSpeakText = onSpeakText, onDeleteMessage = onDeleteMessage,
+                    onRegenerate = if (i == segments.lastIndex) onRegenerate else null,
+                    versionInfo = if (i == segments.lastIndex) versionInfo else null,
+                    onSwitchVersion = onSwitchVersion
                 )
             }
         } else if (timeText.isNotEmpty()) {
@@ -2614,8 +2684,10 @@ private fun MessageLongPressMenu(
     text: String,
     fullText: String,
     messageId: String?,
+    isAssistant: Boolean = false,
     onSpeakText: (String) -> Unit,
     onDeleteMessage: (String) -> Unit,
+    onRegenerate: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -2667,6 +2739,15 @@ private fun MessageLongPressMenu(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("收藏", fontSize = 14.sp, color = HomecomingColors.Accent) }
+                    if (onRegenerate != null && isAssistant && messageId != null) {
+                        TextButton(
+                            onClick = {
+                                showMenu = false
+                                runCatching { onRegenerate() }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("重新生成", fontSize = 14.sp, color = HomecomingColors.Accent) }
+                    }
                     if (messageId != null) {
                         TextButton(
                             onClick = {
@@ -2702,7 +2783,11 @@ private fun AssistantBubbleSingle(
     messageId: String? = null,
     onSpeakText: (String) -> Unit = {},
     onDeleteMessage: (String) -> Unit = {},
+    onRegenerate: (() -> Unit)? = null,
+    versionInfo: Pair<Int, Int>? = null,   // (当前序号, 总数)——多版本时显示 ‹ 2/3 ›
+    onSwitchVersion: ((Int) -> Unit)? = null,
 ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         // StyleHub 四项：聊天字体大小 / 气泡透明度 / 气泡圆角 / 显示助手消息气泡
         val ctxB = LocalContext.current
@@ -2715,8 +2800,10 @@ private fun AssistantBubbleSingle(
             text = text,
             fullText = fullText.ifBlank { text },
             messageId = messageId,
+            isAssistant = true,
             onSpeakText = onSpeakText,
-            onDeleteMessage = onDeleteMessage
+            onDeleteMessage = onDeleteMessage,
+            onRegenerate = onRegenerate
         ) {
             if (skin == 3) {
                 // 仿TG：白底黑字、时间灰字内嵌右下、左下角小圆角（字体/透明度/圆角跟随 StyleHub；气泡可关）
@@ -2752,7 +2839,36 @@ private fun AssistantBubbleSingle(
                 }
             }
         }
+    }  // Box 结束
+
+    // 版本指示器：‹ 2/3 ›（多版本时显示，点箭头切换）
+    if (versionInfo != null && versionInfo.second > 1 && onSwitchVersion != null) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 10.dp, top = 2.dp)
+        ) {
+            Text(
+                "‹", fontSize = 15.sp, color = HomecomingColors.Accent,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable { onSwitchVersion(-1) }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+            Text(
+                "${versionInfo.first} / ${versionInfo.second}",
+                fontSize = 10.sp, color = HomecomingColors.InkSoft,
+                letterSpacing = 1.sp
+            )
+            Text(
+                "›", fontSize = 15.sp, color = HomecomingColors.Accent,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable { onSwitchVersion(1) }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
     }
+    }  // Column 结束
 }
 
 /** 仿TG：正文 + 右下角小号灰字时间（发出的多一对✓✓），内嵌在最后一个字后面。 */

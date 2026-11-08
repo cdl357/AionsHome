@@ -49,6 +49,8 @@ class HomecomingChatWiring(context: Context) {
             chats.healEpoch(HomecomingChatWiring.TIMELINE)
             chats.healEpoch("companion_private")
         }
+        // 消息树 v1：parent 链一次性回填（幂等；旧库升级后第一条消息起全链就位）
+        runCatching { HomecomingChatRepository.backfillParents(appContext) }
         identities = HomecomingIdentityRepository(database)
         memories = HomecomingMemoryRepository(database, epochId, deviceId)
         contextBuilder = HomecomingContextBuilder(identities, memories, chats::listMessages, 48_000)
