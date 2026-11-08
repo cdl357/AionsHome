@@ -38,7 +38,8 @@ object RequestLog {
     fun add(context: Context?, method: String, url: String, code: Int, ms: Long, err: String = "", cachedTokens: Long = 0, promptTokens: Long = 0, completionTokens: Long = 0) {
         if (appCtx == null && context != null) appCtx = context.applicationContext
         buf.addFirst(
-            Entry(System.currentTimeMillis(), method.uppercase(), url.take(180), code, ms, err.take(200), cachedTokens, promptTokens, completionTokens)
+            Entry(System.currentTimeMillis(), method.uppercase(), url.take(180), code, ms, err.take(200),
+                cachedTokens.coerceAtLeast(0), promptTokens.coerceAtLeast(0), completionTokens.coerceAtLeast(0))
         )
         while (buf.size > MAX) buf.removeLast()
         persistAsync()

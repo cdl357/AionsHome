@@ -113,8 +113,12 @@ object McpClient {
         return callTool(srv, def.name, argsJson)
     }
 
-    private fun sanitizeName(raw: String): String =
-        raw.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(64)
+    private fun sanitizeName(raw: String): String {
+        val cleaned = raw.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+        // 截断碰撞防护：尾缀 8 位十六进制内容指纹（确定性，跨刷新一致）
+        val fp = Integer.toHexString(raw.hashCode())
+        return (cleaned.take(48) + "_" + fp).take(64)
+    }
 
     // ── 握手 + 工具清单（probe 和 refresh 共用） ──
 

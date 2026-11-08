@@ -150,7 +150,7 @@ fun VideoSliceDialog(
                 )
             } else {
                 Text(
-                    "每 ${intervalSec} 秒一帧（共 $effectiveFrameCount 帧）",
+                    "每 ${intervalSec} 秒一帧（共 ${effectiveFrameCount.coerceAtMost(20)} 帧）",
                     fontSize = 14.sp, color = Color(0xFF7FA6C9), fontWeight = FontWeight.Medium
                 )
                 Slider(

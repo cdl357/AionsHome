@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -444,7 +446,11 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                 .background(Color(0xEE141210))
                 .clickable { viewer = null }
         ) {
-            val bmp = remember(ph.id) { decode(ph.file(context)) }
+            val bmp by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(
+                null, ph.id
+            ) {
+                withContext(Dispatchers.IO) { value = decode(ph.file(context)) }
+            }
             bmp?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
@@ -536,22 +542,16 @@ fun AlbumScreen(onBack: () -> Unit = {}) {
                         modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp)
                     )
                 } else {
-                    Column(
-                        Modifier
-                            .verticalScroll(rememberScrollState())
-                            .padding(4.dp)
+                    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxSize().padding(4.dp)
                     ) {
-                        inAlbum.chunked(4).forEach { row ->
-                            Row(Modifier.fillMaxWidth()) {
-                                row.forEach { ph ->
-                                    Box(Modifier.weight(1f).padding(2.dp)) {
-                                        PhotoCell(ph, false, false) { viewer = ph }
-                                    }
-                                }
-                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                            }
+                        items(inAlbum, key = { "d_" + it.id }) { ph ->
+                            PhotoCell(ph, false, false) { viewer = ph }
                         }
-                        Spacer(Modifier.height(40.dp))
+                        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(40.dp)) }
                     }
                 }
             }
@@ -720,7 +720,12 @@ private fun PhotoCell(
             .background(Color(0xFFF0EEE8))
             .clickable { onClick() }
     ) {
-        val bmp = remember(photo.id, photo.filename) { decode(photo.file(context)) }
+        val bmpState = androidx.compose.runtime.produceState<android.graphics.Bitmap?>(
+            null, photo.id, photo.filename
+        ) {
+            withContext(Dispatchers.IO) { value = decode(photo.file(context)) }
+        }
+        val bmp = bmpState.value
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
@@ -765,7 +770,13 @@ private fun AlbumCard(
             .clickable { onOpen() }
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(0.92f).background(Color(0xFFF0EEE8))) {
-            val bmp = cover?.let { ph -> remember(ph.id) { decode(ph.file(context)) } }
+            val bmpState = androidx.compose.runtime.produceState<android.graphics.Bitmap?>(
+                null, cover?.id ?: -1L
+            ) {
+                val c = cover ?: return@produceState
+                withContext(Dispatchers.IO) { value = decode(c.file(context)) }
+            }
+            val bmp = bmpState.value
             if (bmp != null) {
                 Image(
                     bitmap = bmp.asImageBitmap(),

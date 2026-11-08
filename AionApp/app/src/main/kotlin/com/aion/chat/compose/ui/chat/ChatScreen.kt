@@ -271,6 +271,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val emptyHint = remember { mutableStateOf(false) }
     var activeRequestId by remember { mutableStateOf("") }
     var stopping by remember { mutableStateOf(false) }
+    var pendingReload by androidx.compose.runtime.mutableIntStateOf(0)
+
     fun stopGeneration() {
         if (!sending.value) return
         stopping = true
@@ -279,6 +281,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         } else {
             runCatching { wiring?.engine?.stop(activeRequestId) }
         }
+        // 停止/失败后对齐库内真身（乐观气泡撤回或落位）——经计数器触发 reloadNow（声明在后）
+        pendingReload++
         sending.value = false
         pendingSegments.clear()
         thinkingLive.value = null; toolName.value = null; noticeText.value = null
@@ -383,6 +387,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     // ── 进页面/回页面就加载历史：以前只在发送成功后 reload——重进聊天页必然"全空" ──
     LaunchedEffect(wiring, routeStamp) {
         if (wiring != null) withContext(Dispatchers.IO) { reloadNow() }
+    }
+    // 停止/失败触发的对齐 reload（reloadNow 声明于前方可直接引用）
+    LaunchedEffect(pendingReload) {
+        if (pendingReload > 0 && wiring != null) withContext(Dispatchers.IO) { reloadNow() }
     }
 
     // ── 发送：引擎 commitUser + 完成后分条冒泡 ──
@@ -528,6 +536,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 val wFresh = HomecomingChatWiring.safeCreate(context) ?: run {
                     main.post {
                         sending.value = false
+                        messages.removeAll { it.id == "temp_" + reqId }
                         sendError.value = SendError(
                             title = "线路装配失败",
                             reason = "聊天运行时初始化失败（详见 设置 → 崩溃日志）",
@@ -2792,7 +2801,8 @@ private fun extractFramesForModel(
         val n = maxOf(2, minOf(20, (durMs / intervalMs).toInt()))
         (0 until n).map { i -> (i * intervalMs * 1000L).coerceAtMost(durMs * 1000L - 1) }
     } else {
-        (0 until count).map { i -> durMs * 1000L * (i * 2 + 1) / (count * 2) }
+        // 帧数模式：含首帧（0s 起），v9 审计 P2 修复「少抽一帧」
+        (0 until count.coerceIn(2, 20)).map { i -> (durMs * 1000L * i / count).coerceAtMost(durMs * 1000L - 1) }
     }
     positions.forEach { atUs ->
         val f = r.getFrameAtTime(atUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: return@forEach

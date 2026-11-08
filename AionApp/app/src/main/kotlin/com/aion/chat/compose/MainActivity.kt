@@ -72,6 +72,14 @@ class MainActivity : ComponentActivity() {
             previous?.uncaughtException(thread, throwable)
         }
         AppCrashLog.breadcrumb(this, "Activity onCreate")
+        // 通知权限：默认开启的弹窗功能需要 13+ 运行时授权（拒绝后开关与实际脱节，v9 审计 P2）
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            com.aion.chat.compose.data.SeanNotifier.enabled(this) &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 4601) }
+        }
         // 线路配置跨卸载：私有 routes.json 被清而 Downloads 备份在 → 组合前先恢复
         runCatching { com.aion.chat.compose.data.HomecomingRouteConfig.restoreFromDownloads(this) }
         setContent {

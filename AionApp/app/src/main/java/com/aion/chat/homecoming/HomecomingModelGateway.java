@@ -25,7 +25,9 @@ import okhttp3.Response;
 public final class HomecomingModelGateway {
     private final HomecomingRouteVault vault;
     private final Transport transport;
-    private final Map<String, AtomicBoolean> cancellations = new ConcurrentHashMap<>();
+    // 取消表 static：发送路径每次 safeCreate 新实例，停止键可能拿的是旧实例引用——
+    // 取消表必须跨实例（v9 审计 P1-4：UI 停了后台流继续跑完落库）
+    private static final Map<String, AtomicBoolean> cancellations = new ConcurrentHashMap<>();
     // 自定义请求（他的配置页 → 自定义请求）：额外请求头 + 正文参数，合并进每次请求
     private final Map<String, String> extraHeaders;
     private final org.json.JSONObject extraBody;
@@ -212,7 +214,11 @@ public final class HomecomingModelGateway {
                     try {
                         String safeName = v[1];
                         String resultText;
-                        if (com.aion.chat.compose.data.MemoryTools.handles(safeName)
+                        boolean mcpHasTool = false;
+                        for (com.aion.chat.compose.data.McpClient.ToolDef d0 : com.aion.chat.compose.data.McpClient.cachedDefs()) {
+                            if (d0.safeName.equals(safeName)) { mcpHasTool = true; break; }
+                        }
+                        if (!mcpHasTool && com.aion.chat.compose.data.MemoryTools.handles(safeName)
                                 && com.aion.chat.compose.data.MemoryTools.enabled()) {
                             String r = com.aion.chat.compose.data.MemoryTools.dispatch(
                                     safeName, v[2].isEmpty() ? "{}" : v[2]);
