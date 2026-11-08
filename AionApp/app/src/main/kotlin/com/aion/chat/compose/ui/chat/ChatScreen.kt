@@ -286,6 +286,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     var viewerIndex by remember { mutableStateOf(0) }
     // 视频消息：抽帧给他看，气泡可点播
     var pendingVideo by remember { mutableStateOf<VideoDraft?>(null) }
+    var sliceVideo by remember { mutableStateOf<SlicePrep?>(null) }   // 待选抽帧参数（橘子岛式切片弹窗）
     var playerVideo by remember { mutableStateOf<String?>(null) }
     // 模型选择弹层（橘瓣 ModelSelector 同款）
     var showModelSheet by remember { mutableStateOf(false) }
@@ -923,7 +924,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             scope.launch(Dispatchers.IO) {
-                val draft = runCatching {
+                val prep = runCatching {
                     val dir = java.io.File(context.filesDir, "chat_videos").apply { mkdirs() }
                     val base = "vid_" + System.currentTimeMillis()
                     val dst = java.io.File(dir, "$base.mp4")
@@ -931,51 +932,69 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         dst.outputStream().use { input.copyTo(it) }
                     } ?: return@runCatching null
                     if (dst.length() > 200L * 1024 * 1024) { dst.delete(); return@runCatching null }
+                    // 只读时长 + 封面：抽帧参数交给「视频切片」弹窗（照橘子岛）
                     val r = android.media.MediaMetadataRetriever()
-                    val frames = mutableListOf<String>()
-                    var thumbPath = ""
                     var durMs = 0L
+                    var thumbPath = ""
                     try {
                         r.setDataSource(dst.absolutePath)
                         durMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                             ?.toLongOrNull() ?: 0L
-                        // 封面：10% 处一帧，气泡显示用
                         r.getFrameAtTime(durMs * 1000L / 10, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { cover ->
                             val t = java.io.File(dir, "${base}_thumb.jpg")
                             t.outputStream().use { scaledBitmap(cover, 720).compress(Bitmap.CompressFormat.JPEG, 85, it) }
                             cover.recycle()
                             thumbPath = t.absolutePath
                         }
-                        // 6 帧：每段中点抽一帧，长边压 768
-                        val n = 6
-                        (0 until n).forEach { i ->
-                            val atUs = durMs * 1000L * (i * 2 + 1) / (n * 2)
-                            val f = r.getFrameAtTime(atUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                                ?: return@forEach
-                            val out = ByteArrayOutputStream()
-                            scaledBitmap(f, 768).compress(Bitmap.CompressFormat.JPEG, 78, out)
-                            f.recycle()
-                            frames.add("data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
-                        }
                     } finally {
                         r.release()
                     }
-                    if (frames.isEmpty()) {
-                        dst.delete()   // 别留最大 200MB 的孤儿文件
+                    if (durMs <= 0L) {
+                        dst.delete()
                         java.io.File(dir, "${base}_thumb.jpg").delete()
                         null
-                    } else VideoDraft(dst.absolutePath, thumbPath, durMs, frames)
+                    } else SlicePrep(dst.absolutePath, durMs, thumbPath)
                 }.getOrNull()
                 main.post {
-                    if (draft == null) {
+                    if (prep == null) {
                         Toast.makeText(context, "这个视频读不出来（大小/编码可能不支持）", Toast.LENGTH_SHORT).show()
                     } else {
-                        pendingVideo = draft
+                        sliceVideo = prep
                         plusOpen.value = false
                     }
                 }
             }
         }
+    }
+
+    // ── 视频切片弹窗（照橘子岛：按帧数/按间隔，确认后按参数抽帧） ──
+    sliceVideo?.let { prep ->
+        VideoSliceDialog(
+            videoPath = prep.dstPath,
+            durationMs = prep.durMs,
+            onConfirm = { result ->
+                scope.launch(Dispatchers.IO) {
+                    val draft = runCatching {
+                        val r = android.media.MediaMetadataRetriever()
+                        try {
+                            r.setDataSource(prep.dstPath)
+                            val frames = extractFramesForModel(r, prep.durMs, result.frameCount, result.intervalMs)
+                            if (frames.isEmpty()) null
+                            else VideoDraft(prep.dstPath, prep.thumbPath, prep.durMs, frames)
+                        } finally { r.release() }
+                    }.getOrNull()
+                    main.post {
+                        if (draft == null) {
+                            Toast.makeText(context, "抽帧失败，换个参数或换个视频试试", Toast.LENGTH_SHORT).show()
+                        } else {
+                            pendingVideo = draft
+                            sliceVideo = null
+                        }
+                    }
+                }
+            },
+            onDismiss = { sliceVideo = null }
+        )
     }
 
     // ── 分条冒泡动画：全量段落陆续上屏，冒完读库对齐 ──
@@ -2699,6 +2718,34 @@ private fun timeText(ms: Long): String =
 
 
 // ── 视频消息（她发视频 → 抽帧给他看 + 本地可回放） ──
+
+/** 待选抽帧参数的视频（切片弹窗输入）。 */
+private data class SlicePrep(val dstPath: String, val durMs: Long, val thumbPath: String)
+
+/** 按参数抽帧：帧数模式取每段中点；间隔模式按间隔取位（相邻同帧去重）。 */
+private fun extractFramesForModel(
+    r: android.media.MediaMetadataRetriever,
+    durMs: Long,
+    count: Int,
+    intervalMs: Long
+): List<String> {
+    val out = mutableListOf<String>()
+    val positions: List<Long> = if (intervalMs > 0) {
+        val n = maxOf(2, minOf(20, (durMs / intervalMs).toInt()))
+        (0 until n).map { i -> (i * intervalMs * 1000L).coerceAtMost(durMs * 1000L - 1) }
+    } else {
+        (0 until count).map { i -> durMs * 1000L * (i * 2 + 1) / (count * 2) }
+    }
+    positions.forEach { atUs ->
+        val f = r.getFrameAtTime(atUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: return@forEach
+        val bos = ByteArrayOutputStream()
+        scaledBitmap(f, 768).compress(Bitmap.CompressFormat.JPEG, 78, bos)
+        f.recycle()
+        out.add("data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP))
+        if (out.size >= 20) return out
+    }
+    return out.distinct()
+}
 
 /** 待发视频：本地 mp4 + 封面 + 给模型看的按序抽帧。 */
 private data class VideoDraft(
