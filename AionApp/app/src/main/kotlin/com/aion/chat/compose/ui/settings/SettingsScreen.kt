@@ -529,6 +529,33 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             )
         }
 
+        // ── 提示词缓存（照橘瓣断点策略：system 末块+倒数第二条 user 末块，省 token 提速） ──
+        val cacheOn = remember { mutableStateOf(
+            context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
+                .getBoolean("prompt_caching", true)
+        ) }
+        FrostCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("提示词缓存", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("照橘瓣断点策略打 cache_control：人设和历史前缀命中缓存，回话更快更省 token。命中数在 请求日志 里看", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                androidx.compose.material3.Switch(
+                    checked = cacheOn.value,
+                    onCheckedChange = { on ->
+                        cacheOn.value = on
+                        context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
+                            .edit().putBoolean("prompt_caching", on).apply()
+                        Toast.makeText(
+                            context,
+                            if (on) "已开启——下一条消息起生效" else "已关闭——下一条消息起生效",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+            }
+        }
+
         // ── 消息通知弹窗（他回话时横幅提醒，锁屏也显示） ──
         val notifyOn = remember { mutableStateOf(com.aion.chat.compose.data.SeanNotifier.enabled(context)) }
         val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }

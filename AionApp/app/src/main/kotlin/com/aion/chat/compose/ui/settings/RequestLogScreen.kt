@@ -115,6 +115,7 @@ fun RequestLogScreen(onBack: () -> Unit = {}) {
                     ms = "${e.ms}ms",
                     failed = e.code !in 200..299,
                     err = e.err.ifBlank { null },
+                    cached = e.cachedTokens,
                     onTap = {
                         detail = "${e.method} ${fmtTime(e.ts)}\n${e.url}\nStatus: ${e.code} · ${e.ms}ms" +
                             (if (e.err.isNotBlank()) "\n\n" + e.err else "")
@@ -187,6 +188,7 @@ private fun LogCard(
     ms: String,
     failed: Boolean,
     err: String?,
+    cached: Long = 0,
     onTap: () -> Unit
 ) {
     Column(
@@ -223,6 +225,14 @@ private fun LogCard(
         )
         Spacer(Modifier.height(3.dp))
         Row {
+            if (cached > 0) {
+                Text(
+                    "缓存命中 ${cached} tok",
+                    fontSize = 11.sp, color = Color(0xFF4CAF50),
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+                Spacer(Modifier.width(10.dp))
+            }
             Text(
                 status,
                 fontSize = 12.sp,

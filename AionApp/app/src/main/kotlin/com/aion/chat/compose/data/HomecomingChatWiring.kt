@@ -54,9 +54,11 @@ class HomecomingChatWiring(context: Context) {
         contextBuilder = HomecomingContextBuilder(identities, memories, chats::listMessages, 48_000)
         vault = buildVault(appContext)
         val customReq = loadCustomRequest(appContext)
+        val caching = appContext.getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+            .getBoolean("prompt_caching", true)
         gateway = HomecomingModelGateway(
             vault, HomecomingModelGateway.OkHttpSseTransport(),
-            customReq?.first, customReq?.second
+            customReq?.first, customReq?.second, caching
         )
         engine = HomecomingChatEngine(chats, contextBuilder, gateway)
     }

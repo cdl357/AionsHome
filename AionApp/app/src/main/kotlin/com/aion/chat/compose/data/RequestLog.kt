@@ -18,7 +18,8 @@ object RequestLog {
         val url: String,
         val code: Int,      // 0 = 没拿到状态码（网络异常/超时）
         val ms: Long,
-        val err: String
+        val err: String,
+        val cachedTokens: Long = 0   // 提示词缓存命中 token 数（>0 才显示）
     )
 
     private const val FILE = "request_log.json"
@@ -32,10 +33,10 @@ object RequestLog {
     @JvmStatic
     @JvmOverloads
     @Synchronized
-    fun add(context: Context?, method: String, url: String, code: Int, ms: Long, err: String = "") {
+    fun add(context: Context?, method: String, url: String, code: Int, ms: Long, err: String = "", cachedTokens: Long = 0) {
         if (appCtx == null && context != null) appCtx = context.applicationContext
         buf.addFirst(
-            Entry(System.currentTimeMillis(), method.uppercase(), url.take(180), code, ms, err.take(200))
+            Entry(System.currentTimeMillis(), method.uppercase(), url.take(180), code, ms, err.take(200), cachedTokens)
         )
         while (buf.size > MAX) buf.removeLast()
         persistAsync()
@@ -55,7 +56,8 @@ object RequestLog {
                         buf.addLast(
                             Entry(
                                 o.optLong("ts"), o.optString("method"), o.optString("url"),
-                                o.optInt("code"), o.optLong("ms"), o.optString("err")
+                                o.optInt("code"), o.optLong("ms"), o.optString("err"),
+                                o.optLong("cached")
                             )
                         )
                     }
@@ -86,6 +88,7 @@ object RequestLog {
                         JSONObject()
                             .put("ts", e.ts).put("method", e.method).put("url", e.url)
                             .put("code", e.code).put("ms", e.ms).put("err", e.err)
+                            .put("cached", e.cachedTokens)
                     )
                 }
                 file(ctx).writeText(arr.toString())

@@ -35,11 +35,21 @@ public final class HomecomingModelGateway {
 
     public HomecomingModelGateway(HomecomingRouteVault vault, Transport transport,
                                   Map<String, String> extraHeaders, org.json.JSONObject extraBody) {
+        this(vault, transport, extraHeaders, extraBody, true);
+    }
+
+    // 提示词缓存（照橘瓣断点策略）：system 末块 + 倒数第二条 user 末块打 cache_control
+    private final boolean promptCaching;
+
+    public HomecomingModelGateway(HomecomingRouteVault vault, Transport transport,
+                                  Map<String, String> extraHeaders, org.json.JSONObject extraBody,
+                                  boolean promptCaching) {
         this.vault = vault;
         this.transport = transport;
         this.extraHeaders = extraHeaders == null
                 ? java.util.Collections.emptyMap() : extraHeaders;
         this.extraBody = extraBody == null ? new org.json.JSONObject() : extraBody;
+        this.promptCaching = promptCaching;
     }
 
     public void stream(ChatRequest request, StreamObserver observer) throws Exception {
@@ -67,9 +77,25 @@ public final class HomecomingModelGateway {
             if (!extraHeaders.isEmpty() || extraBody.length() > 0) {
                 network = mergeCustom(network);
             }
+            final java.util.concurrent.atomic.AtomicLong cachedTok =
+                    new java.util.concurrent.atomic.AtomicLong(-1);
             transport.execute(network, line -> {
                 if (cancelled.get()) {
                     return;
+                }
+                // 缓存命中统计：usage 里读 cached_tokens / cache_read_input_tokens
+                if (line.contains("\"usage\"")) {
+                    try {
+                        String t = line.startsWith("data:") ? line.substring(5).trim() : line;
+                        JSONObject u = new JSONObject(t).optJSONObject("usage");
+                        if (u != null) {
+                            long c = -1;
+                            JSONObject d = u.optJSONObject("prompt_tokens_details");
+                            if (d != null) c = d.optLong("cached_tokens", -1);
+                            if (c < 0) c = u.optLong("cache_read_input_tokens", -1);
+                            if (c >= 0) cachedTok.set(c);
+                        }
+                    } catch (Exception ignored) { }
                 }
                 ProviderFrame frame;
                 try {
@@ -87,7 +113,8 @@ public final class HomecomingModelGateway {
                 }
             }, cancelled::get);
             com.aion.chat.compose.data.RequestLog.add(null, "POST", network.url, 200,
-                    android.os.SystemClock.elapsedRealtime() - reqT0);
+                    android.os.SystemClock.elapsedRealtime() - reqT0,
+                    "", cachedTok.get());
             if (cancelled.get()) {
                 observer.onFailure("cancelled");
             } else {
@@ -157,7 +184,7 @@ public final class HomecomingModelGateway {
         }
     }
 
-    private static NetworkRequest build(
+    private NetworkRequest build(
             HomecomingRouteVault.Route route,
             HomecomingRouteVault.Model model,
             ChatRequest request) throws Exception {
@@ -169,17 +196,40 @@ public final class HomecomingModelGateway {
         return buildOpenAi(route, model, request);
     }
 
-    private static NetworkRequest buildOpenAi(
+    private NetworkRequest buildOpenAi(
             HomecomingRouteVault.Route route,
             HomecomingRouteVault.Model model,
             ChatRequest request) throws Exception {
         JSONArray messages = new JSONArray();
+        // 缓存断点目标：倒数第二条纯文本 user 消息（橘瓣策略——上轮起点，跨轮稳定命中）
+        int cacheTargetIdx = -1;
+        if (promptCaching) {
+            int seen = 0;
+            for (int i = request.messages.size() - 1; i >= 0; i--) {
+                ChatMessage m = request.messages.get(i);
+                if ("user".equals(m.role) && !m.text.isEmpty()) {
+                    seen++;
+                    if (seen == 2) { cacheTargetIdx = i; break; }
+                }
+            }
+        }
+        int msgIdx = -1;
         for (ChatMessage message : request.messages) {
+            msgIdx++;
             JSONObject value = new JSONObject().put("role", message.role);
+            boolean cachePoint = promptCaching
+                    && (msgIdx == cacheTargetIdx || "system".equals(message.role));
             boolean lastUserWithImage = !request.imageDataUrl.isEmpty()
                     && "user".equals(message.role)
                     && message == request.messages.get(request.messages.size() - 1);
-            if (lastUserWithImage) {
+            if (cachePoint && !lastUserWithImage) {
+                // content 数组格式，末块打 cache_control（橘瓣同款）
+                value.put("content", new JSONArray().put(new JSONObject()
+                        .put("type", "text")
+                        .put("text", message.text)
+                        .put("cache_control", new JSONObject().put("type", "ephemeral"))));
+            }
+            else if (lastUserWithImage) {
                 // 多图：首图 + extras 逐张 image_url part（v7：中转站与网关对齐）
                 JSONArray parts = new JSONArray()
                         .put(new JSONObject()
@@ -205,6 +255,10 @@ public final class HomecomingModelGateway {
                 .put("model", model.model)
                 .put("messages", messages)
                 .put("stream", true);
+        if (promptCaching) {
+            // 让 usage（含缓存命中数）在流末尾回来
+            body.put("stream_options", new JSONObject().put("include_usage", true));
+        }
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Authorization", "Bearer " + route.apiKey);
         headers.put("Content-Type", "application/json");
