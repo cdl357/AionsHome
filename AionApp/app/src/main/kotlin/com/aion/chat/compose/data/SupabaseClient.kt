@@ -33,8 +33,13 @@ object SupabaseClient {
     /** 备用中转：18443（个别网络环境可能放行）。 */
     const val RELAY_URL_ALT = "http://134.175.7.196:18443/supabase"
 
-    // 直连（橘瓣朋友圈同款：service_role 绕 RLS）排最前——她手机上橘瓣就是这么连上的
-    internal val BASES = arrayOf(URL, RELAY_URL, RELAY_URL_ALT)
+    // 线路优先级：80/443（运营商永不拦）→ 8783/18443 中转 → 直连
+    // 80/443 需腾讯安全组放行（0.3.134 起申请），放行前这两条会快速超时跳过
+    internal val BASES = arrayOf(
+        "http://134.175.7.196:80/supabase",
+        "http://134.175.7.196:443/supabase",
+        RELAY_URL, RELAY_URL_ALT, URL
+    )
 
     /** 最近一次成功的线路：下次直接从它开始，别每条请求都从第一条死线等满超时（同步慢的主因）。 */
     @JvmStatic @Volatile

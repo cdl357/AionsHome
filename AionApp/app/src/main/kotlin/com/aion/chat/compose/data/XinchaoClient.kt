@@ -14,6 +14,8 @@ import java.net.URL
 object XinchaoClient {
 
     private val BASES = arrayOf(
+        "http://134.175.7.196:80/xinchao",
+        "http://134.175.7.196:443/xinchao",
         SupabaseClient.RELAY_URL.removeSuffix("/supabase") + "/xinchao",
         SupabaseClient.RELAY_URL_ALT.removeSuffix("/supabase") + "/xinchao",
         "http://134.175.7.196:8080"
