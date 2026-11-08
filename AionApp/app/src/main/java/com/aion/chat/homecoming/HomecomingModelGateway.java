@@ -40,16 +40,34 @@ public final class HomecomingModelGateway {
 
     // 提示词缓存（照橘瓣断点策略）：system 末块 + 倒数第二条 user 末块打 cache_control
     private final boolean promptCaching;
+    // 缓存 TTL（橘瓣同款可选）：null/"5m" = 默认 5 分钟，"1h" = 1 小时
+    private final String cacheTtl;
 
     public HomecomingModelGateway(HomecomingRouteVault vault, Transport transport,
                                   Map<String, String> extraHeaders, org.json.JSONObject extraBody,
                                   boolean promptCaching) {
+        this(vault, transport, extraHeaders, extraBody, promptCaching, null);
+    }
+
+    public HomecomingModelGateway(HomecomingRouteVault vault, Transport transport,
+                                  Map<String, String> extraHeaders, org.json.JSONObject extraBody,
+                                  boolean promptCaching, String cacheTtl) {
         this.vault = vault;
         this.transport = transport;
         this.extraHeaders = extraHeaders == null
                 ? java.util.Collections.emptyMap() : extraHeaders;
         this.extraBody = extraBody == null ? new org.json.JSONObject() : extraBody;
         this.promptCaching = promptCaching;
+        this.cacheTtl = cacheTtl;
+    }
+
+    private org.json.JSONObject cacheControl() {
+        org.json.JSONObject cc = new org.json.JSONObject();
+        try {
+            cc.put("type", "ephemeral");
+            if ("1h".equals(cacheTtl)) cc.put("ttl", "1h");
+        } catch (Exception ignored) { }
+        return cc;
     }
 
     public void stream(ChatRequest request, StreamObserver observer) throws Exception {
@@ -79,6 +97,8 @@ public final class HomecomingModelGateway {
             }
             final java.util.concurrent.atomic.AtomicLong cachedTok =
                     new java.util.concurrent.atomic.AtomicLong(-1);
+            final java.util.concurrent.atomic.AtomicLong promptTok =
+                    new java.util.concurrent.atomic.AtomicLong(-1);
             transport.execute(network, line -> {
                 if (cancelled.get()) {
                     return;
@@ -89,6 +109,7 @@ public final class HomecomingModelGateway {
                         String t = line.startsWith("data:") ? line.substring(5).trim() : line;
                         JSONObject u = new JSONObject(t).optJSONObject("usage");
                         if (u != null) {
+                            promptTok.set(u.optLong("prompt_tokens", -1));
                             long c = -1;
                             JSONObject d = u.optJSONObject("prompt_tokens_details");
                             if (d != null) c = d.optLong("cached_tokens", -1);
@@ -114,7 +135,7 @@ public final class HomecomingModelGateway {
             }, cancelled::get);
             com.aion.chat.compose.data.RequestLog.add(null, "POST", network.url, 200,
                     android.os.SystemClock.elapsedRealtime() - reqT0,
-                    "", cachedTok.get());
+                    "", cachedTok.get(), promptTok.get());
             if (cancelled.get()) {
                 observer.onFailure("cancelled");
             } else {
@@ -223,11 +244,11 @@ public final class HomecomingModelGateway {
                     && "user".equals(message.role)
                     && message == request.messages.get(request.messages.size() - 1);
             if (cachePoint && !lastUserWithImage) {
-                // content 数组格式，末块打 cache_control（橘瓣同款）
+                // content 数组格式，末块打 cache_control（橘瓣同款，TTL 可选）
                 value.put("content", new JSONArray().put(new JSONObject()
                         .put("type", "text")
                         .put("text", message.text)
-                        .put("cache_control", new JSONObject().put("type", "ephemeral"))));
+                        .put("cache_control", cacheControl())));
             }
             else if (lastUserWithImage) {
                 // 多图：首图 + extras 逐张 image_url part（v7：中转站与网关对齐）

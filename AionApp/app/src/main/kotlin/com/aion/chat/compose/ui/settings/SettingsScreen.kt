@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -553,6 +554,34 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                         ).show()
                     }
                 )
+            }
+            if (cacheOn.value) {
+                var ttl by remember { mutableStateOf(
+                    context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
+                        .getString("prompt_caching_ttl", "5m") ?: "5m"
+                ) }
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 6.dp)) {
+                    Text("缓存保留时长", fontSize = 13.sp, color = HomecomingColors.InkSoft)
+                    Spacer(Modifier.width(12.dp))
+                    listOf("5m" to "5 分钟", "1h" to "1 小时").forEach { (k, label) ->
+                        val sel = ttl == k
+                        Text(
+                            label, fontSize = 13.sp,
+                            color = if (sel) Color.White else HomecomingColors.Ink,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (sel) HomecomingColors.Accent else Color(0xFFF2F0EA))
+                                .clickable {
+                                    ttl = k
+                                    context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("prompt_caching_ttl", k).apply()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                }
             }
         }
 

@@ -102,6 +102,17 @@ fun RequestLogScreen(onBack: () -> Unit = {}) {
             fontSize = 40.sp, color = Color(0xFF26211C), fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
+        // 缓存命中率汇总（prompt 总量 vs 命中量，聊天请求聚合）
+        if (entries.any { it.promptTokens > 0 }) {
+            val pSum = entries.filter { it.promptTokens > 0 }.sumOf { it.promptTokens }
+            val cSum = entries.filter { it.promptTokens > 0 }.sumOf { it.cachedTokens }
+            val pct = if (pSum > 0) (cSum * 100 / pSum) else 0
+            Text(
+                "缓存命中 ${cSum} / ${pSum} tok（${pct}%）",
+                fontSize = 12.sp, color = Color(0xFF4CAF50),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        }
         Spacer(Modifier.height(6.dp))
 
         LazyColumn(Modifier.fillMaxSize()) {
