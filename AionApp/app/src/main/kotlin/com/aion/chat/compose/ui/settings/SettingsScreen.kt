@@ -156,7 +156,10 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             .padding(18.dp)
     ) {
         Text("设置", fontSize = 22.sp, color = HomecomingColors.Ink)
-        Text("云线路 / MCP / 备份都在这；背景和主题在样式中心", fontSize = 12.sp, color = HomecomingColors.InkSoft)
+        Text(
+            "v" + com.aion.chat.BuildConfig.VERSION_NAME + " · 云线路 / MCP / 备份；背景和主题在样式中心",
+            fontSize = 12.sp, color = HomecomingColors.InkSoft
+        )
         Spacer(Modifier.height(14.dp))
 
         // 主题 / 主页背景图已搬进 样式中心（0.3.112）
