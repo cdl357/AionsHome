@@ -510,9 +510,10 @@ fun MomentsScreen() {
         // ── 云端失败横幅：网络/权限/解析分种提示（点一下重试；带最后一条线路的具体失败原因） ──
         if (cloudError.value != null) {
             val kind = cloudError.value!!
+            val ver = "v" + com.aion.chat.BuildConfig.VERSION_NAME + " · "
             val msg = when (kind) {
                 com.aion.chat.compose.data.CloudErrorKind.NETWORK ->
-                    "网络连不上云端（超时/DNS/TLS 被拦），手机里的内容先看着"
+                    "${ver}网络连不上云端（超时/DNS/TLS 被拦），手机里的内容先看着"
                 com.aion.chat.compose.data.CloudErrorKind.HTTP_401 ->
                     "云端 401：moments 表没放行 anon 读取，先在 Supabase 跑 docs/supabase-rls.sql"
                 com.aion.chat.compose.data.CloudErrorKind.HTTP_403 ->
