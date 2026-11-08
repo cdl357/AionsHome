@@ -33,13 +33,7 @@ object SupabaseClient {
     /** 备用中转：18443（个别网络环境可能放行）。 */
     const val RELAY_URL_ALT = "http://134.175.7.196:18443/supabase"
 
-    // 线路优先级：80/443（运营商永不拦）→ 8783/18443 中转 → 直连
-    // 80/443 需腾讯安全组放行（0.3.134 起申请），放行前这两条会快速超时跳过
-    internal val BASES = arrayOf(
-        "http://134.175.7.196:80/supabase",
-        "http://134.175.7.196:443/supabase",
-        RELAY_URL, RELAY_URL_ALT, URL
-    )
+    internal val BASES = arrayOf(RELAY_URL, RELAY_URL_ALT, URL)
 
     /** 最近一次成功的线路：下次直接从它开始，别每条请求都从第一条死线等满超时（同步慢的主因）。 */
     @JvmStatic @Volatile
@@ -286,12 +280,66 @@ object SupabaseMomentsStore {
         "sean" -> "Sean"; "yuri" -> "Yuri"; else -> author
     }
 
+    // ── 橘瓣兼容模式：与她手机上一直正常的橘瓣朋友圈请求完全同参数 ──
+    private const val ORANGE_URL = "https://byqqwypdfiwvalozihgs.supabase.co/rest/v1"
+    private const val ORANGE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzY1NDA4MCwiZXhwIjoyMDk5MjMwMDgwfQ.LIbE9DFsLSRhOig5bUUfUP4r7t1ykdNy8L0gZM_xtGw"
+
+    private val IMG_REGEX = Regex("<!--imgs:(.*?)-->", RegexOption.DOT_MATCHES_ALL)
+
+    private fun stripRawImages(raw: String): String = IMG_REGEX.replace(raw, "").trim()
+
+    private fun parseInlineImages(raw: String): List<String> =
+        IMG_REGEX.find(raw)?.groupValues?.get(1)
+            ?.split("|")?.map { it.trim() }?.filter { it.isNotBlank() }
+            ?: emptyList()
+
+    private fun orangeConn(url: String): HttpURLConnection =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("apikey", ORANGE_KEY)
+            setRequestProperty("Authorization", "Bearer $ORANGE_KEY")
+            setRequestProperty("Accept", "application/json")
+            connectTimeout = 20000
+            readTimeout = 20000
+        }
+
+    /** 橘瓣同款直连：成功返回列表，失败/为空返回 null（交回原线路链兜底） */
+    private fun fetchMomentsOrange(): List<RemoteMoment>? = runCatching {
+        val body = orangeConn("$ORANGE_URL/moments?order=created_at.desc&limit=50")
+            .inputStream.bufferedReader().use { it.readText() }
+        val arr = JSONArray(body)
+        (0 until arr.length()).mapNotNull { i ->
+            runCatching {
+                val o = arr.getJSONObject(i)
+                val rawContent = o.optString("content", "")
+                RemoteMoment(
+                    id = o.getString("id"),
+                    author = mapAuthor(o.optString("author", "sean")),
+                    content = stripRawImages(rawContent),
+                    imageUrls = jsonStringArray(o.opt("images")).ifEmpty { parseInlineImages(rawContent) },
+                    createdAt = o.optString("created_at", ""),
+                    createdAtMs = parseSupabaseTime(o.optString("created_at", "")),
+                    liked = o.optBoolean("liked", false),
+                    yuriLiked = o.optBoolean("yuri_liked", false),
+                    replyStatus = o.optString("reply_status", "done"),
+                    replyContent = if (o.isNull("reply_content")) "" else o.optString("reply_content")
+                )
+            }.getOrNull()
+        }.filter { it.content.isNotBlank() }
+    }.getOrNull()
+
     /** 读朋友圈动态。查询列按真实表结构写死，不 select *。 */
     suspend fun fetchMoments(): CloudResult<List<RemoteMoment>> {
+        // ① 橘瓣兼容直连（她手机上橘瓣朋友圈一直正常——同参数必须同结果）
+        fetchMomentsOrange()?.let { orangeList ->
+            RequestLog.add(null, "GET", "orange-direct://moments", 200, 0, "", 0, 0)
+            return CloudResult(orangeList, null)
+        }
+        RequestLog.add(null, "GET", "orange-direct://moments", 0, 0, "橘瓣直连失败，走原线路")
+        // ② 原有线路链（中转 → 直连 anon）
         val reply = supabaseRequest(
             "rest/v1/moments",
             "GET",
-            directFirst = true,
             parse = { conn ->
                 JSONArray(conn.inputStream.bufferedReader().readText())
             }
