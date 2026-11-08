@@ -83,7 +83,7 @@ object ChatImporter {
                         "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                     arrayOf(
                         "imp_" + now + "_" + i,
-                        "imp_req_" + now,
+                        "imp_req_" + now + "_" + i,
                         epoch,
                         "main_private",
                         m.role,

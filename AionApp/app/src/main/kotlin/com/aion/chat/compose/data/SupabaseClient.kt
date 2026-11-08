@@ -25,8 +25,6 @@ object SupabaseClient {
 
     const val URL = "https://byqqwypdfiwvalozihgs.supabase.co"
 
-    /** service_role key（照橘瓣朋友圈的直连方式）：绕过 RLS，直连成功率高；只在本 app 内使用 */
-    const val SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzY1NDA4MCwiZXhwIjoyMDk5MjMwMDgwfQ.LIbE9DFsLSRhOig5bUUfUP4r7t1ykdNy8L0gZM_xtGw"
     const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NTQwODAsImV4cCI6MjA5OTIzMDA4MH0.Gacxi6TVGzL3pNn-KdUHkPTYW8dvSpt7A05FpmkZlyc"
 
     /** VPS 中转主线路：8783 端口（安全组已放行，外部实测 200）。 */
@@ -74,8 +72,7 @@ internal suspend fun supabaseRequest(
     method: String,
     body: ByteArray? = null,
     contentType: String = "application/json",
-    parse: ((HttpURLConnection) -> Any?)? = null,
-    useServiceKey: Boolean = false
+    parse: ((HttpURLConnection) -> Any?)? = null
 ): CloudReply = withContext(Dispatchers.IO) {
     var lastError: CloudErrorKind? = null
     var lastDetail: String? = null
@@ -87,8 +84,8 @@ internal suspend fun supabaseRequest(
         try {
             val conn = URL(reqUrl).openConnection() as HttpURLConnection
             conn.requestMethod = method
-            // 直连基线用 service_role（橘瓣同款），中转线路用 anon
-            val key = if (useServiceKey || base == SupabaseClient.URL) SupabaseClient.SERVICE_KEY else SupabaseClient.ANON_KEY
+            // 红线：App 内无 service_role key（memories 走服务器只读代理 /supa-svc/memories）
+            val key = SupabaseClient.ANON_KEY
             conn.setRequestProperty("apikey", key)
             conn.setRequestProperty("Authorization", "Bearer " + key)
             if (body != null) {
@@ -235,10 +232,10 @@ object SupabaseMomentsStore {
 
     /** 她的云端记忆库（memories 表，service_role 全线路读取） */
     suspend fun fetchCloudMemories(): CloudResult<List<CloudMemory>> {
+        // 走服务器只读代理（nginx 注入 service key，GET-only）——App 侧零特权密钥
         val reply = supabaseRequest(
-            "rest/v1/memories?order=created_at.desc&limit=300",
+            "supa-svc/memories?order=created_at.desc&limit=300",
             "GET",
-            useServiceKey = true,
             parse = { conn ->
                 JSONArray(conn.inputStream.bufferedReader().readText())
             }

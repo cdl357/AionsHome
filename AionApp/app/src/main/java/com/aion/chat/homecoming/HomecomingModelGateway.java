@@ -432,13 +432,31 @@ public final class HomecomingModelGateway {
         headers.put("Content-Type", "application/json");
         // Base URL 自动补 /v1（设置页「拉取模型」会补，但手填的常不带——发消息的路径必须同款归一）
         String base = trimSlash(route.baseUrl);
+        // 自定义路径不二次折叠（v9 审计 P1-3）：base 已带具体路径（如 /v1/messages）时原样使用
         if (base.endsWith("/chat/completions")) {
             return new NetworkRequest(base, HomecomingSnapshotStore.canonicalJson(body), headers);
         }
         if (base.contains("?")) {
             return new NetworkRequest(base, HomecomingSnapshotStore.canonicalJson(body), headers);
         }
-        if (!base.endsWith("/v1")) {
+        if (base.endsWith("/v1")) {
+            return new NetworkRequest(
+                    base + "/chat/completions",
+                    HomecomingSnapshotStore.canonicalJson(body),
+                    headers);
+        }
+        try {
+            java.net.URL u = new java.net.URL(base);
+            String path = u.getPath();
+            if (path == null || path.isEmpty() || path.equals("/")) {
+                return new NetworkRequest(
+                        base + "/v1/chat/completions",
+                        HomecomingSnapshotStore.canonicalJson(body),
+                        headers);
+            }
+            // 其他自定义路径（如 /v1/messages）：视为完整对话端点，原样使用
+            return new NetworkRequest(base, HomecomingSnapshotStore.canonicalJson(body), headers);
+        } catch (Exception ignored) {
             base = base + "/v1";
         }
         return new NetworkRequest(

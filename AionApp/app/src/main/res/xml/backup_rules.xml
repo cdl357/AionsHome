@@ -2,4 +2,8 @@
 <full-backup-content>
     <!-- Key 明文不入云备份（红线） -->
     <exclude domain="sharedpref" path="chat_providers.xml"/>
+    <exclude domain="sharedpref" path="sean_ext.xml"/>
+    <exclude domain="sharedpref" path="mcp_store.xml"/>
+    <exclude domain="file" path="routes.json"/>
+    <exclude domain="file" path="mcp.json"/>
 </full-backup-content>

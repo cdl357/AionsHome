@@ -257,9 +257,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val pendingSegments = remember { mutableStateListOf<String>() }
     val sending = remember { mutableStateOf(false) }
     // ── 网关 SSE 后端（开关在设置；默认旧中转站） ──
+    // F2 真迁移（v9 审计 P1-2）：实验网关 8790 从未部署，遗留开关强制关闭，
+    // 老装机不再每次发送白等 10s connect 超时
     val useGateway = remember(routeStamp) {
         context.getSharedPreferences("chat_backend", android.content.Context.MODE_PRIVATE)
-            .getBoolean("gateway", false)
+            .edit().putBoolean("gateway", false).apply()
+        false
     }
     val thinkingLive = remember { mutableStateOf<String?>(null) }
     val toolName = remember { mutableStateOf<String?>(null) }
