@@ -62,6 +62,10 @@ class HomecomingChatWiring(context: Context) {
             customReq?.first, customReq?.second, caching, ttl
         )
         engine = HomecomingChatEngine(chats, contextBuilder, gateway)
+        // MCP 工具注册表异步刷新（不阻塞装配；网关同步读缓存，下一轮消息即可用）
+        Thread {
+            runCatching { com.aion.chat.compose.data.McpClient.refreshTools(appContext) }
+        }.start()
     }
 
     private fun buildVault(context: Context): HomecomingRouteVault {

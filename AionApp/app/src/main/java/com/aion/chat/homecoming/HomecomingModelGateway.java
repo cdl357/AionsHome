@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
+import com.aion.chat.compose.data.RequestLog;
 import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -81,15 +82,28 @@ public final class HomecomingModelGateway {
         if (cancellations.putIfAbsent(request.requestId, cancelled) != null) {
             throw new IllegalStateException("request is already running");
         }
-        HomecomingModelStreamNormalizer normalizer =
-                new HomecomingModelStreamNormalizer();
-        StringBuilder complete = new StringBuilder();
         // F5：推理型渠道只吐 reasoning_content 不吐 content 时，错误别再误导去查余额
-        final boolean[] sawReasoning = {false};
+        try {
+            runRounds(request, observer, cancelled, route, model, 0, null,
+                    new HomecomingModelStreamNormalizer(), new StringBuilder(), new boolean[]{false});
+        } finally {
+            cancellations.remove(request.requestId, cancelled);
+        }
+    }
+
+    /** 一轮生成：SSE 抽文本/工具调用；有 tool_calls → 执行 MCP → 结果入历史 → 下一轮（最多 6 轮，照橘子岛骨架）。 */
+    private void runRounds(ChatRequest request, StreamObserver observer, AtomicBoolean cancelled,
+                           HomecomingRouteVault.Route route, HomecomingRouteVault.Model model,
+                           int round, org.json.JSONArray toolHistory,
+                           HomecomingModelStreamNormalizer normalizer, StringBuilder complete,
+                           boolean[] sawReasoning) throws Exception {
         String reqUrl = null;
         final long reqT0 = android.os.SystemClock.elapsedRealtime();
+        // OpenAI 流式工具调用累积：index -> {id, name, arguments}
+        final java.util.LinkedHashMap<Integer, String[]> toolAcc = new java.util.LinkedHashMap<>();
+        final boolean[] toolFinish = {false};
         try {
-            NetworkRequest network = build(route, model, request);
+            NetworkRequest network = build(request, route, model, toolHistory);
             reqUrl = network.url;
             // 自定义请求（他的配置页）：额外请求头 + 正文参数最后合并，可覆盖默认值
             if (!extraHeaders.isEmpty() || extraBody.length() > 0) {
@@ -118,6 +132,38 @@ public final class HomecomingModelGateway {
                         }
                     } catch (Exception ignored) { }
                 }
+                // 工具调用增量累积（OpenAI 流式格式）
+                if (line.contains("\"tool_calls\"") || line.contains("finish_reason")) {
+                    try {
+                        String t = line.startsWith("data:") ? line.substring(5).trim() : line;
+                        if (!"[DONE]".equals(t)) {
+                            JSONObject o = new JSONObject(t);
+                            JSONArray ch = o.optJSONArray("choices");
+                            if (ch != null && ch.length() > 0) {
+                                JSONObject c0 = ch.getJSONObject(0);
+                                if ("tool_calls".equals(c0.optString("finish_reason"))) toolFinish[0] = true;
+                                JSONObject delta = c0.optJSONObject("delta");
+                                JSONArray tcs = delta == null ? null : delta.optJSONArray("tool_calls");
+                                if (tcs != null) {
+                                    for (int k = 0; k < tcs.length(); k++) {
+                                        JSONObject tc = tcs.getJSONObject(k);
+                                        int idx = tc.optInt("index", 0);
+                                        String[] acc = toolAcc.computeIfAbsent(idx, x -> new String[]{"", "", ""});
+                                        String idv = tc.optString("id", "");
+                                        if (!idv.isEmpty()) acc[0] = idv;
+                                        JSONObject fn = tc.optJSONObject("function");
+                                        if (fn != null) {
+                                            String nv = fn.optString("name", "");
+                                            if (!nv.isEmpty()) acc[1] = acc[1] + nv;
+                                            String av = fn.optString("arguments", "");
+                                            if (!av.isEmpty()) acc[2] = acc[2] + av;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) { }
+                }
                 ProviderFrame frame;
                 try {
                     frame = parseFrame(route.provider, line);
@@ -138,19 +184,64 @@ public final class HomecomingModelGateway {
                     "", cachedTok.get(), promptTok.get());
             if (cancelled.get()) {
                 observer.onFailure("cancelled");
+                return;
+            }
+            // 工具调用轮：执行 MCP 工具 → 结果入历史 → 下一轮
+            if (toolFinish[0] && !toolAcc.isEmpty() && round < 6) {
+                org.json.JSONArray hist = toolHistory == null ? new org.json.JSONArray() : toolHistory;
+                org.json.JSONArray tcs = new org.json.JSONArray();
+                toolAcc.forEach((k, v) -> {
+                    try {
+                        tcs.put(new JSONObject()
+                                .put("id", v[0].isEmpty() ? ("call_" + k) : v[0])
+                                .put("type", "function")
+                                .put("function", new JSONObject()
+                                        .put("name", v[1])
+                                        .put("arguments", v[2].isEmpty() ? "{}" : v[2])));
+                    } catch (Exception ignored) { }
+                });
+                hist.put(new JSONObject()
+                        .put("role", "assistant")
+                        .put("content", JSONObject.NULL)
+                        .put("tool_calls", tcs));
+                StringBuilder summary = new StringBuilder();
+                toolAcc.forEach((k, v) -> {
+                    try {
+                        String safeName = v[1];
+                        com.aion.chat.compose.data.McpClient.CallResult cr =
+                                com.aion.chat.compose.data.McpClient.callBySafeName(
+                                        safeName, v[2].isEmpty() ? "{}" : v[2]);
+                        String resultText = cr.ok ? cr.text : "工具执行失败: " + cr.err;
+                        RequestLog.add(null, "MCP", safeName, cr.ok ? 200 : 500,
+                                0, cr.ok ? "" : cr.err, 0, 0);
+                        if (summary.length() < 300) {
+                            summary.append(safeName).append(" → ")
+                                    .append(resultText, 0, Math.min(80, resultText.length()))
+                                    .append('\n');
+                        }
+                        hist.put(new JSONObject()
+                                .put("role", "tool")
+                                .put("tool_call_id", v[0].isEmpty() ? ("call_" + k) : v[0])
+                                .put("content", resultText));
+                    } catch (Exception ignored) { }
+                });
+                RequestLog.add(null, "MCP", "tool_round_" + (round + 1), 200, 0,
+                        summary.toString(), 0, 0);
+                runRounds(request, observer, cancelled, route, model,
+                        round + 1, hist, normalizer, complete, sawReasoning);
+                return;
+            }
+            String suffix = normalizer.finish();
+            if (!suffix.isEmpty()) {
+                complete.append(suffix);
+                observer.onChunk(suffix);
+            }
+            if (complete.length() == 0) {
+                observer.onFailure(sawReasoning[0]
+                        ? "empty_model_reply:reasoning_only"
+                        : "empty_model_reply");
             } else {
-                String suffix = normalizer.finish();
-                if (!suffix.isEmpty()) {
-                    complete.append(suffix);
-                    observer.onChunk(suffix);
-                }
-                if (complete.length() == 0) {
-                    observer.onFailure(sawReasoning[0]
-                            ? "empty_model_reply:reasoning_only"
-                            : "empty_model_reply");
-                } else {
-                    observer.onComplete(complete.toString());
-                }
+                observer.onComplete(complete.toString());
             }
         } catch (Exception exception) {
             if (cancelled.get()) {
@@ -166,8 +257,6 @@ public final class HomecomingModelGateway {
                         + exception.getClass().getSimpleName()
                         + (why == null ? "" : ":" + why));
             }
-        } finally {
-            cancellations.remove(request.requestId, cancelled);
         }
     }
 
@@ -206,21 +295,23 @@ public final class HomecomingModelGateway {
     }
 
     private NetworkRequest build(
+            ChatRequest request,
             HomecomingRouteVault.Route route,
             HomecomingRouteVault.Model model,
-            ChatRequest request) throws Exception {
+            org.json.JSONArray toolHistory) throws Exception {
         if ("gemini".equals(route.provider)) {
             return buildGemini(route, model, request);
         }
         // 设置页写的是 openai_compatible；custom_openai/siliconflow/未知值一律按
         // OpenAI 兼容处理（橘瓣同款容错：设置只出 OpenAI 兼容中转，不再打枪）
-        return buildOpenAi(route, model, request);
+        return buildOpenAi(request, route, model, toolHistory);
     }
 
     private NetworkRequest buildOpenAi(
+            ChatRequest request,
             HomecomingRouteVault.Route route,
             HomecomingRouteVault.Model model,
-            ChatRequest request) throws Exception {
+            org.json.JSONArray toolHistory) throws Exception {
         JSONArray messages = new JSONArray();
         // 缓存断点目标：倒数第二条纯文本 user 消息（橘瓣策略——上轮起点，跨轮稳定命中）
         int cacheTargetIdx = -1;
@@ -272,10 +363,36 @@ public final class HomecomingModelGateway {
             }
             messages.put(value);
         }
+        // 工具轮历史（assistant tool_calls + tool 结果）追加在消息尾部
+        if (toolHistory != null && toolHistory.length() > 0) {
+            for (int i = 0; i < toolHistory.length(); i++) {
+                messages.put(toolHistory.get(i));
+            }
+        }
         JSONObject body = new JSONObject()
                 .put("model", model.model)
                 .put("messages", messages)
                 .put("stream", true);
+        // MCP 工具注入（橘瓣同款：tools 数组，OpenAI function 格式）
+        com.aion.chat.compose.data.McpClient.ToolDef[] mcpTools =
+                com.aion.chat.compose.data.McpClient.cachedDefs().toArray(
+                        new com.aion.chat.compose.data.McpClient.ToolDef[0]);
+        if (mcpTools.length > 0) {
+            org.json.JSONArray toolsArr = new org.json.JSONArray();
+            for (com.aion.chat.compose.data.McpClient.ToolDef d : mcpTools) {
+                org.json.JSONObject fn = new org.json.JSONObject()
+                        .put("name", d.safeName)
+                        .put("description", d.description);
+                try {
+                    fn.put("parameters", new org.json.JSONObject(d.schema));
+                } catch (Exception ignored) {
+                    fn.put("parameters", new org.json.JSONObject()
+                            .put("type", "object").put("properties", new org.json.JSONObject()));
+                }
+                toolsArr.put(new org.json.JSONObject().put("type", "function").put("function", fn));
+            }
+            body.put("tools", toolsArr);
+        }
         if (promptCaching) {
             // 让 usage（含缓存命中数）在流末尾回来
             body.put("stream_options", new JSONObject().put("include_usage", true));
