@@ -20,7 +20,8 @@ object RequestLog {
         val ms: Long,
         val err: String,
         val cachedTokens: Long = 0,  // 提示词缓存命中 token 数（>0 才显示）
-        val promptTokens: Long = 0   // 本次请求的 prompt 总 token
+        val promptTokens: Long = 0,  // 本次请求的 prompt 总 token
+        val completionTokens: Long = 0 // 补全 token
     )
 
     private const val FILE = "request_log.json"
@@ -34,10 +35,10 @@ object RequestLog {
     @JvmStatic
     @JvmOverloads
     @Synchronized
-    fun add(context: Context?, method: String, url: String, code: Int, ms: Long, err: String = "", cachedTokens: Long = 0, promptTokens: Long = 0) {
+    fun add(context: Context?, method: String, url: String, code: Int, ms: Long, err: String = "", cachedTokens: Long = 0, promptTokens: Long = 0, completionTokens: Long = 0) {
         if (appCtx == null && context != null) appCtx = context.applicationContext
         buf.addFirst(
-            Entry(System.currentTimeMillis(), method.uppercase(), url.take(180), code, ms, err.take(200), cachedTokens, promptTokens)
+            Entry(System.currentTimeMillis(), method.uppercase(), url.take(180), code, ms, err.take(200), cachedTokens, promptTokens, completionTokens)
         )
         while (buf.size > MAX) buf.removeLast()
         persistAsync()
@@ -58,7 +59,7 @@ object RequestLog {
                             Entry(
                                 o.optLong("ts"), o.optString("method"), o.optString("url"),
                                 o.optInt("code"), o.optLong("ms"), o.optString("err"),
-                                o.optLong("cached"), o.optLong("prompt")
+                                o.optLong("cached"), o.optLong("prompt"), o.optLong("completion")
                             )
                         )
                     }
@@ -90,6 +91,7 @@ object RequestLog {
                             .put("ts", e.ts).put("method", e.method).put("url", e.url)
                             .put("code", e.code).put("ms", e.ms).put("err", e.err)
                             .put("cached", e.cachedTokens).put("prompt", e.promptTokens)
+                            .put("completion", e.completionTokens)
                     )
                 }
                 file(ctx).writeText(arr.toString())

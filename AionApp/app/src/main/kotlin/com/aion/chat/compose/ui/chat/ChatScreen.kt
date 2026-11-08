@@ -187,6 +187,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val showSeanConfig = remember { mutableStateOf(false) }
     val showMcp = remember { mutableStateOf(false) }
     val showMemoryBank = remember { mutableStateOf(false) }
+    val showFavorites = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
     val chatDrawerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1969,6 +1970,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         ModelPickerSheet(onDismiss = { showModelSheet = false })
     }
 
+    // ── 收藏页（聊天抽屉 → 收藏） ──
+    if (showFavorites.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFFCFAF6))) {
+            FavoriteScreen(onBack = { showFavorites.value = false })
+        }
+    }
+
     // ── 记忆库（他的配置 → 记忆 → 打开） ──
     if (showMemoryBank.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFF7F5F1))) {
@@ -2113,7 +2121,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             }
             Spacer(Modifier.height(16.dp))
 
-            Text("找聊天记录 / 气泡皮肤", fontSize = 14.sp, color = HomecomingColors.Ink)
+            Text("找聊天记录 / 收藏 / 气泡皮肤", fontSize = 14.sp, color = HomecomingColors.Ink)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -2125,6 +2133,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("找聊天记录") }
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showFavorites.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("收藏") }
                 Button(
                     onClick = {
                         showChatDrawer.value = false
@@ -2612,6 +2627,14 @@ private fun MessageLongPressMenu(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("复制", fontSize = 14.sp, color = HomecomingColors.Ink) }
+                    TextButton(
+                        onClick = {
+                            showMenu = false
+                            com.aion.chat.compose.data.FavoriteStore.add(context, fullText.ifBlank { text })
+                            Toast.makeText(context, "已收藏", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("收藏", fontSize = 14.sp, color = HomecomingColors.Accent) }
                     if (messageId != null) {
                         TextButton(
                             onClick = {

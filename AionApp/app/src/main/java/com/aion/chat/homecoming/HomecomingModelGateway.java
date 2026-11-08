@@ -113,6 +113,8 @@ public final class HomecomingModelGateway {
                     new java.util.concurrent.atomic.AtomicLong(-1);
             final java.util.concurrent.atomic.AtomicLong promptTok =
                     new java.util.concurrent.atomic.AtomicLong(-1);
+            final java.util.concurrent.atomic.AtomicLong completionTok =
+                    new java.util.concurrent.atomic.AtomicLong(-1);
             transport.execute(network, line -> {
                 if (cancelled.get()) {
                     return;
@@ -124,6 +126,7 @@ public final class HomecomingModelGateway {
                         JSONObject u = new JSONObject(t).optJSONObject("usage");
                         if (u != null) {
                             promptTok.set(u.optLong("prompt_tokens", -1));
+                            completionTok.set(u.optLong("completion_tokens", -1));
                             long c = -1;
                             JSONObject d = u.optJSONObject("prompt_tokens_details");
                             if (d != null) c = d.optLong("cached_tokens", -1);
@@ -181,7 +184,7 @@ public final class HomecomingModelGateway {
             }, cancelled::get);
             com.aion.chat.compose.data.RequestLog.add(null, "POST", network.url, 200,
                     android.os.SystemClock.elapsedRealtime() - reqT0,
-                    "", cachedTok.get(), promptTok.get());
+                    "", cachedTok.get(), promptTok.get(), completionTok.get());
             if (cancelled.get()) {
                 observer.onFailure("cancelled");
                 return;
