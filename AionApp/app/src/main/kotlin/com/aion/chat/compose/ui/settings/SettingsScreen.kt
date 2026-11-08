@@ -626,6 +626,52 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             }
         }
 
+        // ── 导入：橘瓣聊天记录（chat-export-*.md） ──
+        val importTip = remember { mutableStateOf("") }
+        val importPending = remember { mutableStateOf<String?>(null) }
+        val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()?.let { md ->
+                    val parsed = com.aion.chat.compose.data.ChatImporter.parse(md)
+                    importPending.value = md
+                    importTip.value = if (parsed.messages.isEmpty())
+                        "没解析出消息——确认是橘瓣「导出聊天记录」生成的 Markdown"
+                    else "解析到 ${parsed.messages.size} 条消息" +
+                        (if (parsed.title.isNotBlank()) "（${parsed.title.take(20)}）" else "") +
+                        "，点「确认导入」落进当前聊天"
+                } ?: run { importTip.value = "读不出这个文件" }
+            }
+        }
+        FrostCard {
+            Column {
+                Text("导入聊天记录（橘瓣）", fontSize = 15.sp, color = HomecomingColors.Ink)
+                Text(
+                    "选择橘瓣导出的 chat-export-*.md，消息会按顺序导入当前聊天",
+                    fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                if (importTip.value.isNotBlank()) {
+                    Text(importTip.value, fontSize = 12.sp, color = HomecomingColors.Accent,
+                        modifier = Modifier.padding(top = 6.dp))
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+                    if (importPending.value != null) {
+                        TextButton(onClick = {
+                            val n = com.aion.chat.compose.data.ChatImporter.importToCurrentChat(context, importPending.value!!)
+                            importPending.value = null
+                            importTip.value = if (n >= 0) "已导入 $n 条——回聊天页就能看到" else "导入失败（看崩溃日志）"
+                        }) { Text("确认导入", color = HomecomingColors.Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                    }
+                    TextButton(onClick = {
+                        importPicker.launch(arrayOf("text/markdown", "text/plain", "application/octet-stream"))
+                    }) { Text("选择 .md 文件", color = HomecomingColors.Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                }
+            }
+        }
+
         // ── 请求日志（照橘瓣 Logs 页：HTTP 请求 + 崩溃记录，一键清空/复制） ──
         FrostCard {
             Row(
