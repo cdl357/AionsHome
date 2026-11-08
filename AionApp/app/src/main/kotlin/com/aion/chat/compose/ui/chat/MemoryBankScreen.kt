@@ -1,5 +1,7 @@
 package com.aion.chat.compose.ui.chat
 
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,7 +39,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import com.aion.chat.compose.data.MemoryStore
+import com.aion.chat.compose.data.CloudMemory
+import com.aion.chat.compose.data.SupabaseClient
+import com.aion.chat.compose.data.SupabaseMomentsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,6 +70,36 @@ fun MemoryBankScreen(onBack: () -> Unit = {}) {
     var editContent by remember { mutableStateOf("") }
     var showNew by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<String?>(null) }
+    var cloud by remember { mutableStateOf(listOf<CloudMemory>()) }
+    var cloudErr by remember { mutableStateOf<String?>(null) }
+    var cloudLoading by remember { mutableStateOf(true) }
+    var cloudFilter by remember { mutableStateOf("") }
+    var cloudDetail by remember { mutableStateOf<CloudMemory?>(null) }
+    val cs = androidx.compose.runtime.rememberCoroutineScope()
+
+    fun loadCloud() {
+        cloudLoading = true
+        cs.launch(Dispatchers.IO) {
+            val r = SupabaseMomentsStore.fetchCloudMemories()
+            withContext(Dispatchers.Main) {
+                cloud = r.data ?: emptyList()
+                cloudErr = r.error?.let { e ->
+                    when (e) {
+                        com.aion.chat.compose.data.CloudErrorKind.NETWORK -> "网络到不了云端"
+                        com.aion.chat.compose.data.CloudErrorKind.HTTP_401 -> "401：权限被拒"
+                        else -> e.name
+                    }
+                } ?: r.detail
+                cloudLoading = false
+            }
+        }
+    }
+    val categories = cloud.map { it.category }.filter { it.isNotBlank() }.distinct()
+    val filtered = when (cloudFilter) {
+        "", "全部" -> cloud
+        "Core" -> cloud.filter { it.tags.contains("Core_Memory") }
+        else -> cloud.filter { it.category == cloudFilter }
+    }
 
     fun refresh() {
         kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
@@ -71,7 +108,7 @@ fun MemoryBankScreen(onBack: () -> Unit = {}) {
             withContext(Dispatchers.Main) { active = a; files = f }
         }
     }
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) { refresh(); loadCloud() }
 
     Column(
         Modifier
@@ -134,6 +171,96 @@ fun MemoryBankScreen(onBack: () -> Unit = {}) {
                             withContext(Dispatchers.Main) { refresh() }
                         }
                     }) { Text("保存常驻记忆", color = MbAccent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── 云端记忆库（她服务器上的 memories 表） ──
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MbCard)
+                    .padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("云端记忆库", fontSize = 15.sp, color = MbInk, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        if (cloudLoading) "加载中…" else "共 ${cloud.size} 条 ↻",
+                        fontSize = 12.sp,
+                        color = if (cloudLoading) MbSub else MbAccent,
+                        modifier = Modifier.clickable(enabled = !cloudLoading) { loadCloud() }
+                    )
+                }
+                if (cloudErr != null) {
+                    Text("拉取失败：$cloudErr", fontSize = 12.sp, color = MbDanger,
+                        modifier = Modifier.padding(top = 6.dp))
+                }
+                if (!cloudLoading && cloud.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        val chips = mutableListOf("全部" to "").apply {
+                            add("Core" to "Core")
+                            categories.take(6).forEach { c -> add(c to c) }
+                        }
+                        items(chips) { (label, key) ->
+                            val sel = cloudFilter == key
+                            Text(
+                                label, fontSize = 12.sp,
+                                color = if (sel) Color.White else MbInk,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (sel) MbAccent else Color(0xFFF2F0EA))
+                                    .clickable { cloudFilter = key }
+                                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+                filtered.take(50).forEach { m ->
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                editContent = m.content
+                                editing = null
+                                cloudDetail = m
+                            }
+                            .padding(vertical = 7.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                m.title.ifBlank { m.content.take(24) },
+                                fontSize = 13.sp, color = MbInk, fontWeight = FontWeight.Medium,
+                                maxLines = 1, modifier = Modifier.weight(1f)
+                            )
+                            if (m.tags.contains("Core_Memory")) {
+                                Text("核心", fontSize = 9.sp, color = Color.White,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(Color(0xFFE0A177))
+                                        .padding(horizontal = 6.dp, vertical = 1.dp))
+                            }
+                        }
+                        Text(
+                            m.content.take(90) + if (m.content.length > 90) "…" else "",
+                            fontSize = 11.sp, color = MbSub, lineHeight = 15.sp,
+                            maxLines = 2, modifier = Modifier.padding(top = 2.dp)
+                        )
+                        Text(
+                            listOf(m.category, "召回 ${m.recallCount} 次",
+                                m.createdAt.take(10)).filter { it.isNotBlank() }.joinToString(" · "),
+                            fontSize = 9.sp, color = MbSub,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                    }
+                }
+                if (!cloudLoading && cloud.isEmpty() && cloudErr == null) {
+                    Text("云端记忆库是空的", fontSize = 12.sp, color = MbSub,
+                        modifier = Modifier.padding(vertical = 6.dp))
                 }
             }
 

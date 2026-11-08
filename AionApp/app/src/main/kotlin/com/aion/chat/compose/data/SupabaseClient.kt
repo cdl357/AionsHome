@@ -74,7 +74,8 @@ internal suspend fun supabaseRequest(
     method: String,
     body: ByteArray? = null,
     contentType: String = "application/json",
-    parse: ((HttpURLConnection) -> Any?)? = null
+    parse: ((HttpURLConnection) -> Any?)? = null,
+    useServiceKey: Boolean = false
 ): CloudReply = withContext(Dispatchers.IO) {
     var lastError: CloudErrorKind? = null
     var lastDetail: String? = null
@@ -87,7 +88,7 @@ internal suspend fun supabaseRequest(
             val conn = URL(reqUrl).openConnection() as HttpURLConnection
             conn.requestMethod = method
             // 直连基线用 service_role（橘瓣同款），中转线路用 anon
-            val key = if (base == SupabaseClient.URL) SupabaseClient.SERVICE_KEY else SupabaseClient.ANON_KEY
+            val key = if (useServiceKey || base == SupabaseClient.URL) SupabaseClient.SERVICE_KEY else SupabaseClient.ANON_KEY
             conn.setRequestProperty("apikey", key)
             conn.setRequestProperty("Authorization", "Bearer " + key)
             if (body != null) {
@@ -185,6 +186,17 @@ fun parseSupabaseTime(iso: String): Long = try {
  *   replied_at/yuri_liked/created_at/reply_due_at/images(text[])。没有 image_url。
  * - 日记只读 user_id=ai_哥哥（哥哥的），不混其他人的。
  */
+data class CloudMemory(
+    val id: Long,
+    val title: String,
+    val content: String,
+    val category: String,
+    val tags: String,
+    val createdAt: String,
+    val importanceScore: Int,
+    val recallCount: Int
+)
+
 object SupabaseMomentsStore {
 
     data class RemoteMoment(
@@ -220,6 +232,40 @@ object SupabaseMomentsStore {
         val content: String,
         val createdAtMs: Long
     )
+
+    /** 她的云端记忆库（memories 表，service_role 全线路读取） */
+    suspend fun fetchCloudMemories(): CloudResult<List<CloudMemory>> {
+        val reply = supabaseRequest(
+            "rest/v1/memories?order=created_at.desc&limit=300",
+            "GET",
+            useServiceKey = true,
+            parse = { conn ->
+                JSONArray(conn.inputStream.bufferedReader().readText())
+            }
+        )
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
+        val arr = reply.payload as? JSONArray
+            ?: return CloudResult(null, CloudErrorKind.PARSE)
+        val out = mutableListOf<CloudMemory>()
+        for (i in 0 until arr.length()) {
+            try {
+                val o = arr.getJSONObject(i)
+                out.add(
+                    CloudMemory(
+                        id = o.optLong("id"),
+                        title = o.optString("title", ""),
+                        content = o.optString("content", ""),
+                        category = o.optString("category", ""),
+                        tags = if (o.isNull("tags")) "" else o.optString("tags", ""),
+                        createdAt = o.optString("created_at", ""),
+                        importanceScore = o.optInt("importance_score", 0),
+                        recallCount = o.optInt("recall_count", 0)
+                    )
+                )
+            } catch (e: Exception) { }
+        }
+        return CloudResult(out, null)
+    }
 
     fun mapAuthor(raw: String): String = when {
         raw.contains("沈聿淮") || raw == "sean" || raw == "a_哥哥" || raw.contains("ai_") -> "sean"
