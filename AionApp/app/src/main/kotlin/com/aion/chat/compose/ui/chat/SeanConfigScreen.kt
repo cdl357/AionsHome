@@ -89,7 +89,8 @@ private fun saveIdentity(context: android.content.Context, transform: (JSONObjec
 fun SeanConfigScreen(
     onBack: () -> Unit,
     onPickModel: () -> Unit,
-    onOpenMcp: () -> Unit = {}
+    onOpenMcp: () -> Unit = {},
+    onOpenMemoryBank: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var id by remember { mutableStateOf(IdParts("小鑫", "Sean", "", null)) }
@@ -98,6 +99,7 @@ fun SeanConfigScreen(
     var savedTip by remember { mutableStateOf(false) }
     var memories by remember { mutableStateOf(listOf<String>()) }
     var extState by remember { mutableStateOf(mapOf<String, Boolean>()) }
+    var memToolsOn by remember { mutableStateOf(true) }
     var reqHeaders by remember { mutableStateOf("") }
     var reqBody by remember { mutableStateOf("") }
     var reqTip by remember { mutableStateOf("") }
@@ -117,6 +119,8 @@ fun SeanConfigScreen(
             extState = com.aion.chat.compose.data.SeanExt.ITEMS.associate { (k, _) ->
                 k to com.aion.chat.compose.data.SeanExt.on(context, k)
             }
+            memToolsOn = context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
+                .getBoolean("memory_tools", true)
             val cr = com.aion.chat.compose.data.HomecomingChatWiring.loadCustomRequest(context)
             if (cr != null) {
                 reqHeaders = org.json.JSONObject(cr.first).toString()
@@ -232,8 +236,30 @@ fun SeanConfigScreen(
             }
         }
 
-        // ── 记忆 ──
+        // ── 记忆（自维护开关 + 管理入口） ──
         SectionCard(title = "记忆", subtitle = "他记住的事（${memories.size} 条）") {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("让他自己记", fontSize = 13.sp, color = Color(0xFF26211C))
+                    Text("给他记忆工具，重要的他自己记进记忆库", fontSize = 11.sp, color = Color(0xFF9A9388))
+                }
+                androidx.compose.material3.Switch(
+                    checked = memToolsOn,
+                    onCheckedChange = { v ->
+                        memToolsOn = v
+                        context.getSharedPreferences("chat_prefs", android.content.Context.MODE_PRIVATE)
+                            .edit().putBoolean("memory_tools", v).apply()
+                    }
+                )
+            }
+            Text(
+                "打开记忆库 ›", fontSize = 13.sp, color = Color(0xFF7FA6C9),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable { onOpenMemoryBank() }
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
             if (memories.isEmpty()) {
                 Text(
                     "还没有记忆。你们聊的内容会慢慢变成这里的条目。",

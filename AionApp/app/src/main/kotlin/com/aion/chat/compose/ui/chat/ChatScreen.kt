@@ -186,6 +186,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val showChatDrawer = remember { mutableStateOf(false) }
     val showSeanConfig = remember { mutableStateOf(false) }
     val showMcp = remember { mutableStateOf(false) }
+    val showMemoryBank = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
     val chatDrawerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1968,6 +1969,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         ModelPickerSheet(onDismiss = { showModelSheet = false })
     }
 
+    // ── 记忆库（他的配置 → 记忆 → 打开） ──
+    if (showMemoryBank.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFF7F5F1))) {
+            MemoryBankScreen(onBack = { showMemoryBank.value = false })
+        }
+    }
+
     // ── MCP 配置页（他的配置 → MCP；设置页也有入口） ──
     if (showMcp.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
@@ -1987,6 +1995,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                 onOpenMcp = {
                     showSeanConfig.value = false
                     showMcp.value = true
+                },
+                onOpenMemoryBank = {
+                    showSeanConfig.value = false
+                    showMemoryBank.value = true
                 }
             )
         }

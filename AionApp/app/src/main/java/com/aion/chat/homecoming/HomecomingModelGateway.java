@@ -208,12 +208,21 @@ public final class HomecomingModelGateway {
                 toolAcc.forEach((k, v) -> {
                     try {
                         String safeName = v[1];
-                        com.aion.chat.compose.data.McpClient.CallResult cr =
-                                com.aion.chat.compose.data.McpClient.callBySafeName(
-                                        safeName, v[2].isEmpty() ? "{}" : v[2]);
-                        String resultText = cr.ok ? cr.text : "工具执行失败: " + cr.err;
-                        RequestLog.add(null, "MCP", safeName, cr.ok ? 200 : 500,
-                                0, cr.ok ? "" : cr.err, 0, 0);
+                        String resultText;
+                        if (com.aion.chat.compose.data.MemoryTools.handles(safeName)
+                                && com.aion.chat.compose.data.MemoryTools.enabled()) {
+                            String r = com.aion.chat.compose.data.MemoryTools.dispatch(
+                                    safeName, v[2].isEmpty() ? "{}" : v[2]);
+                            resultText = r.isEmpty() ? "（完成）" : r;
+                            RequestLog.add(null, "MEM", safeName, 200, 0, "", 0, 0);
+                        } else {
+                            com.aion.chat.compose.data.McpClient.CallResult cr =
+                                    com.aion.chat.compose.data.McpClient.callBySafeName(
+                                            safeName, v[2].isEmpty() ? "{}" : v[2]);
+                            resultText = cr.ok ? cr.text : "工具执行失败: " + cr.err;
+                            RequestLog.add(null, "MCP", safeName, cr.ok ? 200 : 500,
+                                    0, cr.ok ? "" : cr.err, 0, 0);
+                        }
                         if (summary.length() < 300) {
                             summary.append(safeName).append(" → ")
                                     .append(resultText, 0, Math.min(80, resultText.length()))
@@ -329,6 +338,12 @@ public final class HomecomingModelGateway {
         for (ChatMessage message : request.messages) {
             msgIdx++;
             JSONObject value = new JSONObject().put("role", message.role);
+            String effText = message.text;
+            if ("system".equals(message.role)) {
+                // 常驻记忆追加（照橘子岛 active_memory）：记忆变了缓存自然失效重写
+                String am = com.aion.chat.compose.data.MemoryTools.activeMemorySafe();
+                if (!am.isEmpty()) effText = effText + "\n\n[Sean 的长期记忆]\n" + am;
+            }
             boolean cachePoint = promptCaching
                     && (msgIdx == cacheTargetIdx || "system".equals(message.role));
             boolean lastUserWithImage = !request.imageDataUrl.isEmpty()
@@ -338,7 +353,7 @@ public final class HomecomingModelGateway {
                 // content 数组格式，末块打 cache_control（橘瓣同款，TTL 可选）
                 value.put("content", new JSONArray().put(new JSONObject()
                         .put("type", "text")
-                        .put("text", message.text)
+                        .put("text", effText)
                         .put("cache_control", cacheControl())));
             }
             else if (lastUserWithImage) {
@@ -359,7 +374,7 @@ public final class HomecomingModelGateway {
                 }
                 value.put("content", parts);
             } else {
-                value.put("content", message.text);
+                value.put("content", effText);
             }
             messages.put(value);
         }
@@ -392,6 +407,18 @@ public final class HomecomingModelGateway {
                 toolsArr.put(new org.json.JSONObject().put("type", "function").put("function", fn));
             }
             body.put("tools", toolsArr);
+        }
+        // 记忆自维护工具（照橘子岛 MemoryToolProvider）
+        if (com.aion.chat.compose.data.MemoryTools.enabled()) {
+            org.json.JSONArray mdefs = com.aion.chat.compose.data.MemoryTools.defs();
+            org.json.JSONArray toolsArr2;
+            if (mcpTools.length > 0) {
+                toolsArr2 = body.optJSONArray("tools");
+            } else {
+                toolsArr2 = new org.json.JSONArray();
+                body.put("tools", toolsArr2);
+            }
+            for (int i = 0; i < mdefs.length(); i++) toolsArr2.put(mdefs.get(i));
         }
         if (promptCaching) {
             // 让 usage（含缓存命中数）在流末尾回来
