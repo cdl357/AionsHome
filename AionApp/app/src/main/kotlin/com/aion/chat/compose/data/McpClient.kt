@@ -59,6 +59,26 @@ object McpClient {
     @JvmStatic
     fun refreshTools(context: Context) {
         initContext(context)
+        // 一次性迁移：旧 HomecomingMcpStore 的 http 型服务器并入新注册表（stdio 不支持，跳过）
+        runCatching {
+            val existing = McpStore.list(context)
+            HomecomingMcpStore.list(context)
+                .filter { it.type == "http" && it.url.isNotBlank() }
+                .forEach { o ->
+                    if (existing.none { it.url == o.url }) {
+                        McpStore.upsert(
+                            context,
+                            McpStore.Server(
+                                id = "mcp_h_" + o.id.take(8),
+                                name = o.name,
+                                url = o.url,
+                                type = "http",
+                                enabled = o.enabled
+                            )
+                        )
+                    }
+                }
+        }
         val out = mutableListOf<ToolDef>()
         var firstErr = ""
         McpStore.list(context).filter { it.enabled }.forEach { srv ->
