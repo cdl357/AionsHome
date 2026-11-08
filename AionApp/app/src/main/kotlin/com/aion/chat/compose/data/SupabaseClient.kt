@@ -77,12 +77,19 @@ internal suspend fun supabaseRequest(
     method: String,
     body: ByteArray? = null,
     contentType: String = "application/json",
-    parse: ((HttpURLConnection) -> Any?)? = null
+    parse: ((HttpURLConnection) -> Any?)? = null,
+    directFirst: Boolean = false
 ): CloudReply = withContext(Dispatchers.IO) {
     var lastError: CloudErrorKind? = null
     var lastDetail: String? = null
     val goodBase = SupabaseClient.lastGoodBase
-    val ordered = (listOfNotNull(goodBase) + SupabaseClient.BASES).distinct()
+    // directFirst：直连 supabase.co 提为第一顺位（她手机上橘瓣同款路径一直可达），
+    // 中转线路降为兜底——不再让两个必挂的中转先耗 20 秒
+    val ordered = if (directFirst) {
+        (listOf(SupabaseClient.URL) + SupabaseClient.BASES.filter { it != SupabaseClient.URL }).distinct()
+    } else {
+        (listOfNotNull(goodBase) + SupabaseClient.BASES).distinct()
+    }
     for (base in ordered) {
         val t0 = android.os.SystemClock.elapsedRealtime()
         val reqUrl = "$base/$path"
@@ -284,6 +291,7 @@ object SupabaseMomentsStore {
         val reply = supabaseRequest(
             "rest/v1/moments",
             "GET",
+            directFirst = true,
             parse = { conn ->
                 JSONArray(conn.inputStream.bufferedReader().readText())
             }
