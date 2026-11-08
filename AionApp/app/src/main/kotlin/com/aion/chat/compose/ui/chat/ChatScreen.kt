@@ -558,6 +558,12 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                             main.post {
                                 if (stopping) { stopping = false; return@post }
                                 sending.value = false
+                                // 后台回话 → 横幅弹窗 + 锁屏显示
+                                com.aion.chat.compose.data.SeanNotifier.maybeNotifyReply(
+                                    context,
+                                    com.aion.chat.compose.data.SeanAssetStore.remark(context).ifBlank { "Sean" },
+                                    completeText
+                                )
                                 // F4：空回复不再无声无息（控制标签剥完为空/思维模型只吐思考）
                                 if (completeText.isBlank()) {
                                     sendError.value = SendError(
@@ -685,6 +691,11 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         main.post {
                             if (stopping) { stopping = false; return@post }
                             sending.value = false
+                            com.aion.chat.compose.data.SeanNotifier.maybeNotifyReply(
+                                context,
+                                com.aion.chat.compose.data.SeanAssetStore.remark(context).ifBlank { "Sean" },
+                                fullText
+                            )
                             thinkingLive.value = null; toolName.value = null; noticeText.value = null
                             pendingSegments.clear()
                             if (fullText.isBlank()) {

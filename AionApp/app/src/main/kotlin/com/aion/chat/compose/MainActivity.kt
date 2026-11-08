@@ -39,6 +39,16 @@ import com.aion.chat.compose.ui.theme.HomecomingThemeState
 
 /** 新版「回家」前端入口：单 Activity + Compose Navigation。 */
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        com.aion.chat.compose.data.SeanNotifier.appInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        com.aion.chat.compose.data.SeanNotifier.appInForeground = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 全局崩溃捕获：写日志 + 打崩溃标记（下次启动进安全模式），设置页也可查看

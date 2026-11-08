@@ -529,6 +529,31 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             )
         }
 
+        // ── 消息通知弹窗（他回话时横幅提醒，锁屏也显示） ──
+        val notifyOn = remember { mutableStateOf(com.aion.chat.compose.data.SeanNotifier.enabled(context)) }
+        val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        FrostCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("消息通知弹窗", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("他回话时横幅弹窗提醒，锁屏也会显示；app 在前台时不打扰", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                androidx.compose.material3.Switch(
+                    checked = notifyOn.value,
+                    onCheckedChange = { on ->
+                        notifyOn.value = on
+                        com.aion.chat.compose.data.SeanNotifier.setEnabled(context, on)
+                        if (on && android.os.Build.VERSION.SDK_INT >= 33) {
+                            runCatching {
+                                notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                        if (on) Toast.makeText(context, "开好了——他回话时试试", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+        }
+
         // ── MCP（照橘瓣：配置 MCP 服务器） ──
         FrostCard {
             Row(
