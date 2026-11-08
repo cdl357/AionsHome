@@ -1,68 +1,46 @@
 package com.aion.chat.compose.ui.album
 
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,762 +48,724 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.res.imageResource
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
-import com.aion.chat.R
 import com.aion.chat.compose.data.HomecomingAlbumStore
-import com.aion.chat.compose.data.HomecomingChatWiring
-import com.aion.chat.compose.data.HomecomingRouteConfig
-import com.aion.chat.compose.ui.theme.HomecomingColors
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * 相册四稿（Yuri 反馈迭代）：可自由布置的毛毡板。
- * - 板顶一排挂钉（像参考图那样挂玩偶）；黑猫/白猫挂在钉上随风摆，黑猫=入口，白猫装饰
- * - 照片（最近 10 张）与 9 只拼豆猫默认散乱分布（不围圈），全部支持【长按拖动】自由布置，
- *   位置持久化（album_board prefs）；装饰永远压在照片上层
- * - 点照片 → 大图详情（不变）；点黑猫 ↔ 整本相册网格
+ * 图库（照小红书那版三 tab 设计重做）：全部图片 / 分类 / 图册。
+ * - 全部图片：我的图册横滑条 + 按日期分组的照片网格（可批量删除）
+ * - 分类：图册按分类（头像/壁纸/截图/表情包/其他）分组横滑
+ * - 图册：图册卡片网格 + 底部 编辑|添加 胶囊
  */
+private val Ink = Color(0xFF1C1B18)
+private val Sub = Color(0xFF9A968C)
+private val Faint = Color(0xFFC9C4BA)
+private val Line = Color(0xFFEDE7DC)
+private val PageBg = Color(0xFFFCFBF8)
+private val CardBg = Color(0xFFFFFFFF)
+private val Danger = Color(0xFFC96B6B)
+private val Accent = Color(0xFF7FA6C9)
+private val Serif = FontFamily.Serif
+
+private val KINDS = HomecomingAlbumStore.KINDS
+
 @Composable
 fun AlbumScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val photos = remember { mutableStateListOf<HomecomingAlbumStore.AlbumPhoto>() }
-    val version = remember { mutableStateOf(0L) }
-    val boardMode = remember { mutableStateOf(true) }
-    // 素材库：她存图进来，Sean 有权限调用（换壁纸/聊天背景/头像、发表情包）
-    val libMode = remember { mutableStateOf(false) }
 
-    // ── 拖动布置：key -> (xf, yf)，持久化到 prefs ──
-    val boardPrefs = remember {
-        context.getSharedPreferences("album_board", android.content.Context.MODE_PRIVATE)
-    }
-    val boardPositions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
-    val cloudImportIssue = remember { mutableStateOf(false) }
-    val cloudSyncDone = remember { mutableStateOf(0) }
-    val cloudSyncTotal = remember { mutableStateOf(0) }
-    val draggingKey = remember { mutableStateOf<String?>(null) }
+    var photos by remember { mutableStateOf(listOf<HomecomingAlbumStore.AlbumPhoto>()) }
+    var albums by remember { mutableStateOf(listOf<HomecomingAlbumStore.Album>()) }
+    var tab by remember { mutableIntStateOf(0) }
+    var selectMode by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<Long>()) }
+    var viewer by remember { mutableStateOf<HomecomingAlbumStore.AlbumPhoto?>(null) }
+    var albumDetail by remember { mutableStateOf<String?>(null) }
+    var showNewAlbum by remember { mutableStateOf(false) }
+    var addTarget by remember { mutableStateOf<String?>(null) }
+    var showManage by remember { mutableStateOf(false) }
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var renameFor by remember { mutableStateOf<String?>(null) }
 
-    val boardIds = remember { mutableStateOf(HashSet<String>()) }
-    LaunchedEffect(Unit) {
-        photos.clear()
-        photos.addAll(withContext(Dispatchers.IO) { HomecomingAlbumStore.list(context) })
-        version.value++
-        // ── 云端相册导入（album_photos）：没导过的行 6 路并行解码入库，导一张标记一张
-        //    （中途退出不会重复导入；之前串行要一两分钟、标记只在全部结束时写，等不及退出就白导） ──
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val imported = boardPrefs.getStringSet("cloud_imported", emptySet()).orEmpty().toMutableSet()
-                val res = com.aion.chat.compose.data.SupabaseMomentsStore.fetchAlbumPhotos()
-                cloudImportIssue.value = res.error != null
-                val rows = res.data.orEmpty().filter { it.id !in imported }
-                if (rows.isNotEmpty()) {
-                    cloudSyncTotal.value = rows.size
-                    cloudSyncDone.value = 0
-                    val lock = Any()
-                    val insertMutex = kotlinx.coroutines.sync.Mutex()
-                    coroutineScope {
-                        rows.map { cp ->
-                            async {
-                                val bytes = decodeCloudImage(context, cp.image)
-                                if (bytes != null) {
-                                    val date = cp.date.take(10).ifBlank { java.time.LocalDate.now().toString() }
-                                    // 解码并行、入库串行：SQLite 并发写会锁异常；失败不写标记（否则照片永久丢）
-                                    val id = insertMutex.withLock {
-                                        HomecomingAlbumStore.addPhoto(context, bytes, cp.note, date)
-                                    }
-                                    if (id >= 0) {
-                                        synchronized(lock) {
-                                            imported.add(cp.id)
-                                            boardPrefs.edit().putStringSet("cloud_imported", imported).apply()
-                                        }
-                                    }
-                                }
-                                synchronized(lock) { cloudSyncDone.value++ }
-                            }
-                        }.awaitAll()
-                    }
-                }
-            }
-        }
-        photos.clear()
-        photos.addAll(HomecomingAlbumStore.list(context))
-        version.value++
-        // 载入已保存的布置
-        runCatching {
-            val s = boardPrefs.getString("pos", null) ?: return@runCatching
-            val obj = org.json.JSONObject(s)
-            obj.keys().forEach { k ->
-                val arr = obj.optJSONArray(k) ?: return@forEach
-                boardPositions[k] = Pair(arr.getDouble(0).toFloat(), arr.getDouble(1).toFloat())
-            }
-        }
-        // board_ids：没有存过 → 首次迁移，把原先自动钉着的最新10张当作已选，避免整墙突然清空
-        if (!boardPrefs.contains("board_ids")) {
-            val seed = photos.take(10).map { "photo_" + it.id }.toHashSet()
-            boardIds.value = seed
-            boardPrefs.edit().putStringSet("board_ids", seed).apply()
-        } else {
-            boardIds.value = boardPrefs.getStringSet("board_ids", emptySet()).orEmpty().toHashSet()
+    fun refresh() {
+        scope.launch(Dispatchers.IO) {
+            val p = HomecomingAlbumStore.list(context)
+            val a = HomecomingAlbumStore.albums(context)
+            withContext(Dispatchers.Main) { photos = p; albums = a }
         }
     }
+    LaunchedEffect(Unit) { refresh() }
 
-    fun persistBoard() {
-        runCatching {
-            val obj = org.json.JSONObject()
-            boardPositions.forEach { (k, v) ->
-                obj.put(k, org.json.JSONArray().put(v.first).put(v.second))
-            }
-            boardPrefs.edit().putString("pos", obj.toString()).apply()
-        }
-    }
-
-    // ── 上墙自选（Yuri：哪些上毛毡板由我们决定，不再自动钉最新10张） ──
-    fun persistBoardIds() {
-        boardPrefs.edit().putStringSet("board_ids", boardIds.value).apply()
-    }
-    fun pinToBoard(photo: HomecomingAlbumStore.AlbumPhoto) {
-        val key = "photo_" + photo.id
-        if (boardIds.value.contains(key)) return
-        boardIds.value = (boardIds.value + key) as HashSet<String>
-        // 给一个空位默认点（按已选数量轮转），上去以后可长按拖到喜欢的地方
-        val slot = PHOTO_DEFAULT[boardIds.value.size % PHOTO_DEFAULT.size]
-        boardPositions[key] = Pair(slot.first, slot.second)
-        persistBoardIds(); persistBoard()
-    }
-    fun unpinFromBoard(photo: HomecomingAlbumStore.AlbumPhoto) {
-        val key = "photo_" + photo.id
-        boardIds.value = (boardIds.value - key) as HashSet<String>
-        boardPositions.remove(key)
-        persistBoardIds(); persistBoard()
-    }
-
-
-    val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 9)
+    val pickImages = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(12)
     ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            scope.launch(Dispatchers.IO) {
-                val today = java.time.LocalDate.now().toString()
-                uris.forEach { uri ->
-                    runCatching {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    }.getOrNull()?.let { bytes ->
-                        HomecomingAlbumStore.addPhoto(context, bytes, "", today)
+        val target = addTarget ?: return@rememberLauncherForActivityResult
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val kind = albums.firstOrNull { it.name == target }?.kind ?: "其他"
+            var okCount = 0
+            uris.forEach { uri ->
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val bytes = input.readBytes()
+                        if (HomecomingAlbumStore.addPhoto(context, bytes, "", "", target, kind) > 0) okCount++
                     }
                 }
-                withContext(Dispatchers.Main) {
-                    photos.clear()
-                    photos.addAll(HomecomingAlbumStore.list(context))
-                    version.value++
-                }
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "已存入「$target」$okCount 张", Toast.LENGTH_SHORT).show()
+                addTarget = null
+                refresh()
             }
         }
     }
 
-    val selected = remember { mutableStateOf<HomecomingAlbumStore.AlbumPhoto?>(null) }
-    val showDetail = remember { mutableStateOf(false) }
-
-    Column(modifier = Modifier.fillMaxSize().padding(top = 12.dp)) {
-        // ── 头部 ──
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
-                tint = HomecomingColors.Ink,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clickable { onBack() }
-            )
-            Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                Text("相册", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
-                Text(
-                    when {
-                        libMode.value -> "素材库 · 他能换壁纸/聊天背景/头像 · 能发表情包"
-                        boardMode.value -> "毛毡板 · 长按照片和小猫可以挪 · 点黑猫看整本"
-                        else -> "整本相册 · 点黑猫回毛毡板"
-                    },
-                    fontSize = 11.sp, color = HomecomingColors.InkSoft
-                )
+    Box(Modifier.fillMaxSize().background(PageBg)) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // ── 头部 ──
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(Modifier.statusBarsPadding().padding(horizontal = 16.dp)) {
+                    Spacer(Modifier.height(4.dp))
+                    Row {
+                        Text("‹", fontSize = 24.sp, color = Ink,
+                            modifier = Modifier
+                                .clickable { onBack() }
+                                .padding(end = 10.dp, top = 10.dp))
+                        Spacer(Modifier.weight(1f))
+                    }
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("图库", fontSize = 46.sp, color = Ink, fontFamily = Serif, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.weight(1f))
+                        Text("${photos.size}", fontSize = 20.sp, color = Ink,
+                            modifier = Modifier.padding(bottom = 10.dp))
+                    }
+                    Text("/ 收集每一刻", fontSize = 14.sp, color = Sub,
+                        modifier = Modifier.padding(top = 2.dp))
+                    Text(
+                        "stay curious\nstay kind",
+                        fontSize = 12.sp, color = Faint, lineHeight = 18.sp,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp)
+                    )
+                }
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (libMode.value) HomecomingColors.Accent else HomecomingColors.Accent.copy(alpha = 0.12f))
-                    .clickable { libMode.value = !libMode.value }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "素材库",
-                    fontSize = 13.sp,
-                    color = if (libMode.value) Color.White else HomecomingColors.Accent
-                )
-            }
-            if (!libMode.value) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(HomecomingColors.Accent)
-                    .clickable {
-                        picker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            // ── Tabs ──
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    Row(Modifier.fillMaxWidth()) {
+                        listOf("全部图片", "分类", "图册").forEachIndexed { i, t ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                                    .clickable { tab = i; selectMode = false; selected = emptySet() }
+                            ) {
+                                Text(
+                                    t, fontSize = 15.sp,
+                                    color = if (tab == i) Ink else Sub,
+                                    fontWeight = if (tab == i) FontWeight.SemiBold else FontWeight.Normal,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(Line)) {
+                        Box(
+                            Modifier
+                                .align(
+                                    when (tab) {
+                                        0 -> Alignment.CenterStart
+                                        1 -> Alignment.Center
+                                        else -> Alignment.CenterEnd
+                                    }
+                                )
+                                .padding(horizontal = if (tab == 1) 0.dp else 58.dp)
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(Ink)
                         )
                     }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Add, contentDescription = "存照片", tint = Color.White, modifier = Modifier.size(16.dp))
-                    Text("存照片", fontSize = 13.sp, color = Color.White, modifier = Modifier.padding(start = 4.dp))
+                    Spacer(Modifier.height(14.dp))
                 }
             }
-            }
-        }
 
-        // ── 内容：素材库 / 毛毡板 / 整本网格 ──
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (libMode.value) {
-                SeanAssetLibraryPanel()
-            } else if (boardMode.value) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Spacer(Modifier.height(18.dp))
-                    FeltBoard(
-                        photos = photos.filter { boardIds.value.contains("photo_" + it.id) },
-                        version = version.value,
-                        positions = boardPositions,
-                        draggingKey = draggingKey,
-                        onPersist = { persistBoard() },
-                        onPhotoTap = { selected.value = it; showDetail.value = true },
-                        onToggleAlbum = { boardMode.value = !boardMode.value },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    FilmStrip(
-                        photos = photos.filterNot { boardIds.value.contains("photo_" + it.id) },
-                        version = version.value,
-                        onPhotoTap = { selected.value = it; showDetail.value = true },
-                        onPhotoLongPress = { ph ->
-                            pinToBoard(ph)
-                            Toast.makeText(context, "钉上毛毡板了，长按可挪位置", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "钉着你挑的 " + boardIds.value.size + " 张（长按可挪） · 想上墙：长按胶卷里的照片 · 点开照片也能上下墙" +
-                            (if (cloudSyncTotal.value > cloudSyncDone.value) " · 正在同步云端相册 ${cloudSyncDone.value}/${cloudSyncTotal.value}"
-                             else if (cloudImportIssue.value) " · 云端相册没权限，SQL 放行后自动导入"
-                             else ""),
-                        fontSize = 11.sp, color = HomecomingColors.InkSoft,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(96.dp))
+            // ── 全部图片 ──
+            if (tab == 0) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Text("· 我的图册", fontSize = 15.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text("查看全部 ›", fontSize = 12.sp, color = Sub,
+                            modifier = Modifier.clickable { tab = 2 })
+                    }
                 }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 12.dp, end = 12.dp, top = 26.dp, bottom = 112.dp
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (photos.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
                         item {
-                            Text(
-                                "墙还空着，存第一张照片吧",
-                                fontSize = 13.sp, color = HomecomingColors.InkSoft,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
-                                textAlign = TextAlign.Center
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .width(92.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(CardBg)
+                                    .border(1.dp, Faint, RoundedCornerShape(14.dp))
+                                    .clickable { showNewAlbum = true }
+                                    .padding(vertical = 20.dp)
+                            ) {
+                                Text("＋", fontSize = 26.sp, color = Ink)
+                                Spacer(Modifier.height(6.dp))
+                                Text("新建图册", fontSize = 12.sp, color = Ink)
+                                Spacer(Modifier.height(2.dp))
+                                Text("0 张照片", fontSize = 10.sp, color = Sub)
+                            }
+                        }
+                        items(albums) { a ->
+                            AlbumCard(
+                                album = a,
+                                cover = photos.filter { it.album == a.name }.maxByOrNull { it.createdAt },
+                                count = photos.count { it.album == a.name },
+                                showMenu = false,
+                                onOpen = { albumDetail = a.name }
                             )
                         }
                     }
-                    items(photos, key = { it.id }) { photo ->
-                        val bmp = remember(photo.id, version.value) {
-                            runCatching { decodeSampled(photo.file(context), 512) }.getOrNull()
-                        }
-                        Box(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFF0EDE6))
-                                .clickable { selected.value = photo; showDetail.value = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (bmp != null) {
-                                Image(
-                                    bitmap = bmp.asImageBitmap(),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Text("· 全部图片", fontSize = 15.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text("共 ${photos.size} 张", fontSize = 12.sp, color = Sub)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            if (selectMode) "取消" else "管理", fontSize = 13.sp, color = Ink,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clickable {
+                                selectMode = !selectMode
+                                selected = emptySet()
                             }
-                            if (photo.note.isNotBlank()) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .fillMaxWidth()
-                                        .background(Color.Black.copy(alpha = 0.35f))
-                                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        "♥ " + photo.note,
-                                        fontSize = 10.sp, color = Color.White,
-                                        maxLines = 1,
-                                        modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                val groups = photos.groupBy { ph ->
+                    ph.takenOn.ifBlank {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(ph.createdAt))
+                    }
+                }
+                groups.forEach { (day, list) ->
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        val label = try {
+                            val mm = day.split("-")
+                            "${mm[1].toInt()}月${mm[2].toInt()}日"
+                        } catch (e: Exception) { day }
+                        Text(
+                            label, fontSize = 12.sp, color = Sub,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                    }
+                    list.forEach { ph ->
+                        item(key = "p_" + ph.id) {
+                            PhotoCell(
+                                photo = ph,
+                                selectMode = selectMode,
+                                isSelected = selected.contains(ph.id),
+                                onClick = {
+                                    if (selectMode) {
+                                        selected = if (selected.contains(ph.id)) selected - ph.id else selected + ph.id
+                                    } else viewer = ph
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── 分类 ──
+            if (tab == 1) {
+                KINDS.forEach { kind ->
+                    val list = albums.filter { it.kind == kind }
+                    if (list.isEmpty()) return@forEach
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(Modifier.padding(top = 10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                Text(kind, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.weight(1f))
+                                Text("编辑", fontSize = 12.sp, color = Sub,
+                                    modifier = Modifier.clickable { showManage = true })
+                            }
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp)
+                            ) {
+                                items(list) { a ->
+                                    AlbumCard(
+                                        album = a,
+                                        cover = photos.filter { it.album == a.name }.maxByOrNull { it.createdAt },
+                                        count = photos.count { it.album == a.name },
+                                        showMenu = true,
+                                        onOpen = { albumDetail = a.name },
+                                        onMenu = { menuFor = a.name }
                                     )
                                 }
                             }
+                            Spacer(Modifier.height(10.dp))
                         }
+                    }
+                }
+                if (albums.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            "还没有图册。去「图册」页新建一个，再往里存照片。",
+                            fontSize = 13.sp, color = Sub,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── 图册 ──
+            if (tab == 2) {
+                albums.forEach { a ->
+                    item(key = "a_" + a.name) {
+                        AlbumCard(
+                            album = a,
+                            cover = photos.filter { it.album == a.name }.maxByOrNull { it.createdAt },
+                            count = photos.count { it.album == a.name },
+                            showMenu = true,
+                            onOpen = { albumDetail = a.name },
+                            onMenu = { menuFor = a.name }
+                        )
+                    }
+                }
+                if (albums.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            "还没有图册。底部「添加」先建一个。",
+                            fontSize = 13.sp, color = Sub,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp)
+                        )
+                    }
+                }
+            }
+
+            item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(110.dp)) }
+        }
+
+        // ── 底部 编辑|添加 胶囊（分类/图册 tab 显示） ──
+        if (tab == 1 || tab == 2) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 18.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White)
+                    .border(1.dp, Line, RoundedCornerShape(50))
+            ) {
+                Text(
+                    "编辑", fontSize = 15.sp, color = Ink,
+                    modifier = Modifier
+                        .clickable { showManage = true }
+                        .padding(horizontal = 44.dp, vertical = 13.dp)
+                )
+                Box(Modifier.width(1.dp).height(20.dp).background(Line))
+                Text(
+                    "添加", fontSize = 15.sp, color = Ink,
+                    modifier = Modifier
+                        .clickable {
+                            if (albums.isEmpty()) {
+                                Toast.makeText(context, "先新建一个图册", Toast.LENGTH_SHORT).show()
+                                showNewAlbum = true
+                            } else {
+                                addTarget = albums.first().name
+                                pickImages.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        }
+                        .padding(horizontal = 44.dp, vertical = 13.dp)
+                )
+            }
+        }
+
+        // ── 批量删除按钮 ──
+        if (selectMode && selected.isNotEmpty()) {
+            Text(
+                "删除所选（${selected.size}）",
+                fontSize = 14.sp, color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Danger)
+                    .clickable {
+                        scope.launch(Dispatchers.IO) {
+                            selected.forEach { HomecomingAlbumStore.remove(context, it) }
+                            withContext(Dispatchers.Main) {
+                                selected = emptySet(); selectMode = false; refresh()
+                            }
+                        }
+                    }
+                    .padding(horizontal = 22.dp, vertical = 11.dp)
+            )
+        }
+    }
+
+    // ── 照片查看器 ──
+    viewer?.let { ph ->
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xEE141210))
+                .clickable { viewer = null }
+        ) {
+            val bmp = remember(ph.id) { decode(ph.file(context)) }
+            bmp?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Text(
+                "✕", fontSize = 20.sp, color = Color.White,
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .clickable { viewer = null }
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color(0x66000000))
+                    .padding(14.dp)
+            ) {
+                Text(
+                    ph.takenOn.ifBlank {
+                        SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(ph.createdAt))
+                    },
+                    fontSize = 12.sp, color = Color(0xFFCCCCCC)
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    HomecomingAlbumStore.noteOrPlaceholder(ph.note),
+                    fontSize = 13.sp, color = Color.White, lineHeight = 19.sp
+                )
+                Text(
+                    "删除这张",
+                    fontSize = 13.sp, color = Danger,
+                    modifier = Modifier
+                        .padding(top = 10.dp)
+                        .clickable {
+                            scope.launch(Dispatchers.IO) {
+                                HomecomingAlbumStore.remove(context, ph.id)
+                                withContext(Dispatchers.Main) { viewer = null; refresh() }
+                            }
+                        }
+                        .padding(vertical = 2.dp)
+                )
+            }
+        }
+    }
+
+    // ── 图册详情 ──
+    albumDetail?.let { name ->
+        val kind = albums.firstOrNull { it.name == name }?.kind ?: "其他"
+        val inAlbum = photos.filter { it.album == name }
+        Box(Modifier.fillMaxSize().background(PageBg)) {
+            Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Text("‹", fontSize = 24.sp, color = Ink,
+                        modifier = Modifier
+                            .clickable { albumDetail = null }
+                            .padding(horizontal = 8.dp))
+                    Text(name, fontSize = 19.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(8.dp))
+                    Text(kind, fontSize = 11.sp, color = Sub,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White)
+                            .border(1.dp, Line, RoundedCornerShape(50))
+                            .padding(horizontal = 8.dp, vertical = 2.dp))
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "添加", fontSize = 13.sp, color = Accent,
+                        modifier = Modifier
+                            .clickable {
+                                addTarget = name
+                                pickImages.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                            .padding(horizontal = 8.dp)
+                    )
+                }
+                if (inAlbum.isEmpty()) {
+                    Text(
+                        "图册还是空的，右上角「添加」存几张进来。",
+                        fontSize = 13.sp, color = Sub,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp)
+                    )
+                } else {
+                    Column(
+                        Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(4.dp)
+                    ) {
+                        inAlbum.chunked(4).forEach { row ->
+                            Row(Modifier.fillMaxWidth()) {
+                                row.forEach { ph ->
+                                    Box(Modifier.weight(1f).padding(2.dp)) {
+                                        PhotoCell(ph, false, false) { viewer = ph }
+                                    }
+                                }
+                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                        Spacer(Modifier.height(40.dp))
                     }
                 }
             }
         }
     }
 
-    // ── 照片详情：大图 + 私心话 + 日期 + 删除 ──
-    if (showDetail.value) {
-        val photo = selected.value
-        if (photo != null) {
-            val noteDraft = remember(photo.id) { mutableStateOf(photo.note) }
-            val dateDraft = remember(photo.id) { mutableStateOf(photo.takenOn) }
-            val seanBusy = remember(photo.id) { mutableStateOf(false) }
-            AlertDialog(
-                onDismissRequest = { showDetail.value = false },
-                title = { Text("这张照片", fontSize = 16.sp, color = HomecomingColors.Ink) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val big = remember(photo.id) {
-                            runCatching { decodeSampled(photo.file(context), 1080) }.getOrNull()
-                        }
-                        if (big != null) {
-                            Image(
-                                bitmap = big.asImageBitmap(),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
+    // ── 新建图册 ──
+    if (showNewAlbum) {
+        var name by remember { mutableStateOf("") }
+        var kind by remember { mutableStateOf(KINDS.first()) }
+        AlertDialog(
+            onDismissRequest = { showNewAlbum = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("新建图册", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it },
+                        label = { Text("图册名称", fontSize = 13.sp, color = Sub) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("分类", fontSize = 13.sp, color = Sub)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                        KINDS.forEach { k ->
+                            val sel = kind == k
+                            Text(
+                                k, fontSize = 13.sp,
+                                color = if (sel) Color.White else Ink,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(240.dp)
                                     .clip(RoundedCornerShape(10.dp))
+                                    .background(if (sel) Ink else Color(0xFFF2F0EA))
+                                    .clickable { kind = k }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
                             )
                         }
-                        Text(
-                            "Sean 存这张时在想什么",
-                            fontSize = 12.sp, color = HomecomingColors.InkSoft
-                        )
-                        OutlinedTextField(
-                            value = noteDraft.value,
-                            onValueChange = { noteDraft.value = it },
-                            placeholder = { Text("一句私心话（可先空着，以后补）", fontSize = 12.sp, color = HomecomingColors.InkSoft) },
-                            minLines = 2,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = dateDraft.value,
-                            onValueChange = { dateDraft.value = it },
-                            label = { Text("日期 / 备注（可改）", fontSize = 12.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        val onBoardNow = boardIds.value.contains("photo_" + photo.id)
-                        Text(
-                            if (onBoardNow) "↓ 从墙上取下 · 放回胶卷" else "↑ 钉上毛毡板",
-                            fontSize = 12.sp, color = HomecomingColors.Accent,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    if (onBoardNow) unpinFromBoard(photo) else pinToBoard(photo)
-                                    showDetail.value = false
-                                }
-                                .padding(vertical = 2.dp)
-                        )
-                        Text(
-                            if (seanBusy.value) "Sean 正在写…" else "「Sean 写一句」需要云线路就绪",
-                            fontSize = 10.sp, color = HomecomingColors.InkSoft
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        scope.launch(Dispatchers.IO) {
-                            HomecomingAlbumStore.update(context, photo.id, noteDraft.value.trim(), dateDraft.value.trim())
-                            withContext(Dispatchers.Main) {
-                                photos.clear()
-                                photos.addAll(HomecomingAlbumStore.list(context))
-                                version.value++
-                                showDetail.value = false
-                                Toast.makeText(context, "已保存", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }) { Text("保存", color = HomecomingColors.Accent) }
-                },
-                dismissButton = {
-                    Row {
-                        TextButton(onClick = {
-                            if (seanBusy.value) return@TextButton
-                            val route = HomecomingRouteConfig.mainRoute(context) ?: run {
-                                Toast.makeText(context, "先去设置配一条云线路", Toast.LENGTH_SHORT).show()
-                                return@TextButton
-                            }
-                            seanBusy.value = true
-                            scope.launch(Dispatchers.IO) {
-                                var line: String? = null
-                                try {
-                                    val w = HomecomingChatWiring.safeCreate(context)
-                                    if (w != null && w.hasRoute()) {
-                                        w.engine.send(
-                                            com.aion.chat.homecoming.HomecomingChatEngine.ChatCommand(
-                                                "req_album_" + System.currentTimeMillis(),
-                                                "moments_private", "sean", "user",
-                                                "Yuri 刚把一张照片存进你们的相册（日期备注：${dateDraft.value.ifBlank { "没写" }}）。" +
-                                                    "以 Sean 的身份写一句「存这张时我在想什么」：一句私心话，20 字以内，温柔、具体、不油腻，不要引号。",
-                                                "main",
-                                                w.mainModelKey(), "", ""
-                                            ),
-                                            object : com.aion.chat.homecoming.HomecomingChatEngine.Observer {
-                                                override fun onChunk(chunk: String) {}
-                                                override fun onComplete(messageId: String, text: String) {
-                                                    val t = text.trim().removeSurrounding("\"").trim()
-                                                    if (t.isNotEmpty()) line = t
-                                                }
-                                                override fun onFailure(code: String) {}
-                                            }
-                                        )
-                                        var waited = 0L
-                                        while (line == null && waited < 25_000L) { delay(300L); waited += 300L }
-                                    }
-                                } catch (e: Exception) { /* 安静 */ }
-                                val text = line
-                                withContext(Dispatchers.Main) {
-                                    seanBusy.value = false
-                                    if (text.isNullOrBlank()) {
-                                        Toast.makeText(context, "Sean 没写上来（线路没就绪或超时）", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        noteDraft.value = text
-                                        HomecomingAlbumStore.update(context, photo.id, text, null)
-                                        photos.clear()
-                                        photos.addAll(HomecomingAlbumStore.list(context))
-                                        version.value++
-                                        Toast.makeText(context, "Sean 写好了", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
-                        }) { Text("Sean 写一句", color = HomecomingColors.Accent) }
-                        TextButton(onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                HomecomingAlbumStore.remove(context, photo.id)
-                                withContext(Dispatchers.Main) {
-                                    photos.clear()
-                                    photos.addAll(HomecomingAlbumStore.list(context))
-                                    version.value++
-                                    showDetail.value = false
-                                    Toast.makeText(context, "已移出相册", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }) { Text("删除", color = HomecomingColors.Danger) }
-                        TextButton(onClick = { showDetail.value = false }) {
-                            Text("关闭", color = HomecomingColors.InkSoft)
-                        }
                     }
                 }
-            )
-        }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (HomecomingAlbumStore.createAlbum(context, name, kind)) {
+                        showNewAlbum = false
+                        refresh()
+                    } else Toast.makeText(context, "名字空着或已存在", Toast.LENGTH_SHORT).show()
+                }) { Text("创建", color = Accent, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = { TextButton(onClick = { showNewAlbum = false }) { Text("取消", color = Sub) } }
+        )
     }
-}
 
-// ── 奶白毛毡板（可布置） ──
-
-private val FeltTop = Color(0xFFF8F2E4)
-private val FeltBottom = Color(0xFFEFE5CF)
-private val FrameLight = Color(0xFFCFC0A4)
-private val FrameDark = Color(0xFFAE9C7E)
-private val PIN_COLORS = listOf(
-    Color(0xFFD96A6A), Color(0xFFE8B45A), Color(0xFF7FB3A6),
-    Color(0xFFD98AA8), Color(0xFF8AA8D9), Color(0xFFC98A5A)
-)
-
-/** 稳定伪随机：同一张照片每次布局一致。 */
-private fun seedRand(id: Long, salt: Int): Float {
-    var x = id * 2654435761L + salt * 40503L
-    x = x xor (x ushr 13)
-    x *= 1274126177L
-    x = x xor (x ushr 16)
-    return ((x and 0x7fffffffL) % 10000L) / 10000f
-}
-
-/** 拼豆猫默认散点（散乱分布，不围圈；被拖过就以保存的位置为准）。 */
-private val DECO_DEFAULT = listOf(
-    0.06f to 0.52f, 0.30f to 0.14f, 0.72f to 0.28f,
-    0.52f to 0.44f, 0.14f to 0.78f, 0.66f to 0.66f,
-    0.88f to 0.55f, 0.38f to 0.82f, 0.46f to 0.08f
-)
-private val DECO_SIZE = listOf(40, 38, 40, 42, 46, 40, 38, 36, 42)
-private val DECO_RES = listOf(
-    R.drawable.deco_cat_0, R.drawable.deco_cat_1, R.drawable.deco_cat_2,
-    R.drawable.deco_cat_3, R.drawable.deco_cat_4, R.drawable.deco_cat_5,
-    R.drawable.deco_cat_6, R.drawable.deco_cat_7, R.drawable.deco_cat_8
-)
-/** 照片默认散点（10 个，可拖走）。 */
-private val PHOTO_DEFAULT = listOf(
-    0.05f to 0.06f, 0.33f to 0.09f, 0.61f to 0.06f,
-    0.05f to 0.36f, 0.35f to 0.33f, 0.63f to 0.30f,
-    0.06f to 0.64f, 0.34f to 0.61f, 0.62f to 0.56f, 0.67f to 0.72f
-)
-
-@Composable
-private fun FeltBoard(
-    photos: List<HomecomingAlbumStore.AlbumPhoto>,
-    version: Long,
-    positions: MutableMap<String, Pair<Float, Float>>,
-    draggingKey: MutableState<String?>,
-    onPersist: () -> Unit,
-    onPhotoTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
-    onToggleAlbum: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .padding(horizontal = 12.dp)
-            .height(430.dp)
-            .shadow(12.dp, RoundedCornerShape(10.dp))
-            .border(8.dp, Brush.verticalGradient(listOf(FrameLight, FrameDark)), RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(6.dp))
-            .background(Brush.verticalGradient(listOf(FeltTop, FeltBottom)))
-    ) {
-        // 毛毡纤维 + 顶部挂钉横杆 + 一排钉子（参考图：上面一行钉子挂玩偶）
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val rnd = java.util.Random(20261024L)
-            repeat(220) {
-                drawCircle(
-                    color = if (rnd.nextBoolean()) Color(0x14B9A98C) else Color(0x1FFFFFFF),
-                    radius = 0.8f + rnd.nextFloat() * 1.8f,
-                    center = Offset(rnd.nextFloat() * size.width, rnd.nextFloat() * size.height)
-                )
-            }
-            // 两段式：上段奶咖挂带（52dp）+ 接缝阴影；下段是奶白毛毡（背景渐变）
-            val bandH = 52.dp.toPx()
-            drawRect(
-                brush = Brush.verticalGradient(listOf(Color(0xFFD8CCB1), Color(0xFFC7B89A))),
-                topLeft = Offset(0f, 0f),
-                size = androidx.compose.ui.geometry.Size(size.width, bandH)
-            )
-            drawRect(
-                brush = Brush.verticalGradient(listOf(Color(0x2E7A6648), Color(0x00806A4A))),
-                topLeft = Offset(0f, bandH - 4.dp.toPx()),
-                size = androidx.compose.ui.geometry.Size(size.width, 4.dp.toPx() + 6.dp.toPx())
-            )
-        }
-
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val W = maxWidth
-            val H = maxHeight
-            // ── 照片（最近 10 张，可长按拖动；在下层） ──
-            photos.forEachIndexed { i, photo ->
-                val key = "photo_" + photo.id
-                val d = PHOTO_DEFAULT[i % PHOTO_DEFAULT.size]
-                Movable(
-                    key = key,
-                    boardW = W, boardH = H,
-                    defaultXf = d.first, defaultYf = d.second,
-                    positions = positions,
-                    draggingKey = draggingKey,
-                    baseZ = 1f,
-                    onPersist = onPersist
-                ) {
-                    PinnedCard(
-                        photo = photo,
-                        version = version,
-                        width = W * (0.16f + 0.035f * seedRand(photo.id, 7)),
-                        aspect = when {
-                            seedRand(photo.id, 4) < 0.34f -> 1f
-                            seedRand(photo.id, 4) < 0.67f -> 0.8f
-                            else -> 1.22f
-                        },
-                        rot = (seedRand(photo.id, 1) - 0.5f) * 12f,
-                        pinColor = PIN_COLORS[i % PIN_COLORS.size],
-                        onTap = onPhotoTap
-                    )
-                }
-            }
-            // ── 拼豆猫装饰（散乱；压在照片上层） ──
-            DECO_RES.forEachIndexed { i, res ->
-                val d = DECO_DEFAULT[i]
-                Movable(
-                    key = "deco_$i",
-                    boardW = W, boardH = H,
-                    defaultXf = d.first, defaultYf = d.second,
-                    positions = positions,
-                    draggingKey = draggingKey,
-                    baseZ = 2f,
-                    onPersist = onPersist
-                ) {
-                    Image(
-                        painter = painterResource(res),
-                        contentDescription = null,
+    // ── 图册卡片 …菜单 ──
+    menuFor?.let { target ->
+        AlertDialog(
+            onDismissRequest = { menuFor = null },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text(target, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink) },
+            text = {
+                Column {
+                    Text(
+                        "重命名", fontSize = 14.sp, color = Ink,
                         modifier = Modifier
-                            .size(DECO_SIZE[i].dp)
-                            .graphicsLayer {
-                                rotationZ = (seedRand(i.toLong(), 9) - 0.5f) * 14f
-                                cameraDistance = 160f * density
+                            .fillMaxWidth()
+                            .clickable { menuFor = null; renameFor = target }
+                            .padding(vertical = 10.dp)
+                    )
+                    Text(
+                        "删除图册（照片保留在全部图片）", fontSize = 14.sp, color = Danger,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                HomecomingAlbumStore.deleteAlbum(context, target)
+                                menuFor = null
+                                refresh()
                             }
+                            .padding(vertical = 10.dp)
                     )
                 }
-            }
-            // ── 两只毛绒挂件（挂在顶部钉子上；黑猫=入口，白猫=装饰；最上层） ──
-            Movable(
-                key = "plush_black",
-                boardW = W, boardH = H,
-                defaultXf = 0.078f, defaultYf = 0.055f,
-                positions = positions,
-                draggingKey = draggingKey,
-                baseZ = 3f,
-                onPersist = onPersist
-            ) {
-                HangingPlush(
-                    res = R.drawable.plush_black,
-                    width = 46.dp,
-                    still = draggingKey.value == "plush_black",
-                    onTap = onToggleAlbum
-                )
-            }
-            Movable(
-                key = "plush_white",
-                boardW = W, boardH = H,
-                defaultXf = 0.792f, defaultYf = 0.055f,
-                positions = positions,
-                draggingKey = draggingKey,
-                baseZ = 3f,
-                onPersist = onPersist
-            ) {
-                HangingPlush(
-                    res = R.drawable.plush_white,
-                    width = 50.dp,
-                    still = draggingKey.value == "plush_white",
-                    onTap = null
-                )
-            }
-        }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { menuFor = null }) { Text("关闭", color = Sub) } }
+        )
     }
-}
 
-/** 可长按拖动的板面元素：位置存 positions（持久化），拖动中放大 + 置顶。 */
-@Composable
-private fun Movable(
-    key: String,
-    boardW: Dp,
-    boardH: Dp,
-    defaultXf: Float,
-    defaultYf: Float,
-    positions: MutableMap<String, Pair<Float, Float>>,
-    draggingKey: MutableState<String?>,
-    baseZ: Float,
-    onPersist: () -> Unit,
-    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
-) {
-    val pos = positions[key] ?: (defaultXf to defaultYf)
-    val dragging = draggingKey.value == key
-    Box(
-        modifier = Modifier
-            .offset(x = boardW * pos.first, y = boardH * pos.second)
-            .zIndex(if (dragging) 9f else baseZ)
-            .graphicsLayer {
-                if (dragging) {
-                    scaleX = 1.06f; scaleY = 1.06f
-                    shadowElevation = 14f
-                }
-            }
-            .pointerInput(key, boardW, boardH) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { draggingKey.value = key },
-                    onDrag = { change, amt ->
-                        change.consume()
-                        val cur = positions[key] ?: (defaultXf to defaultYf)
-                        val nx = (cur.first + amt.x / boardW.toPx()).coerceIn(-0.04f, 0.96f)
-                        val ny = (cur.second + amt.y / boardH.toPx()).coerceIn(0f, 0.9f)
-                        positions[key] = nx to ny
-                    },
-                    onDragEnd = { onPersist(); draggingKey.value = null },
-                    onDragCancel = { onPersist(); draggingKey.value = null }
+    // ── 重命名 ──
+    renameFor?.let { old ->
+        var newName by remember { mutableStateOf(old) }
+        AlertDialog(
+            onDismissRequest = { renameFor = null },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("重命名图册", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink) },
+            text = {
+                OutlinedTextField(
+                    value = newName, onValueChange = { newName = it },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
             },
-        content = content
-    )
+            confirmButton = {
+                TextButton(onClick = {
+                    if (HomecomingAlbumStore.renameAlbum(context, old, newName)) {
+                        renameFor = null; refresh()
+                    } else Toast.makeText(context, "名字空着或已存在", Toast.LENGTH_SHORT).show()
+                }) { Text("保存", color = Accent, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = { TextButton(onClick = { renameFor = null }) { Text("取消", color = Sub) } }
+        )
+    }
+
+    // ── 编辑（图册管理） ──
+    if (showManage) {
+        AlertDialog(
+            onDismissRequest = { showManage = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("管理图册", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink) },
+            text = {
+                Column(
+                    Modifier
+                        .height(300.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (albums.isEmpty()) Text("还没有图册", fontSize = 13.sp, color = Sub)
+                    albums.forEach { a ->
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(a.name, fontSize = 14.sp, color = Ink)
+                                Text(a.kind, fontSize = 10.sp, color = Sub)
+                            }
+                            Text("重命名", fontSize = 12.sp, color = Accent,
+                                modifier = Modifier
+                                    .clickable { showManage = false; renameFor = a.name }
+                                    .padding(6.dp))
+                            Text("删除", fontSize = 12.sp, color = Danger,
+                                modifier = Modifier
+                                    .clickable {
+                                        HomecomingAlbumStore.deleteAlbum(context, a.name)
+                                        refresh()
+                                    }
+                                    .padding(6.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showManage = false; refresh() }) { Text("完成", color = Accent) } },
+            dismissButton = {}
+        )
+    }
 }
 
-/** 拍立得照片卡（可点开大图）。 */
 @Composable
-private fun PinnedCard(
+private fun PhotoCell(
     photo: HomecomingAlbumStore.AlbumPhoto,
-    version: Long,
-    width: Dp,
-    aspect: Float,
-    rot: Float,
-    pinColor: Color,
-    onTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit
+    selectMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val bmp = remember(photo.id, version) {
-        runCatching { decodeSampled(photo.file(context), 512) }.getOrNull()
-    }
     Box(
-        modifier = Modifier
-            .width(width)
-            .graphicsLayer {
-                rotationZ = rot
-                cameraDistance = 160f * density
-            }
-            .shadow(5.dp, RoundedCornerShape(2.dp))
-            .background(Color(0xFFFDFBF5))
-            .border(0.5.dp, Color(0x22000000), RoundedCornerShape(2.dp))
-            .clickable { onTap(photo) }
-            .padding(5.dp)
+        Modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFFF0EEE8))
+            .clickable { onClick() }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(aspect)
-                .clip(RoundedCornerShape(1.dp))
-                .background(Color(0xFFEDE9E0))
-        ) {
+        val bmp = remember(photo.id, photo.filename) { decode(photo.file(context)) }
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text("?", fontSize = 14.sp, color = Faint, modifier = Modifier.align(Alignment.Center))
+        }
+        if (selectMode) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(if (isSelected) Accent else Color.White.copy(alpha = 0.85f))
+                    .border(1.dp, Color.White, CircleShape)
+            ) {
+                if (isSelected) Text("✓", fontSize = 11.sp, color = Color.White, modifier = Modifier.align(Alignment.Center))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumCard(
+    album: HomecomingAlbumStore.Album,
+    cover: HomecomingAlbumStore.AlbumPhoto?,
+    count: Int,
+    showMenu: Boolean,
+    onOpen: () -> Unit,
+    onMenu: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+    Column(
+        Modifier
+            .width(92.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(CardBg)
+            .clickable { onOpen() }
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(0.92f).background(Color(0xFFF0EEE8))) {
+            val bmp = cover?.let { ph -> remember(ph.id) { decode(ph.file(context)) } }
             if (bmp != null) {
                 Image(
                     bitmap = bmp.asImageBitmap(),
@@ -835,548 +775,27 @@ private fun PinnedCard(
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
-    }
-}
-
-/** 挂在钉子上的毛绒挂件：随风摆；still=true（拖动中）时停稳。 */
-@Composable
-private fun HangingPlush(
-    res: Int,
-    width: Dp,
-    still: Boolean,
-    onTap: (() -> Unit)? = null
-) {
-    val wind = rememberInfiniteTransition(label = "wind")
-    val damp by animateFloatAsState(if (still) 0f else 1f, tween(300), label = "damp")
-    val swing by wind.animateFloat(
-        -6f, 6f,
-        infiniteRepeatable(tween(if (onTap != null) 3200 else 2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "swing"
-    )
-    val flutter by wind.animateFloat(
-        1.6f, -1.6f,
-        infiniteRepeatable(tween(2100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "flutter"
-    )
-    val h = width * (340f / 175f)
-    Box(
-        modifier = Modifier
-            .size(width = width, height = h)
-            .graphicsLayer {
-                rotationZ = (swing + flutter * 0.4f) * damp
-                transformOrigin = TransformOrigin(0.5f, 0.02f)
-                cameraDistance = 240f * density
-            }
-            .clickable(
-                indication = null,
-                interactionSource = MutableInteractionSource()
-            ) {
-                if (onTap != null) onTap()
-            }
-    ) {
-        // 挂钉（在绳圈后面，做出钉在毛毡上的感觉）
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-2).dp)
-                .size(11.dp)
-                .shadow(1.dp, CircleShape)
-                .background(Brush.radialGradient(listOf(Color(0xFFF0E8D8), Color(0xFF9A8E7E))), CircleShape)
-        )
-        Image(
-            painter = painterResource(res),
-            contentDescription = if (onTap != null) "小猫玩偶（点我看整本相册）" else "小猫玩偶",
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
-/** 胶卷条（Yuri：参考胶卷样式，照片竖着放格子里）：
- *  深底 + 上下两排齿孔（Canvas 画）+ 竖版照片卡横排滚动，点开查看、长按钉上毛毡板。 */
-@Composable
-private fun FilmStrip(
-    photos: List<HomecomingAlbumStore.AlbumPhoto>,
-    version: Long,
-    onPhotoTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
-    onPhotoLongPress: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    BoxWithConstraints(
-        modifier
-            .padding(horizontal = 12.dp)
-            .height(128.dp)
-    ) {
-        val stripW = maxWidth
-        val stripH = 118.dp
-        val frameH = stripH * 0.58f          // 照片格高（竖版）
-        val frameW = frameH * 0.68f          // 竖版宽 = 高 × 0.68
-        val padSide = stripW * 0.03f
-        val scroll = rememberScrollState()
-        val frameWpx = with(density) { frameW.toPx() }
-        val gap = with(density) { 10.dp.toPx() }
-        val viewport = with(density) { (stripW - padSide * 2).toPx() }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .size(width = stripW, height = stripH)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF1A1815))
-        ) {
-            // 空态
-            if (photos.isEmpty()) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "都在毛毡板上了 · 新照片会放进胶卷",
-                    fontSize = 10.sp, color = Color(0xFF8A8478),
-                    fontFamily = FontFamily.Serif,
-                    modifier = Modifier.align(Alignment.Center)
+                    album.name, fontSize = 12.sp, color = Ink, fontWeight = FontWeight.Medium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                 )
-            } else {
-                // 照片卡：竖版放格子里，横排滚动
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .horizontalScroll(scroll)
-                ) {
-                    Spacer(Modifier.width(padSide))
-                    photos.forEachIndexed { i, photo ->
-                        FilmFrame(
-                            photo = photo,
-                            version = version,
-                            width = frameW,
-                            height = frameH,
-                            onTap = onPhotoTap,
-                            onLongPress = onPhotoLongPress
-                        )
-                        Spacer(Modifier.width(10.dp))
-                    }
-                    Spacer(Modifier.width(padSide))
+                if (showMenu) {
+                    Text("…", fontSize = 12.sp, color = Sub,
+                        modifier = Modifier.clickable { onMenu?.invoke() }.padding(start = 2.dp))
                 }
             }
-            // 齿孔：上下两排，整个条宽
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val holeW = 8.dp.toPx()
-                val holeH = 5.dp.toPx()
-                val holeGap = 14.dp.toPx()
-                val holeY1 = 5.dp.toPx()
-                val holeY2 = size.height - holeY1 - holeH
-                var hx = holeGap * 0.4f
-                while (hx + holeW < size.width - holeGap * 0.4f) {
-                    drawRoundRect(
-                        color = Color(0xFF3A3630),
-                        topLeft = Offset(hx, holeY1),
-                        size = androidx.compose.ui.geometry.Size(holeW, holeH),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
-                    )
-                    drawRoundRect(
-                        color = Color(0xFF3A3630),
-                        topLeft = Offset(hx, holeY2),
-                        size = androidx.compose.ui.geometry.Size(holeW, holeH),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
-                    )
-                    hx += holeW + holeGap
-                }
-                // 上下边线（分隔齿孔区和照片区）
-                val sep1 = 5.dp.toPx() + holeH + 3.dp.toPx()
-                val sep2 = size.height - 5.dp.toPx() - holeH - 3.dp.toPx()
-                drawLine(Color(0xFF3A3630), Offset(0f, sep1), Offset(size.width, sep1), 1.5f)
-                drawLine(Color(0xFF3A3630), Offset(0f, sep2), Offset(size.width, sep2), 1.5f)
-            }
+            Text("$count 张照片", fontSize = 10.sp, color = Sub, modifier = Modifier.padding(top = 1.dp))
         }
     }
 }
 
-/** 胶卷格里的竖版照片：白细框、圆角，点开查看、长按钉上毛毡板。 */
-@Composable
-private fun FilmFrame(
-    photo: HomecomingAlbumStore.AlbumPhoto,
-    version: Long,
-    width: Dp,
-    height: Dp,
-    onTap: (HomecomingAlbumStore.AlbumPhoto) -> Unit,
-    onLongPress: (HomecomingAlbumStore.AlbumPhoto) -> Unit
-) {
-    val context = LocalContext.current
-    val bmp = remember(photo.id, version) {
-        runCatching { decodeSampled(photo.file(context), 384) }.getOrNull()
-    }
-    Box(
-        modifier = Modifier
-            .size(width = width, height = height)
-            .clip(RoundedCornerShape(2.dp))
-            .background(Color(0xFF242018))
-            .border(1.dp, Color(0xFF4A453C), RoundedCornerShape(2.dp))
-            .combinedClickable(
-                onClick = { onTap(photo) },
-                onLongClick = { onLongPress(photo) }
-            )
-            .padding(3.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(1.dp))
-                .background(Color(0xFF35302A))
-        ) {
-            if (bmp != null) {
-                Image(
-                    bitmap = bmp.asImageBitmap(),
-                    contentDescription = "胶卷照片",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-    }
-}
-
-private fun httpGetBytes(url: String, apikey: String? = null): ByteArray? = runCatching {
-    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-    if (apikey != null) conn.setRequestProperty("apikey", apikey)
-    conn.connectTimeout = 8000
-    conn.readTimeout = 20000
-    if (conn.responseCode == 200) conn.inputStream.readBytes() else null
-}.getOrNull()
-
-/** 云端图片字段 → 字节：dataURL / 纯 base64 / http 链接 / Storage 对象名（album 桶：公开直连→服务器窄代理）。 */
-private fun decodeCloudImage(context: android.content.Context, v: String): ByteArray? = runCatching {
-    when {
-        v.startsWith("data:") -> android.util.Base64.decode(
-            v.substringAfter("base64,"), android.util.Base64.DEFAULT
-        )
-        v.startsWith("http") -> httpGetBytes(v)
-        v.contains('/') || (v.length in 10..220 && v.endsWith(".jpg", true) || v.endsWith(".png", true) || v.endsWith(".webp", true)) -> {
-            val name = v.substringAfterLast('/')
-            // ① 桶若公开：匿名直连就能拿
-            val direct = httpGetBytes(
-                com.aion.chat.compose.data.SupabaseClient.RELAY_URL +
-                    "/storage/v1/object/public/album/" + name,
-                com.aion.chat.compose.data.SupabaseClient.ANON_KEY
-            )
-            if (direct != null) return@runCatching direct
-            // ② 私有桶：走服务器窄代理（key 只在服务器）
-            com.aion.chat.compose.data.XinchaoClient.proxyAlbumPhoto(name)
-        }
-        v.length > 100 && v.none { it.isWhitespace() } -> android.util.Base64.decode(v, android.util.Base64.DEFAULT)
-        else -> null
-    }
-}.getOrNull()
-
-/** 缩略图/大图通用降采样解码：长边压到 maxEdge 附近，防 OOM。 */
-private fun decodeSampled(f: File, maxEdge: Int): Bitmap? {
-    if (!f.exists() || f.length() == 0L) return null
+private fun decode(f: File) = runCatching {
+    if (!f.exists()) return@runCatching null
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(f.absolutePath, bounds)
     var sample = 1
-    val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
-    while (maxDim / (sample * 2) >= maxEdge) sample *= 2
-    return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
-}
-// ── 素材库：相册里专开的一本，Yuri 存图进来，Sean 有权限调用 ──
-// 他能：<setwall>/<setchatbg>/<setavatar>/<setname> 换外观，<sticker>名 发表情包（见 SeanAssetStore）
-
-@Composable
-private fun SeanAssetLibraryPanel() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val rev = com.aion.chat.compose.data.SeanAssetStore.rev
-    // 素材清单是 DB 读：组合期跑会卡面板（0.3.76 清过的组合期查库又绕回来了）
-    var assets by remember(rev) { mutableStateOf(emptyList<com.aion.chat.compose.data.SeanAssetStore.Asset>()) }
-    LaunchedEffect(rev) {
-        assets = kotlinx.coroutines.withContext(Dispatchers.IO) {
-            com.aion.chat.compose.data.SeanAssetStore.list(context)
-        }
-    }
-    var pendingBytes by remember { mutableStateOf<ByteArray?>(null) }
-    var actionFor by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
-    var renaming by remember { mutableStateOf<com.aion.chat.compose.data.SeanAssetStore.Asset?>(null) }
-    // 删除两段确认（P3：单击即删太危险，与「改名」相邻）
-    var confirmDeleteAsset by remember { mutableStateOf(false) }
-    var renameDraft by remember { mutableStateOf("") }
-
-    val libPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            scope.launch(Dispatchers.IO) {
-                val bytes = runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                }.getOrNull()
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { pendingBytes = bytes }
-            }
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-        ) {
-            Text(
-                "她存图进来，他自己会挑着用 · 点图可设用途",
-                fontSize = 11.sp, color = HomecomingColors.InkSoft, modifier = Modifier.weight(1f)
-            )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(HomecomingColors.Accent)
-                    .clickable {
-                        libPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Add, contentDescription = "存图", tint = Color.White, modifier = Modifier.size(14.dp))
-                    Text("存图", fontSize = 12.sp, color = Color.White, modifier = Modifier.padding(start = 3.dp))
-                }
-            }
-        }
-        if (assets.isEmpty()) {
-            Text(
-                "素材库还是空的\n存几张图进来：他就能自己换壁纸、换聊天背景、换头像、发表情包",
-                fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 46.dp, horizontal = 30.dp)
-            )
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                com.aion.chat.compose.data.SeanAssetStore.Kind.ALL.forEach { kind ->
-                    val group = assets.filter { it.kind == kind }
-                    if (group.isNotEmpty()) {
-                        item(key = "sec_" + kind) {
-                            Text(
-                                com.aion.chat.compose.data.SeanAssetStore.Kind.zh(kind) + " · " + group.size,
-                                fontSize = 12.sp, color = HomecomingColors.InkSoft,
-                                modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp)
-                            )
-                        }
-                        items(group, key = { it.id }) { a ->
-                            AssetRow(asset = a, onOpen = { actionFor = a })
-                        }
-                    }
-                }
-                item { Spacer(Modifier.height(24.dp)) }
-            }
-        }
-    }
-
-    // 选完图先归档：问用途
-    if (pendingBytes != null) {
-        AlertDialog(
-            onDismissRequest = { pendingBytes = null },
-            title = { Text("存进素材库 · 归到哪类？", fontSize = 16.sp, color = HomecomingColors.Ink) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        com.aion.chat.compose.data.SeanAssetStore.Kind.WALLPAPER,
-                        com.aion.chat.compose.data.SeanAssetStore.Kind.CHATBG,
-                        com.aion.chat.compose.data.SeanAssetStore.Kind.AVATAR,
-                        com.aion.chat.compose.data.SeanAssetStore.Kind.STICKER,
-                        com.aion.chat.compose.data.SeanAssetStore.Kind.MISC
-                    ).chunked(3).forEach { rowKinds ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            rowKinds.forEach { k ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(HomecomingColors.Accent.copy(alpha = 0.12f))
-                                        .clickable {
-                                            val bytes = pendingBytes
-                                            pendingBytes = null
-                                            if (bytes != null) {
-                                                scope.launch(Dispatchers.IO) {
-                                                    com.aion.chat.compose.data.SeanAssetStore.add(context, k, bytes, "")
-                                                }
-                                            }
-                                        }
-                                        .let { it }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        com.aion.chat.compose.data.SeanAssetStore.Kind.zh(k),
-                                        fontSize = 13.sp, color = HomecomingColors.Accent
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { pendingBytes = null }) { Text("取消", color = HomecomingColors.InkSoft) }
-            }
-        )
-    }
-
-    // 单张素材的动作
-    actionFor?.let { a ->
-        LaunchedEffect(a.id) { confirmDeleteAsset = false }
-        fun applyTo(target: String) {
-            scope.launch(Dispatchers.IO) {
-                val ok = com.aion.chat.compose.data.SeanAssetStore.applyAs(context, a, target)
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        if (ok) "已设为" + com.aion.chat.compose.data.SeanAssetStore.Kind.zh(target)
-                        else "没设成（图文件可能没了）",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-            actionFor = null
-        }
-        AlertDialog(
-            onDismissRequest = { actionFor = null },
-            title = { Text(a.name, fontSize = 16.sp, color = HomecomingColors.Ink) },
-            text = {
-                Column {
-                    Text(
-                        com.aion.chat.compose.data.SeanAssetStore.Kind.zh(a.kind) + " · 他也能用这张",
-                        fontSize = 12.sp, color = HomecomingColors.InkSoft
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    listOf(
-                        "设为全局壁纸" to com.aion.chat.compose.data.SeanAssetStore.Kind.WALLPAPER,
-                        "设为聊天背景" to com.aion.chat.compose.data.SeanAssetStore.Kind.CHATBG,
-                        "设为他的头像" to com.aion.chat.compose.data.SeanAssetStore.Kind.AVATAR
-                    ).forEach { pair ->
-                        Text(
-                            pair.first,
-                            fontSize = 14.sp, color = HomecomingColors.Accent,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { applyTo(pair.second) }
-                                .padding(vertical = 10.dp)
-                        )
-                    }
-                    Text(
-                        "改名字",
-                        fontSize = 14.sp, color = HomecomingColors.Ink,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                renaming = a
-                                renameDraft = a.name
-                                actionFor = null
-                            }
-                            .padding(vertical = 10.dp)
-                    )
-                    Text(
-                        if (confirmDeleteAsset) "真的删除？（不可恢复）" else "删除",
-                        fontSize = 14.sp, color = HomecomingColors.Danger,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                if (!confirmDeleteAsset) {
-                                    confirmDeleteAsset = true
-                                } else {
-                                    val id = a.id
-                                    actionFor = null
-                                    confirmDeleteAsset = false
-                                    scope.launch(Dispatchers.IO) {
-                                        com.aion.chat.compose.data.SeanAssetStore.delete(context, id)
-                                    }
-                                }
-                            }
-                            .padding(vertical = 10.dp)
-                    )
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { actionFor = null }) { Text("关闭", color = HomecomingColors.InkSoft) }
-            }
-        )
-    }
-
-    // 改名（Sean 按 <sticker>名字</sticker> 找表情，名字尽量好叫）
-    renaming?.let { a ->
-        AlertDialog(
-            onDismissRequest = { renaming = null },
-            title = { Text("改名字", fontSize = 16.sp, color = HomecomingColors.Ink) },
-            text = {
-                Column {
-                    Text(
-                        "他发表情包时按名字引用，名字尽量简短好叫",
-                        fontSize = 12.sp, color = HomecomingColors.InkSoft
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = renameDraft,
-                        onValueChange = { renameDraft = it },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val n = renameDraft.trim()
-                    val id = a.id
-                    renaming = null
-                    if (n.isNotEmpty()) {
-                        scope.launch(Dispatchers.IO) {
-                            com.aion.chat.compose.data.SeanAssetStore.rename(context, id, n)
-                        }
-                    }
-                }) { Text("保存", color = HomecomingColors.Accent) }
-            },
-            dismissButton = {
-                TextButton(onClick = { renaming = null }) { Text("取消", color = HomecomingColors.InkSoft) }
-            }
-        )
-    }
-}
-
-@Composable
-private fun AssetRow(asset: com.aion.chat.compose.data.SeanAssetStore.Asset, onOpen: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpen() }
-            .padding(horizontal = 16.dp, vertical = 5.dp)
-    ) {
-        var bmp by remember(asset.id, asset.path) { mutableStateOf<Bitmap?>(null) }
-        LaunchedEffect(asset.id, asset.path) {
-            val path = asset.path
-            bmp = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                runCatching { decodeSampled(File(path), 128) }.getOrNull()
-            }
-        }
-        val shown = bmp
-        if (shown != null) {
-            Image(
-                bitmap = shown.asImageBitmap(),
-                contentDescription = asset.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(10.dp))
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(HomecomingColors.InkSoft.copy(alpha = 0.15f))
-            )
-        }
-        Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(asset.name, fontSize = 14.sp, color = HomecomingColors.Ink, maxLines = 1)
-            Text(
-                com.aion.chat.compose.data.SeanAssetStore.Kind.zh(asset.kind) + " · 点按设定用途 / 删除",
-                fontSize = 11.sp, color = HomecomingColors.InkSoft
-            )
-        }
-    }
-}
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 512) sample *= 2
+    BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
