@@ -56,7 +56,7 @@ import java.time.LocalDate
  * - 桌宠联动：心潮越高，回家页的桌宠越雀跃（happy → jumping → tsundere）
  */
 @Composable
-fun HeartTideScreen(onBack: () -> Unit = {}) {
+fun HeartTideScreen(onBack: () -> Unit = {}, onOpenDream: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -108,6 +108,15 @@ fun HeartTideScreen(onBack: () -> Unit = {}) {
                 Text("心潮梦境", fontSize = 22.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
                 Text("他的情绪潮汐，和他偶尔做的梦", fontSize = 11.sp, color = HomecomingColors.InkSoft)
             }
+            Text(
+                "梦境 ›",
+                fontSize = 13.sp, color = HomecomingColors.Accent, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.7f))
+                    .clickable { onOpenDream() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            )
         }
         Spacer(Modifier.height(12.dp))
 
