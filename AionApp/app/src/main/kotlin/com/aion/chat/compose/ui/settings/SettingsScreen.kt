@@ -55,7 +55,7 @@ import kotlinx.coroutines.launch
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenStats: () -> Unit = {}, onOpenFavorites: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -607,38 +607,6 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                         if (on) Toast.makeText(context, "开好了——他回话时试试", Toast.LENGTH_SHORT).show()
                     }
                 )
-            }
-        }
-
-        // ── 统计（token 用量与缓存命中率） ──
-        FrostCard {
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpenStats() }
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("统计", fontSize = 15.sp, color = HomecomingColors.Ink)
-                    Text("token 用量、缓存命中率、按天分布", fontSize = 11.sp, color = HomecomingColors.InkSoft)
-                }
-                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
-            }
-        }
-
-        // ── 收藏（聊天里长按收藏的话） ──
-        FrostCard {
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpenFavorites() }
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("收藏", fontSize = 15.sp, color = HomecomingColors.Ink)
-                    Text("长按气泡收藏的对话，随时回看", fontSize = 11.sp, color = HomecomingColors.InkSoft)
-                }
-                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }
         }
 

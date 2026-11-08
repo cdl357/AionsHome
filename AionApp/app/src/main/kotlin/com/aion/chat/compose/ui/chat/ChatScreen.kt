@@ -188,6 +188,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val showMcp = remember { mutableStateOf(false) }
     val showMemoryBank = remember { mutableStateOf(false) }
     val showFavorites = remember { mutableStateOf(false) }
+    val showStats = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
     val chatDrawerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1977,6 +1978,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // ── 统计页（抽屉 → 统计） ──
+    if (showStats.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFFCFAF6))) {
+            com.aion.chat.compose.ui.settings.StatsScreen(onBack = { showStats.value = false })
+        }
+    }
+
     // ── 记忆库（他的配置 → 记忆 → 打开） ──
     if (showMemoryBank.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFF7F5F1))) {
@@ -2121,7 +2129,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             }
             Spacer(Modifier.height(16.dp))
 
-            Text("找聊天记录 / 收藏 / 气泡皮肤", fontSize = 14.sp, color = HomecomingColors.Ink)
+            Text("找聊天记录 / 收藏 / 统计", fontSize = 14.sp, color = HomecomingColors.Ink)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -2132,7 +2140,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         showSearch.value = true
                     },
                     modifier = Modifier.weight(1f)
-                ) { Text("找聊天记录") }
+                ) { Text("找记录") }
                 Button(
                     onClick = {
                         showChatDrawer.value = false
@@ -2140,6 +2148,18 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("收藏") }
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showStats.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("统计") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Button(
                     onClick = {
                         showChatDrawer.value = false
