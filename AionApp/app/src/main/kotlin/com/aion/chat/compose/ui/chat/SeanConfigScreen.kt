@@ -331,9 +331,6 @@ fun SeanConfigScreen(
             }
         }
 
-        // ── MCP（照橘瓣：真配置页） ──
-        SectionCard(title = "MCP", subtitle = "为他配置 MCP 服务器（SSE / Streamable HTTP）", onClick = onOpenMcp) {}
-
         // ── 后续版本 ──
         listOf(
             "本地工具" to "启用本地工具，如 JavaScript 引擎（需要单独版本）"

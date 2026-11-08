@@ -539,7 +539,7 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("提示词缓存", fontSize = 15.sp, color = HomecomingColors.Ink)
-                    Text("照橘瓣断点策略打 cache_control：人设和历史前缀命中缓存，回话更快更省 token。命中数在 请求日志 里看", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    Text("照橘瓣断点策略打 cache_control：人设和历史前缀命中缓存，更快更省 token。每次发消息自动续期；停聊超过时长才过期（橘瓣也是这套 5 分钟/1 小时机制）。命中数在 请求日志 里看", fontSize = 11.sp, color = HomecomingColors.InkSoft, lineHeight = 15.sp)
                 }
                 androidx.compose.material3.Switch(
                     checked = cacheOn.value,
