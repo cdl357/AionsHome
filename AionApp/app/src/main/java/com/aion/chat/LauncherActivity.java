@@ -35,6 +35,9 @@ public class LauncherActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // 本地自动备份：开关开着就确保 WorkManager 周期任务在册（幂等，跨重启）
+        com.aion.chat.compose.data.BackupStore.INSTANCE.ensureScheduled(this);
+
         boolean forceAddressPicker = getIntent().getBooleanExtra(
                 EXTRA_FORCE_ADDRESS_PICKER, false);
         HomecomingModeStore homecomingMode = new HomecomingModeStore(this);

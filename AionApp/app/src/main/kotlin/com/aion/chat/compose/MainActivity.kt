@@ -51,6 +51,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 本地自动备份：开关开着就确保 WorkManager 周期任务在册（幂等，跨重启）
+        runCatching { com.aion.chat.compose.data.BackupStore.ensureScheduled(this) }
         // 全局崩溃捕获：写日志 + 打崩溃标记（下次启动进安全模式），设置页也可查看
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->

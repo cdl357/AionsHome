@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,10 +49,17 @@ import com.aion.chat.compose.data.SettingsBg
 import com.aion.chat.compose.ui.home.FrostCard
 import com.aion.chat.compose.ui.settings.ProviderScreen
 import com.aion.chat.compose.data.AppCrashLog
+import com.aion.chat.compose.data.BackupStore
 import com.aion.chat.compose.data.HomecomingMcpStore
+import com.aion.chat.compose.data.restartApp
 import com.aion.chat.compose.ui.theme.HomecomingColors
 import com.aion.chat.compose.ui.theme.HomecomingThemeState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
@@ -494,6 +502,117 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                     Text("查看 HTTP 请求日志和崩溃记录，发给小鑫定位问题", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
                 Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
+            }
+        }
+
+        // ── 自动备份（WorkManager 12h 一份 ZIP：聊天库+配置+记忆，保留 7 份） ──
+        FrostCard {
+            var bkEnabled by remember { mutableStateOf(BackupStore.isEnabled(context)) }
+            var bkList by remember { mutableStateOf(BackupStore.list(context)) }
+            var bkBusy by remember { mutableStateOf(false) }
+            var bkRestore by remember { mutableStateOf<File?>(null) }
+            val bkScope = rememberCoroutineScope()
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("自动备份", fontSize = 15.sp, color = HomecomingColors.Ink)
+                        Text(
+                            "聊天记录+配置+记忆 每 12 小时打包一份，保留最近 7 份（不含图片视频）",
+                            fontSize = 11.sp, color = HomecomingColors.InkSoft
+                        )
+                    }
+                    Switch(checked = bkEnabled, onCheckedChange = { on ->
+                        bkEnabled = on
+                        BackupStore.setEnabled(context, on)
+                    })
+                }
+                val lastAt = BackupStore.lastBackupAt(context)
+                Text(
+                    if (lastAt > 0L) "上次备份：" + SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(lastAt))
+                    else "还没有备份",
+                    fontSize = 11.sp, color = HomecomingColors.InkSoft
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(enabled = !bkBusy, onClick = {
+                        bkBusy = true
+                        bkScope.launch {
+                            val msg = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val f = BackupStore.create(context)
+                                    "备份完成 ${"%.1f".format(f.length() / 1048576.0)} MB"
+                                }.getOrElse { "备份失败：${it.message?.take(50)}" }
+                            }
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            bkList = BackupStore.list(context)
+                            bkBusy = false
+                        }
+                    }) { Text("立即备份", fontSize = 12.sp) }
+                    OutlinedButton(enabled = bkList.isNotEmpty(), onClick = {
+                        val f = bkList.firstOrNull() ?: return@OutlinedButton
+                        bkScope.launch {
+                            val path = withContext(Dispatchers.IO) { BackupStore.exportToDownloads(context, f) }
+                            Toast.makeText(
+                                context,
+                                if (path != null) "已导出到 $path" else "导出失败",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }) { Text("导出最新到 Downloads", fontSize = 12.sp) }
+                }
+                bkList.take(7).forEach { f ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { bkRestore = f }
+                    ) {
+                        Text(
+                            f.name.removePrefix("aion-backup-").removeSuffix(".zip"),
+                            fontSize = 12.sp, color = HomecomingColors.Ink,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("${"%.1f".format(f.length() / 1048576.0)} MB", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    }
+                }
+                if (bkList.isNotEmpty()) {
+                    Text("点一份可还原（覆盖当前数据，完成后自动重启）", fontSize = 10.sp, color = HomecomingColors.InkSoft)
+                }
+                bkRestore?.let { f ->
+                    AlertDialog(
+                        onDismissRequest = { bkRestore = null },
+                        title = { Text("还原这份备份？", fontSize = 16.sp) },
+                        text = {
+                            Text(
+                                "将覆盖当前的聊天记录、记忆和配置，完成后自动重启。此操作不可撤销。",
+                                fontSize = 13.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                bkRestore = null
+                                bkScope.launch {
+                                    val ok = withContext(Dispatchers.IO) {
+                                        runCatching { BackupStore.restore(context, f) }.isSuccess
+                                    }
+                                    if (ok) {
+                                        Toast.makeText(context, "还原完成，正在重启…", Toast.LENGTH_SHORT).show()
+                                        delay(600)
+                                        restartApp(context)
+                                    } else {
+                                        Toast.makeText(context, "还原失败（看崩溃日志）", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }) { Text("还原", color = HomecomingColors.Accent) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { bkRestore = null }) { Text("取消") }
+                        }
+                    )
+                }
             }
         }
     }
