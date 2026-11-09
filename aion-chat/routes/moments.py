@@ -4,11 +4,15 @@
 
 from generation_control import spawn_generation_task
 
-import time, json, asyncio, random, re
+import os, time, json, asyncio, random, re
 from typing import Optional, Any
 from datetime import datetime
 
 import aiosqlite
+try:
+    import requests
+except Exception:
+    requests = None
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
@@ -27,6 +31,110 @@ from context_builder import strip_tool_commands
 from sync_events import broadcast_synced
 
 router = APIRouter(prefix="/api/moments", tags=["moments"])
+
+# ===== Supabase 朋友圈读取（与橘瓣共享云端数据）=====
+_SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+_SB_KEY = os.environ.get("SUPABASE_KEY", "")
+
+def _sb_enabled():
+    return bool(_SB_URL and _SB_KEY and requests is not None)
+
+def _iso_to_ts(v):
+    """ISO 时间字符串 -> Unix 时间戳(float)。失败返回 0.0。"""
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        from datetime import datetime as _dt
+        sv = str(v).replace("Z", "+00:00")
+        return _dt.fromisoformat(sv).timestamp()
+    except Exception:
+        return 0.0
+
+def _ts_to_iso(ts):
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        return _dt.fromtimestamp(float(ts), _tz.utc).isoformat()
+    except Exception:
+        return None
+
+def _sb_map_moment(row):
+    """Supabase moments 行 -> 前端认识的结构。"""
+    ts = _iso_to_ts(row.get("created_at"))
+    atts = row.get("images") or []
+    if isinstance(atts, str):
+        try:
+            atts = json.loads(atts)
+        except Exception:
+            atts = []
+    comments = []
+    rc = (row.get("reply_content") or "").strip()
+    if rc:
+        comments.append({
+            "id": str(row.get("id")) + "_reply",
+            "moment_id": row.get("id"),
+            "author": "李雨鑫",
+            "content": rc,
+            "created_at": _iso_to_ts(row.get("replied_at")) or ts,
+        })
+    reactions = []
+    if row.get("liked"):
+        reactions.append({"moment_id": row.get("id"), "author": "李雨鑫", "kind": "like"})
+    if row.get("yuri_liked"):
+        reactions.append({"moment_id": row.get("id"), "author": "沈聿淮", "kind": "like"})
+    return {
+        "id": row.get("id"),
+        "author": row.get("author"),
+        "content": row.get("content"),
+        "attachments": atts if isinstance(atts, list) else [],
+        "comments": comments,
+        "reactions": reactions,
+        "created_at": ts,
+    }
+
+async def _sb_list_moments(page, page_size, before):
+    """从 Supabase 读朋友圈，返回和本地同结构的 dict。"""
+    import asyncio as _aio
+    def _fetch():
+        headers = {"apikey": _SB_KEY, "Authorization": "Bearer " + _SB_KEY}
+        # 总数
+        cr = requests.get(
+            _SB_URL + "/rest/v1/moments?select=id",
+            headers={**headers, "Prefer": "count=exact", "Range": "0-0"},
+            timeout=15,
+        )
+        total = 0
+        rng = cr.headers.get("content-range", "")
+        if "/" in rng:
+            try:
+                total = int(rng.split("/")[-1])
+            except Exception:
+                total = 0
+        # 列表
+        q = "/rest/v1/moments?select=*&order=created_at.desc&limit=" + str(page_size + 1)
+        if before is not None:
+            iso = _ts_to_iso(before)
+            if iso:
+                q += "&created_at=lt." + iso
+        else:
+            q += "&offset=" + str((page - 1) * page_size)
+        lr = requests.get(_SB_URL + q, headers=headers, timeout=15)
+        rows = lr.json() if lr.status_code == 200 else []
+        return total, rows
+    total, rows = await _aio.to_thread(_fetch)
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
+    items = [_sb_map_moment(r) for r in rows]
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": has_more,
+        "next_cursor": items[-1]["created_at"] if items else None,
+    }
+
 
 
 # ══════════════════════════════════════════════════
@@ -505,7 +613,13 @@ async def list_moments(
     page_size: int = Query(50, ge=1, le=100),
     before: Optional[float] = Query(None),
 ):
-    """分页获取朋友圈列表（按时间倒序），包含评论和反应"""
+    """分页获取朋友圈列表（按时间倒序），包含评论和反应。
+    优先读 Supabase 云端（与橘瓣共享同一份数据），失败再回退本地 SQLite。"""
+    if _sb_enabled():
+        try:
+            return await _sb_list_moments(page, page_size, before)
+        except Exception as _e:
+            print("[moments] Supabase 读取失败，回退本地:", repr(_e)[:150])
     offset = (page - 1) * page_size
     async with get_db() as db:
         db.row_factory = aiosqlite.Row
