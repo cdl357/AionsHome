@@ -65,7 +65,13 @@ object WorkflowJson {
                 val cron = trigger.optNullableString("cron")
                 val tod = trigger.optNullableString("time_of_day")
                 require(cron != null || tod != null) {
-                    "time_cron 需要 cron（5 字段）或 time_of_day（HH:mm）二选一"
+                    "time_cron 需要 cron（5 字段或 \"@every Ns\"，N≥60）或 time_of_day（HH:mm）二选一"
+                }
+                cron?.let {
+                    val isEvery = Regex("^@every \\d+s$").matches(it.trim())
+                    require(isEvery || it.trim().split(Regex("\\s+")).size == 5) {
+                        "cron 应为 5 字段表达式（周字段 0=周日）或 \"@every Ns\"（N≥60）"
+                    }
                 }
                 tod?.let {
                     require(Regex("^\\d{2}:\\d{2}$").matches(it) && it.substring(0, 2).toInt() < 24

@@ -584,14 +584,20 @@ public final class HomecomingChatRepository {
                 out.add(next);
                 cur = next;
             }
-            // 孤儿兜底：parent 不在已输出路径上的行（链断裂/游离），按时间追加——永不丢消息
+            // 孤儿兜底：父为空或父在库里真不存在的行（链断裂/游离/旧数据），按时间追加——永不丢消息。
+            // v10 P2 修正：父在整棵树里存在但不在激活路径上的行（含"孙代"——父挂在被隐藏的分支上）
+            // 一律隐藏：它们属于未激活分支，switchSibling 切过去时会整链回来；拼回末尾反而是错的。
             java.util.Set<String> inPath = new java.util.HashSet<>();
             for (Message m : out) inPath.add(m.id);
+            java.util.Set<String> allIds = new java.util.HashSet<>();
+            for (Message m : rows) allIds.add(m.id);
             java.util.List<Message> rest = new ArrayList<>();
             for (Message m : rows) {
                 if (inPath.contains(m.id)) continue;
-                if (m.parentId != null && !m.parentId.isEmpty() && inPath.contains(m.parentId)) {
-                    continue; // 激活路径节点的未选中子分支（兄弟版本）——设计上隐藏
+                boolean parentKnown = m.parentId != null && !m.parentId.isEmpty()
+                        && allIds.contains(m.parentId);
+                if (parentKnown) {
+                    continue; // 父在树里：属于某个分支（激活的子版本或未激活分支的后代）——隐藏
                 }
                 rest.add(m);
             }

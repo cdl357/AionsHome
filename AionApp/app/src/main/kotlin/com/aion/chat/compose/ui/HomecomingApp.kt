@@ -195,7 +195,8 @@ fun HomecomingApp() {
                         onOpenStyleHub = { navController.navigate("stylehub") },
                         onOpenRequestLog = { navController.navigate("requestlog") },
                         onOpenMcp = { navController.navigate("mcp") },
-                        onOpenWorkflow = { navController.navigate("workflow") }
+                        onOpenWorkflow = { navController.navigate("workflow") },
+                        onOpenTranslate = { navController.navigate("translate") }
                     )
                 }
                 composable("album") { AlbumScreen(onBack = { navController.popBackStack() }) }
@@ -233,6 +234,9 @@ fun HomecomingApp() {
                 }
                 composable("workflow") {
                     com.aion.chat.compose.ui.settings.WorkflowScreen(onBack = { navController.popBackStack() })
+                }
+                composable("translate") {
+                    com.aion.chat.compose.ui.settings.TranslateScreen(onBack = { navController.popBackStack() })
                 }
                 composable("stats") {
                     com.aion.chat.compose.ui.settings.StatsScreen(onBack = { navController.popBackStack() })

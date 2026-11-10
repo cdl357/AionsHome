@@ -34,13 +34,17 @@ object WorkflowEngine {
 
     fun forget(id: String) { locks.remove(id) }
 
-    /** 触发入口：触发器/手动/Run now 全走这里。在 IO 线程调用（内部 runBlocking 跑动作超时）。 */
-    fun fire(context: Context, id: String): FireOutcome = lockFor(id).withLock {
+    /**
+     * 触发入口：触发器/手动/Run now 全走这里。在 IO 线程调用（内部 runBlocking 跑动作超时）。
+     * totalBudgetMs > 0 时整次触发的动作总耗时封顶（v10 P2：聊天回合里的 workflow_run 不能被
+     * N 个 ×600s 动作卡到小时级；后台触发不给预算=不限）。
+     */
+    fun fire(context: Context, id: String, totalBudgetMs: Long = 0L): FireOutcome = lockFor(id).withLock {
         val app = context.applicationContext
         val started = System.currentTimeMillis()
         val firedAt = started
         try {
-            kotlinx.coroutines.runBlocking { fireLocked(app, id, firedAt, started) }
+            kotlinx.coroutines.runBlocking { fireLocked(app, id, firedAt, started, totalBudgetMs) }
         } catch (t: Throwable) {
             Log.w(TAG, "fire $id crashed", t)
             val outcome = FireOutcome("FAILED", "engine_crash: ${t.message?.take(160)}", "")
@@ -49,7 +53,9 @@ object WorkflowEngine {
         }
     }
 
-    private suspend fun fireLocked(app: Context, id: String, firedAt: Long, started: Long): FireOutcome {
+    private suspend fun fireLocked(
+        app: Context, id: String, firedAt: Long, started: Long, totalBudgetMs: Long,
+    ): FireOutcome {
         val row = WorkflowStore.getById(app, id)
             ?: return FireOutcome("FAILED", "workflow_not_found", "")
         if (!row.enabled) {
@@ -94,14 +100,22 @@ object WorkflowEngine {
                 }
             }
         }
-        // 顺序执行动作
+        // 顺序执行动作（总预算内逐个扣减：聊天回合触发时封顶，后台触发不限）
         val actions = def.optJSONArray("actions") ?: org.json.JSONArray()
         val outputs = StringBuilder()
         for (i in 0 until actions.length()) {
             val a = actions.optJSONObject(i) ?: continue
             val tool = a.optString("tool")
             val args = a.optJSONObject("args")?.toString() ?: "{}"
-            val timeoutS = a.optInt("timeout_seconds", 60).coerceIn(1, WorkflowJson.MAX_TIMEOUT_S)
+            var timeoutS = a.optInt("timeout_seconds", 60).coerceIn(1, WorkflowJson.MAX_TIMEOUT_S)
+            if (totalBudgetMs > 0) {
+                val remainingMs = totalBudgetMs - (System.currentTimeMillis() - started)
+                if (remainingMs <= 0) {
+                    return persist(app, id, firedAt, started, "FAILED",
+                        "预算用尽（${totalBudgetMs / 1000}s），动作 $i 未执行", outputs.toString())
+                }
+                timeoutS = minOf(timeoutS, (remainingMs / 1000L).toInt().coerceAtLeast(1))
+            }
             if (tool.startsWith("workflow_")) {
                 return persist(app, id, firedAt, started, "FAILED", "action $i: workflow_* 禁止作为动作", outputs.toString())
             }

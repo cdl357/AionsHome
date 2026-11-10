@@ -50,7 +50,7 @@ object WorkflowTools {
         val createDesc = """
             创建一个事件驱动工作流：trigger 触发 + 全部 conditions 通过时，按顺序执行 actions
             （每个 action 调一个当前已注册的工具）。所有触发器都是持续性的，没有一次性模式。
-            可用 trigger.type：time_cron（cron 5字段 或 time_of_day "HH:mm" + days_of_week [1..7] 1=周一）、
+            可用 trigger.type：time_cron（cron 5字段（周字段 0=周日）或 "@every Ns"（N≥60，实际触发粒度=15分钟扫描档）或 time_of_day "HH:mm" + days_of_week [1..7] 1=周一）、
             manual（只能 workflow_run 或设置页"立即运行"触发）、power_connected、power_disconnected、
             battery_below（threshold_percent 1..100，跨阈值时触发）、battery_above、screen_on、
             screen_off、boot_completed、headphones_plugged、headphones_unplugged、
@@ -165,7 +165,8 @@ object WorkflowTools {
                 val id = args.optString("id")
                 if (id.isBlank()) return err("missing_id", "id 必填")
                 WorkflowStore.getById(app, id) ?: return err("not_found", "没有 id=$id 的工作流")
-                val outcome = WorkflowEngine.fire(app, id)
+                // 聊天回合内同步执行：60s 总预算封顶（v10 P2），超了返回部分结果
+                val outcome = WorkflowEngine.fire(app, id, totalBudgetMs = 60_000L)
                 JSONObject()
                     .put("ok", outcome.status == "SUCCESS")
                     .put("status", outcome.status)

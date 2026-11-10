@@ -141,6 +141,16 @@ object WorkflowTriggers {
                     }
                     dayOk && t.optString("time_of_day") == now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
                 }
+                t.optString("cron").startsWith("@every ") -> {
+                    // @every Ns：距上次真实触发 ≥ N 秒就触发（扫描粒度 15min，小于 900s 的按档兜）
+                    val n = t.optString("cron").removePrefix("@every ").trim().removeSuffix("s")
+                        .toLongOrNull() ?: 0L
+                    if (n < 60) false
+                    else {
+                        val last = WorkflowStore.lastActualFireAtMs(app, w.id)
+                        last == null || System.currentTimeMillis() - last >= n * 1000L
+                    }
+                }
                 t.optString("cron").isNotEmpty() -> cronMatches(t.optString("cron"), now)
                 else -> false
             }

@@ -66,7 +66,7 @@ object BackupStore {
     fun create(c: Context): File {
         val dir = backupDir(c)
         dir.mkdirs()
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
         val out = File(dir, "aion-backup-$stamp.zip")
         ZipOutputStream(BufferedOutputStream(FileOutputStream(out))).use { zip ->
             // 1) 数据库全量（homecoming.db + workflow.db 等，含 wal/shm，一起还原才不丢尾部事务）
@@ -85,50 +85,74 @@ object BackupStore {
         return out
     }
 
-    /** 还原 ZIP：按前缀回位，数据库最后写；完成后必须重启进程生效 */
+    /**
+     * 还原 ZIP（v10 P2 原子化）：先把全部条目解到 cache staging，校验齐全后才回位——
+     * 顺序 shared_prefs → files → databases（最后写）；任何一步前失败，真数据原封不动。
+     * 完成后必须重启进程生效。
+     */
     fun restore(c: Context, zip: File): Int {
+        val stage = File(c.cacheDir, "restore_stage_" + System.nanoTime())
         var count = 0
-        val dbFiles = mutableListOf<Pair<File, File>>()   // zip内临时 → 目标
-        val staged = mutableListOf<File>()
-        ZipInputStream(FileInputStream(zip).buffered()).use { zin ->
-            while (true) {
-                val entry = zin.nextEntry ?: break
-                if (entry.isDirectory) continue
-                val name = entry.name
-                if (name.contains("..")) continue          // 防穿越
-                try {
-                    when {
-                        name.startsWith("databases/") -> {
-                            val tmp = File(c.cacheDir, "restore_" + System.nanoTime())
-                            copyStream(zin, tmp); staged.add(tmp)
-                            dbFiles.add(tmp to File(c.getDatabasePath("x").parentFile, name.substringAfter("databases/")))
-                        }
-                        name.startsWith("shared_prefs/") -> {
-                            val dst = File(File(c.applicationInfo.dataDir, "shared_prefs"), name.substringAfter('/'))
-                            dst.parentFile?.mkdirs()
-                            copyStream(zin, dst); count++
-                        }
+        try {
+            // ① 全量解包到 staging（含防穿越/重媒体过滤）
+            ZipInputStream(FileInputStream(zip).buffered()).use { zin ->
+                while (true) {
+                    val entry = zin.nextEntry ?: break
+                    if (entry.isDirectory) continue
+                    val name = entry.name
+                    if (name.contains("..")) continue
+                    val rel = when {
+                        name.startsWith("shared_prefs/") -> name
                         name.startsWith("files/") -> {
-                            val dst = File(c.filesDir, name.substringAfter('/'))
-                            if (MEDIA_DIRS.contains(dst.parentFile?.name)) continue
-                            dst.parentFile?.mkdirs()
-                            copyStream(zin, dst); count++
+                            val rest = name.substringAfter('/')
+                            val top = rest.substringBefore('/')
+                            if (MEDIA_DIRS.contains(top) || MEDIA_DIRS.contains(rest)) {
+                                zin.closeEntry(); continue
+                            }
+                            name
                         }
+                        name.startsWith("databases/") -> name
+                        else -> { zin.closeEntry(); continue }
                     }
-                } finally {
+                    val f = File(stage, rel)
+                    f.parentFile?.mkdirs()
+                    copyStream(zin, f)
+                    count++
                     zin.closeEntry()
                 }
             }
+            // ② 校验：聊天库必须在，否则视为废包，真数据不动
+            val stagedDb = File(stage, "databases/homecoming.db")
+            if (!stagedDb.isFile || stagedDb.length() == 0L) {
+                throw IllegalStateException("backup_missing_chat_db")
+            }
+            // ③ shared_prefs 回位
+            File(stage, "shared_prefs").listFiles()?.forEach { f ->
+                val dst = File(File(c.applicationInfo.dataDir, "shared_prefs"), f.name)
+                dst.parentFile?.mkdirs()
+                FileInputStream(f).use { copyStream(it, dst) }
+            }
+            // ④ files/ 回位
+            val stagedFiles = File(stage, "files")
+            stagedFiles.walkTopDown().filter { it.isFile }.forEach { f ->
+                val rel = f.relativeTo(stagedFiles).invariantSeparatorsPath
+                val dst = File(c.filesDir, rel)
+                dst.parentFile?.mkdirs()
+                FileInputStream(f).use { copyStream(it, dst) }
+            }
+            // ⑤ 数据库最后落位：清旧三件套再覆盖（顺序固定，不靠 ZIP 条目运气）
+            File(stage, "databases").listFiles()?.forEach { f ->
+                val dst = File(c.getDatabasePath("x").parentFile, f.name)
+                listOf("-wal", "-shm").forEach { sfx ->
+                    runCatching { File(dst.parentFile, dst.name + sfx).delete() }
+                }
+                dst.parentFile?.mkdirs()
+                FileInputStream(f).use { copyStream(it, dst) }
+            }
+            return count
+        } finally {
+            stage.deleteRecursively()
         }
-        // 数据库最后落位：先清掉旧的三件套再覆盖
-        for ((tmp, dst) in dbFiles) {
-            listOf("-wal", "-shm").forEach { sfx -> runCatching { File(dst.parentFile, dst.name + sfx).delete() } }
-            dst.parentFile?.mkdirs()
-            FileInputStream(tmp).use { ins -> copyStream(ins, dst) }
-            count++
-        }
-        staged.forEach { runCatching { it.delete() } }
-        return count
     }
 
     /** 导出时不许出私有目录的条目（v10 P1：公共 Downloads 谁都能读，密钥绝不出门） */
@@ -165,10 +189,9 @@ object BackupStore {
             }
             "Downloads/${zip.name}（已剥离密钥）"
         } else {
-            val dst = File(
-                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
-                zip.name
-            )
+            // pre-Q：公共 Downloads 要运行时存储权限，改存 App 私有外部目录（用户可用文件管理器取）
+            val dst = File(File(c.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "backups"), zip.name)
+            dst.parentFile?.mkdirs()
             val zout = ZipOutputStream(BufferedOutputStream(FileOutputStream(dst)))
             val zin = ZipInputStream(FileInputStream(zip).buffered())
             while (true) {
