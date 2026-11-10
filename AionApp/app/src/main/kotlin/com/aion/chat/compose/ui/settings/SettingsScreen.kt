@@ -63,7 +63,7 @@ import java.text.SimpleDateFormat
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -500,6 +500,22 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                 Column(modifier = Modifier.weight(1f)) {
                     Text("请求日志", fontSize = 15.sp, color = HomecomingColors.Ink)
                     Text("查看 HTTP 请求日志和崩溃记录，发给小鑫定位问题", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
+            }
+        }
+
+        // ── 工作流（照橘瓣 workflow_*：定时/充电/亮屏/通知/到岗触发，动作走现有工具面） ──
+        FrostCard {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenWorkflow() }
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("工作流", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("在聊天里让 Sean 建：定时提醒、充电播报、通知响应、回来问候，动作他自己的工具都能干", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
                 Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }

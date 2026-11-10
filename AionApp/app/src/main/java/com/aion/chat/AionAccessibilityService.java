@@ -151,6 +151,10 @@ public class AionAccessibilityService extends AccessibilityService {
             return;
         }
 
+        // 工作流 app_launched 触发器（无启用中的前台类工作流时是空操作）
+        com.aion.chat.compose.data.WorkflowTriggers.onAppLaunch(
+                this, event.getPackageName().toString());
+
         com.aion.chat.supervision.AppSupervisionRuntime runtime =
                 com.aion.chat.supervision.AppSupervisionRuntime.get();
         if (runtime == null) return;

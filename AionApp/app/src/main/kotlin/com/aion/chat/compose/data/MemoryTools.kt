@@ -31,6 +31,13 @@ object MemoryTools {
     @JvmStatic
     fun handles(name: String): Boolean = name.startsWith("memory_")
 
+    /** 记忆工具名集合（工作流动作白名单用） */
+    @JvmStatic
+    fun names(): List<String> = listOf(
+        "memory_update_active", "memory_list_files", "memory_read_file",
+        "memory_write_file", "memory_delete_file"
+    )
+
     /** OpenAI function 定义（注入 tools 数组） */
     @JvmStatic
     fun defs(): JSONArray {

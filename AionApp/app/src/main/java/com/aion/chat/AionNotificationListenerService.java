@@ -58,6 +58,9 @@ public final class AionNotificationListenerService extends NotificationListenerS
             }
             String title = clean(titleValue, 220);
             String text = clean(textValue, 500);
+            // 工作流 notification_received 触发器（无启用中的通知类工作流时是空操作）
+            com.aion.chat.compose.data.WorkflowTriggers.onNotification(
+                    this, sbn.getPackageName(), title, text);
             String category = notification.category == null ? "" : notification.category;
             boolean ongoing = (notification.flags & Notification.FLAG_ONGOING_EVENT) != 0;
             boolean groupSummary = (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0;

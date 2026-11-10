@@ -65,6 +65,12 @@ class HomecomingChatWiring(context: Context) {
         )
         engine = HomecomingChatEngine(chats, contextBuilder, gateway)
         com.aion.chat.compose.data.MemoryTools.initContext(appContext)
+        // 工作流：工具面初始化 + 触发器按需注册（有启用中的工作流才挂接收器/扫描器）
+        com.aion.chat.compose.data.WorkflowTools.initContext(appContext)
+        Thread {
+            runCatching { com.aion.chat.compose.data.WorkflowTriggers.sync(appContext) }
+            runCatching { com.aion.chat.compose.data.WorkflowTriggers.sweep(appContext) }
+        }.start()
         // MCP 工具注册表异步刷新（不阻塞装配；网关同步读缓存，下一轮消息即可用）
         Thread {
             runCatching { com.aion.chat.compose.data.McpClient.refreshTools(appContext) }

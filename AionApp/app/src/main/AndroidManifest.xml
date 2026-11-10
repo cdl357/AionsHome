@@ -206,6 +206,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- 工作流：开机重挂触发器（广播类接收器是运行时按需注册的，这里只恢复 cron 扫描依赖的同步） -->
+        <receiver
+            android:name=".compose.data.WorkflowBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- 无障碍截图服务：用户在系统无障碍设置中手动开启后，可在 MediaProjection 掉线时继续截普通界面 -->
         <service
             android:name=".AionAccessibilityService"

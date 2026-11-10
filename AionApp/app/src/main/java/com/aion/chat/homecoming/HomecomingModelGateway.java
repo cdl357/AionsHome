@@ -218,7 +218,12 @@ public final class HomecomingModelGateway {
                         for (com.aion.chat.compose.data.McpClient.ToolDef d0 : com.aion.chat.compose.data.McpClient.cachedDefs()) {
                             if (d0.safeName.equals(safeName)) { mcpHasTool = true; break; }
                         }
-                        if (!mcpHasTool && com.aion.chat.compose.data.MemoryTools.handles(safeName)
+                        if (com.aion.chat.compose.data.WorkflowTools.handles(safeName)) {
+                            // 工作流工具：引擎完整门控在 WorkflowEngine.fire 里（条件/冷却/每日上限照常）
+                            resultText = com.aion.chat.compose.data.WorkflowTools.dispatch(safeName,
+                                    v[2].isEmpty() ? "{}" : v[2]);
+                            RequestLog.add(null, "WF", safeName, 200, 0, "", 0, 0);
+                        } else if (!mcpHasTool && com.aion.chat.compose.data.MemoryTools.handles(safeName)
                                 && com.aion.chat.compose.data.MemoryTools.enabled()) {
                             String r = com.aion.chat.compose.data.MemoryTools.dispatch(
                                     safeName, v[2].isEmpty() ? "{}" : v[2]);
@@ -429,6 +434,16 @@ public final class HomecomingModelGateway {
             }
             for (int i = 0; i < mdefs.length(); i++) toolsArr2.put(mdefs.get(i));
         }
+        // 工作流工具（照橘瓣 workflow_*：create/list/get/update/delete/set_enabled/run）
+        try {
+            org.json.JSONArray wdefs = com.aion.chat.compose.data.WorkflowTools.defs();
+            org.json.JSONArray toolsArr3 = body.optJSONArray("tools");
+            if (toolsArr3 == null) {
+                toolsArr3 = new org.json.JSONArray();
+                body.put("tools", toolsArr3);
+            }
+            for (int i = 0; i < wdefs.length(); i++) toolsArr3.put(wdefs.get(i));
+        } catch (Throwable ignored) { }
         if (promptCaching) {
             // 让 usage（含缓存命中数）在流末尾回来
             body.put("stream_options", new JSONObject().put("include_usage", true));

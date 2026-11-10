@@ -69,10 +69,10 @@ object BackupStore {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val out = File(dir, "aion-backup-$stamp.zip")
         ZipOutputStream(BufferedOutputStream(FileOutputStream(out))).use { zip ->
-            // 1) 聊天数据库（含 wal/shm，一起还原才不丢尾部事务）
+            // 1) 数据库全量（homecoming.db + workflow.db 等，含 wal/shm，一起还原才不丢尾部事务）
             val dbDir = c.getDatabasePath("x").parentFile
             dbDir?.listFiles()
-                ?.filter { it.name.startsWith("homecoming.db") }
+                ?.filter { it.name.endsWith(".db") || it.name.endsWith(".db-wal") || it.name.endsWith(".db-shm") }
                 ?.forEach { putFile(zip, it, "databases/${it.name}") }
             // 2) shared_prefs 全量（providers/routes/mcp/style 等运行配置；App 私有本地文件，可含密钥）
             File(c.applicationInfo.dataDir, "shared_prefs").listFiles()

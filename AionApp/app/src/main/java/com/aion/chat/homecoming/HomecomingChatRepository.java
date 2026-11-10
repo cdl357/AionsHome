@@ -145,6 +145,21 @@ public final class HomecomingChatRepository {
         } catch (Exception ignored) { }
     }
 
+    /** 工作流条件 last_chat_ago：最近一条消息时间戳（无记录=0；主时间线） */
+    public static long lastChatAtMs(android.content.Context context) {
+        try {
+            android.database.sqlite.SQLiteDatabase db =
+                    com.aion.chat.homecoming.HomecomingDatabase.sharedReadable(context);
+            try (android.database.Cursor c = db.rawQuery(
+                    "SELECT MAX(created_at) FROM chat_message WHERE timeline_id=?",
+                    new String[]{"main_private"})) {
+                return (c.moveToFirst() && !c.isNull(0)) ? c.getLong(0) : 0L;
+            }
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
     public List<Message> listMessages(
             String timelineId, long beforeCreatedAt, int limit) {
         validateTimeline(timelineId);
