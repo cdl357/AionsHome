@@ -303,12 +303,29 @@ object SupabaseMomentsStore {
             readTimeout = 20000
         }
 
-    /** 橘瓣同款直连：成功返回列表，失败/为空返回 null（交回原线路链兜底） */
+    /** 服务器只读代理（v10 P0 改线第一顺位）：App 侧零 key，nginx 注入 service key。轮换后无需改 App */
+    private fun fetchMomentsViaProxy(): List<RemoteMoment>? = runCatching {
+        val conn = (URL("http://134.175.7.196:8783/supa-svc/moments?order=created_at.desc&limit=50")
+            .openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/json")
+            connectTimeout = 20000
+            readTimeout = 20000
+        }
+        val body = conn.inputStream.bufferedReader().use { it.readText() }
+        parseMomentsArray(body)
+    }.getOrNull()
+
+    /** 橘瓣同款直连（v10 后降为兜底：key 轮换后此路失效，代理接管）：失败返回 null 交回线路链 */
     private fun fetchMomentsOrange(): List<RemoteMoment>? = runCatching {
         val body = orangeConn("$ORANGE_URL/moments?order=created_at.desc&limit=50")
             .inputStream.bufferedReader().use { it.readText() }
+        parseMomentsArray(body)
+    }.getOrNull()
+
+    private fun parseMomentsArray(body: String): List<RemoteMoment> {
         val arr = JSONArray(body)
-        (0 until arr.length()).mapNotNull { i ->
+        return (0 until arr.length()).mapNotNull { i ->
             runCatching {
                 val o = arr.getJSONObject(i)
                 val rawContent = o.optString("content", "")
@@ -326,11 +343,17 @@ object SupabaseMomentsStore {
                 )
             }.getOrNull()
         }.filter { it.content.isNotBlank() }
-    }.getOrNull()
+    }
 
     /** 读朋友圈动态。查询列按真实表结构写死，不 select *。 */
     suspend fun fetchMoments(): CloudResult<List<RemoteMoment>> {
-        // ① 橘瓣兼容直连（她手机上橘瓣朋友圈一直正常——同参数必须同结果）
+        // ① 服务器只读代理（App 零 key；v10 P0 改线第一顺位）
+        fetchMomentsViaProxy()?.let { list ->
+            RequestLog.add(null, "GET", "supa-svc://moments", 200, 0, "", 0, 0)
+            return CloudResult(list, null)
+        }
+        RequestLog.add(null, "GET", "supa-svc://moments", 0, 0, "代理失败，降橘瓣直连")
+        // ② 橘瓣兼容直连（key 轮换后此路自动失效，代理接管）
         fetchMomentsOrange()?.let { orangeList ->
             RequestLog.add(null, "GET", "orange-direct://moments", 200, 0, "", 0, 0)
             return CloudResult(orangeList, null)

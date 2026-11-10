@@ -117,6 +117,9 @@ public final class HomecomingChatRepository {
 
     /** 消息树 v1：parent 链一次性回填（幂等，Wiring 初始化时调用一次）。 */
     public static void backfillParents(android.content.Context context) {
+        // v10 P2：Wiring 每次发送都会 safeCreate，回填是全表扫描——进程内只跑一次
+        if (backfillDone) return;
+        backfillDone = true;
         try {
             android.database.sqlite.SQLiteDatabase db =
                     com.aion.chat.homecoming.HomecomingDatabase.sharedWritable(context);
@@ -224,6 +227,9 @@ public final class HomecomingChatRepository {
                         createdAt);
         return backend.commit(candidate, operation, assistant);
     }
+
+    /** backfillParents 进程内一次性标记（v10 P2：Wiring 每次发送 safeCreate 都会调它，全表扫描不能反复跑） */
+    private static volatile boolean backfillDone = false;
 
     private static String payload(Message message) {
         try {

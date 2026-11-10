@@ -131,7 +131,17 @@ object BackupStore {
         return count
     }
 
-    /** 导出一份 ZIP 到公共 Downloads（想留长期档/换机用） */
+    /** 导出时不许出私有目录的条目（v10 P1：公共 Downloads 谁都能读，密钥绝不出门） */
+    private val EXPORT_BLOCKLIST = setOf(
+        "shared_prefs/chat_providers.xml",   // 提供商 api_key 明文
+        "shared_prefs/sean_ext.xml",
+        "shared_prefs/mcp_store.xml",
+        "files/routes.json",                 // 路由 api_key 明文
+        "files/routes.enc",
+        "files/mcp.json"                     // MCP 服务器配置（可含 header token）
+    )
+
+    /** 导出一份 ZIP 到公共 Downloads（流式重打包，剥离上面的敏感条目） */
     fun exportToDownloads(c: Context, zip: File): String? = runCatching {
         val resolver = c.contentResolver
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -142,16 +152,34 @@ object BackupStore {
             val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: return null
             resolver.openOutputStream(uri)?.use { os ->
-                FileInputStream(zip).use { it.copyTo(os) }
+                val zin = ZipInputStream(FileInputStream(zip).buffered())
+                val zout = ZipOutputStream(BufferedOutputStream(os))
+                while (true) {
+                    val e = zin.nextEntry ?: break
+                    if (e.name in EXPORT_BLOCKLIST) { zin.closeEntry(); continue }
+                    zout.putNextEntry(ZipEntry(e.name))
+                    zin.copyTo(zout)
+                    zin.closeEntry(); zout.closeEntry()
+                }
+                zout.finish(); zout.flush()
             }
-            "Downloads/${zip.name}"
+            "Downloads/${zip.name}（已剥离密钥）"
         } else {
             val dst = File(
                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
                 zip.name
             )
-            FileInputStream(zip).use { ins -> copyStream(ins, dst) }
-            dst.absolutePath
+            val zout = ZipOutputStream(BufferedOutputStream(FileOutputStream(dst)))
+            val zin = ZipInputStream(FileInputStream(zip).buffered())
+            while (true) {
+                val e = zin.nextEntry ?: break
+                if (e.name in EXPORT_BLOCKLIST) { zin.closeEntry(); continue }
+                zout.putNextEntry(ZipEntry(e.name))
+                zin.copyTo(zout)
+                zin.closeEntry(); zout.closeEntry()
+            }
+            zout.finish(); zout.close()
+            dst.absolutePath + "（已剥离密钥）"
         }
     }.getOrNull()
 

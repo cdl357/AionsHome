@@ -23,8 +23,8 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 134
-        versionName "0.3.140"
+        versionCode 135
+        versionName "0.3.141"
     }
 
     signingConfigs {

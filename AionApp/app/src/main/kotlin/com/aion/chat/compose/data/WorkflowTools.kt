@@ -186,6 +186,7 @@ object WorkflowTools {
         } catch (e: Exception) {
             return err("bad_json", "definition 不是合法 JSON: ${e.message?.take(120)}")
         }
+        val existing = replaceId?.let { WorkflowStore.getById(app, it) }
         val id = if (replaceId != null) {
             // update：必须落在已有 id 上，防改错对象
             parsed.optString("id", "").takeIf { it == replaceId } ?: replaceId
@@ -197,9 +198,11 @@ object WorkflowTools {
             id = id,
             name = parsed.optString("name"),
             description = parsed.optString("description").takeIf { it.isNotBlank() },
-            enabled = parsed.optBoolean("enabled", true),
+            // update 不覆盖启用态（v10 P1：定义缺 enabled 时不能把已停用的静默重新启用）
+            enabled = if (replaceId != null) (existing?.enabled ?: parsed.optBoolean("enabled", true))
+            else parsed.optBoolean("enabled", true),
             definitionJson = parsed.toString(),
-            createdAtMs = System.currentTimeMillis(),
+            createdAtMs = existing?.createdAtMs ?: System.currentTimeMillis(),
             updatedAtMs = System.currentTimeMillis(),
             lastRunAtMs = null, lastRunStatus = null, lastRunError = null,
             runsTodayCount = 0, runsTodayDate = "",

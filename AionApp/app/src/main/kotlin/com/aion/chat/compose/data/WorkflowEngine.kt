@@ -59,10 +59,12 @@ object WorkflowEngine {
             return persist(app, id, firedAt, started, "FAILED", "definition_corrupt: ${e.message?.take(120)}", "")
         }
 
-        // 冷却门：只看真实触发时间（SKIP 不推进冷却窗口，照橘瓣 CooldownGate 语义）
+        // 冷却门：锚点=运行流水里的真实触发 与 按 name 的持久锚（v10 P1：删了重建同频控不重置）取大者
         val cooldown = def.optInt("cooldown_seconds", 0)
         if (cooldown > 0) {
-            val last = WorkflowStore.lastActualFireAtMs(app, id)
+            val last = listOfNotNull(
+                WorkflowStore.lastActualFireAtMs(app, id), nameAnchor(app, row.name)
+            ).maxOrNull()
             if (last != null && firedAt < last + cooldown * 1000L) {
                 return persist(app, id, firedAt, started, "SKIPPED_COOLDOWN", null, "")
             }
@@ -127,7 +129,25 @@ object WorkflowEngine {
     ): FireOutcome {
         val duration = System.currentTimeMillis() - started
         runCatching { WorkflowStore.recordFire(app, id, firedAt, status, duration, error) }
+        // 真实触发（SUCCESS/FAILED）时刷新按 name 的持久锚——删除工作流清不掉它（v10 P1）
+        if (status == "SUCCESS" || status == "FAILED") {
+            runCatching {
+                app.getSharedPreferences("workflow_trigger", Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong("wflast_" + Integer.toHexString(app.let { wfName(app, id) }.hashCode()), firedAt)
+                    .apply()
+            }
+        }
         return FireOutcome(status, error, summary)
+    }
+
+    private fun wfName(app: Context, id: String): String =
+        WorkflowStore.getById(app, id)?.name ?: id
+
+    private fun nameAnchor(app: Context, name: String): Long? {
+        val v = app.getSharedPreferences("workflow_trigger", Context.MODE_PRIVATE)
+            .getLong("wflast_" + Integer.toHexString(name.hashCode()), -1L)
+        return if (v > 0) v else null
     }
 
     /**

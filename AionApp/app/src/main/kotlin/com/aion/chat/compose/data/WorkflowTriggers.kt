@@ -60,15 +60,17 @@ object WorkflowTriggers {
         val last = prefs.getInt(BATT_KEY, -1)
         prefs.edit().putInt(BATT_KEY, level).apply()
         if (last == -1 || last == level) return
-        val workflows = WorkflowStore.listAll(app, enabledOnly = true)
-        for (w in workflows) {
-            val def = parseDef(w.definitionJson) ?: continue
-            val t = def.optJSONObject("trigger") ?: continue
-            val type = t.optString("type")
-            val th = t.optInt("threshold_percent", -1)
-            val hit = (type == "battery_below" && last >= th && level < th) ||
-                    (type == "battery_above" && last < th && level >= th)
-            if (hit && th > 0) launchFire(app, w.id)
+        scope.launch {
+            val workflows = runCatching { WorkflowStore.listAll(app, enabledOnly = true) }.getOrNull() ?: return@launch
+            for (w in workflows) {
+                val def = parseDef(w.definitionJson) ?: continue
+                val t = def.optJSONObject("trigger") ?: continue
+                val type = t.optString("type")
+                val th = t.optInt("threshold_percent", -1)
+                val hit = (type == "battery_below" && last >= th && level < th) ||
+                        (type == "battery_above" && last < th && level >= th)
+                if (hit && th > 0) WorkflowEngine.fire(app, w.id)
+            }
         }
     }
 
@@ -76,16 +78,19 @@ object WorkflowTriggers {
     fun onNotification(c: Context, pkg: String?, title: String?, text: String?) {
         val app = c.applicationContext
         if (pkg.isNullOrBlank() && title.isNullOrBlank() && text.isNullOrBlank()) return
-        val workflows = WorkflowStore.listAll(app, enabledOnly = true)
-        for (w in workflows) {
-            val def = parseDef(w.definitionJson) ?: continue
-            val t = def.optJSONObject("trigger") ?: continue
-            if (t.optString("type") != "notification_received") continue
-            val pkgOk = t.optString("package_name", "").takeIf { it.isNotEmpty() }
-                ?.let { pkg?.contains(it, ignoreCase = true) == true } ?: true
-            val titleOk = matchesField(t, "title_contains", "title_matches", title)
-            val textOk = matchesField(t, "text_contains", "text_matches", text)
-            if (pkgOk && titleOk && textOk) launchFire(app, w.id)
+        // 读库+正则全部下 IO（v10 P2：通知回调在主线程）
+        scope.launch {
+            val workflows = runCatching { WorkflowStore.listAll(app, enabledOnly = true) }.getOrNull() ?: return@launch
+            for (w in workflows) {
+                val def = parseDef(w.definitionJson) ?: continue
+                val t = def.optJSONObject("trigger") ?: continue
+                if (t.optString("type") != "notification_received") continue
+                val pkgOk = t.optString("package_name", "").takeIf { it.isNotEmpty() }
+                    ?.let { pkg?.contains(it, ignoreCase = true) == true } ?: true
+                val titleOk = matchesField(t, "title_contains", "title_matches", title)
+                val textOk = matchesField(t, "text_contains", "text_matches", text)
+                if (pkgOk && titleOk && textOk) WorkflowEngine.fire(app, w.id)
+            }
         }
     }
 
@@ -93,14 +98,16 @@ object WorkflowTriggers {
     fun onAppLaunch(c: Context, pkg: String?) {
         val app = c.applicationContext
         if (pkg.isNullOrBlank()) return
-        val workflows = WorkflowStore.listAll(app, enabledOnly = true)
-        for (w in workflows) {
-            val def = parseDef(w.definitionJson) ?: continue
-            val t = def.optJSONObject("trigger") ?: continue
-            if (t.optString("type") != "app_launched") continue
-            val want = t.optString("package_name")
-            if (want.isNotEmpty() && (pkg == want || pkg.endsWith(".$want") || pkg.contains(want))) {
-                launchFire(app, w.id)
+        scope.launch {
+            val workflows = runCatching { WorkflowStore.listAll(app, enabledOnly = true) }.getOrNull() ?: return@launch
+            for (w in workflows) {
+                val def = parseDef(w.definitionJson) ?: continue
+                val t = def.optJSONObject("trigger") ?: continue
+                if (t.optString("type") != "app_launched") continue
+                val want = t.optString("package_name")
+                if (want.isNotEmpty() && (pkg == want || pkg.endsWith(".$want") || pkg.contains(want))) {
+                    WorkflowEngine.fire(app, w.id)
+                }
             }
         }
     }
@@ -142,16 +149,20 @@ object WorkflowTriggers {
                 launchFire(app, w.id)
             }
         }
-        // fired_key 会慢慢堆，顺手清 7 天前的
-        val cutoff = "fired_" + now.minusDays(7).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
-        prefs.all.keys.filter { it.startsWith("fired_") && it < cutoff }.forEach { prefs.edit().remove(it).apply() }
+        // fired_key 会慢慢堆，顺手清 2 天前的（按 key 里嵌入的时间戳比，v10 修：原字符串比方向反了永不清理）
+        val cutoff = now.minusDays(2).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmm"))
+        val editor = prefs.edit()
+        prefs.all.keys.filter { it.startsWith("fired_") && it.substringAfterLast(':') < cutoff }
+            .forEach { editor.remove(it) }
+        editor.apply()
     }
 
     /** 5 字段 cron（分 时 日 月 周）最小实现：星号、步进（星号斜杠n）、数字、区间、枚举 */
     internal fun cronMatches(cron: String, now: java.time.LocalDateTime): Boolean {
         val fields = cron.trim().split(Regex("\\s+"))
         if (fields.size != 5) return false
-        val values = intArrayOf(now.minute, now.hour, now.dayOfMonth, now.monthValue, now.dayOfWeek.value)
+        // 周字段按标准 cron：0=周日..6=周六（java.time 是 1=周一..7=周日，%7 对齐）
+        val values = intArrayOf(now.minute, now.hour, now.dayOfMonth, now.monthValue, now.dayOfWeek.value % 7)
         for (i in 0..4) {
             if (!fieldMatches(fields[i], values[i])) return false
         }
@@ -264,10 +275,13 @@ object WorkflowTriggers {
     }
 
     private fun fireMatches(app: Context, type: String) {
-        val workflows = WorkflowStore.listAll(app, enabledOnly = true)
-        for (w in workflows) {
-            val t = parseDef(w.definitionJson)?.optJSONObject("trigger") ?: continue
-            if (t.optString("type") == type) launchFire(app, w.id)
+        // 匹配+读库全部下 IO（v10 P2：广播回调在主线程，不能在主线程跑 SQL）
+        scope.launch {
+            val workflows = runCatching { WorkflowStore.listAll(app, enabledOnly = true) }.getOrNull() ?: return@launch
+            for (w in workflows) {
+                val t = parseDef(w.definitionJson)?.optJSONObject("trigger") ?: continue
+                if (t.optString("type") == type) WorkflowEngine.fire(app, w.id)
+            }
         }
     }
 

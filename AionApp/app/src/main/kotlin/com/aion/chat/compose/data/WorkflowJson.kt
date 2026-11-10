@@ -148,14 +148,16 @@ object WorkflowJson {
             if (!a.has("args")) a.put("args", JSONObject())
         }
 
-        // 数值上限
+        // 数值上限 + 频控给底（v10 P1：防注入建高频工作流——冷却至少 60s，每日上限缺省 200）
         val cooldown = root.optInt("cooldown_seconds", 0)
         require(cooldown in 0..MAX_COOLDOWN_S) { "cooldown_seconds 需要 0..$MAX_COOLDOWN_S" }
+        root.put("cooldown_seconds", if (cooldown < 60) 60 else cooldown)
         if (root.has("max_runs_per_day")) {
             require(root.optInt("max_runs_per_day", -1) in 1..1000) { "max_runs_per_day 需要 1..1000" }
+        } else {
+            root.put("max_runs_per_day", 200)
         }
         if (!root.has("enabled")) root.put("enabled", true)
-        if (!root.has("cooldown_seconds")) root.put("cooldown_seconds", 0)
         return root
     }
 
