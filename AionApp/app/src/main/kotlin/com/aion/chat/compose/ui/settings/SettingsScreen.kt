@@ -63,7 +63,7 @@ import java.text.SimpleDateFormat
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}, onOpenTranslate: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}, onOpenTranslate: () -> Unit = {}, onOpenLocalModel: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -532,6 +532,22 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                 Column(modifier = Modifier.weight(1f)) {
                     Text("翻译", fontSize = 15.sp, color = HomecomingColors.Ink)
                     Text("粘贴一段文字直接翻，语言 chips 换目标语，历史可点回", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
+            }
+        }
+
+        // ── 本地模型（队列项：llama.cpp JNI，断网也能聊） ──
+        FrostCard {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenLocalModel() }
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("本地模型", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("Qwen2.5 小杯跑在手机里，断网可用。下载一个就能试聊，聊天页接入随后", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
                 Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }

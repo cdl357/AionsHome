@@ -18,13 +18,25 @@ if (hasKeystore) {
 android {
     namespace 'com.aion.chat'
     compileSdk 36
+    ndkVersion '28.2.13676358'   // 本机已装；不让 AGP 去联网拉它偏好的 27
 
     defaultConfig {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 136
-        versionName "0.3.142"
+        versionCode 137
+        versionName "0.3.143"
+
+        ndk {
+            abiFilters 'arm64-v8a'   // 本地模型 .so 只有 arm64（她手机是 arm64；别的架构先不背体积）
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
     }
 
     signingConfigs {
