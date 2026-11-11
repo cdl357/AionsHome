@@ -98,28 +98,43 @@ object LocalModelStore {
         val key: String,
         val label: String,
         val file: String,
-        val url: String,
+        val urls: List<String>,      // 源链：hf-mirror 在前，ModelScope 兜底（hf 的大文件会 302 到海外 CDN，国内可能不通）
         val sizeBytes: Long,
         val note: String,
     )
+
+    private fun hf(repo: String, file: String) =
+        "https://hf-mirror.com/Qwen/$repo/resolve/main/$file"
+
+    private fun ms(repo: String, file: String) =
+        "https://modelscope.cn/models/Qwen/$repo/resolve/master/$file"
 
     val CATALOG = listOf(
         ModelMeta(
             "qwen25-05b", "Qwen2.5 0.5B（最快）",
             "qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            "https://hf-mirror.com/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            listOf(
+                hf("Qwen2.5-0.5B-Instruct-GGUF", "qwen2.5-0.5b-instruct-q4_k_m.gguf"),
+                ms("Qwen2.5-0.5B-Instruct-GGUF", "qwen2.5-0.5b-instruct-q4_k_m.gguf"),
+            ),
             411_000_000L, "约 400MB，聊天秒回，适合当随身应答机"
         ),
         ModelMeta(
             "qwen25-15b", "Qwen2.5 1.5B（均衡·推荐）",
             "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-            "https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            listOf(
+                hf("Qwen2.5-1.5B-Instruct-GGUF", "qwen2.5-1.5b-instruct-q4_k_m.gguf"),
+                ms("Qwen2.5-1.5B-Instruct-GGUF", "qwen2.5-1.5b-instruct-q4_k_m.gguf"),
+            ),
             1_100_000_000L, "约 1.1GB，质量明显上一个档"
         ),
         ModelMeta(
             "qwen25-3b", "Qwen2.5 3B（上限）",
             "qwen2.5-3b-instruct-q4_k_m.gguf",
-            "https://hf-mirror.com/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
+            listOf(
+                hf("Qwen2.5-3B-Instruct-GGUF", "qwen2.5-3b-instruct-q4_k_m.gguf"),
+                ms("Qwen2.5-3B-Instruct-GGUF", "qwen2.5-3b-instruct-q4_k_m.gguf"),
+            ),
             2_000_000_000L, "约 2GB，回答最像样，但慢、吃内存"
         ),
     )
@@ -147,10 +162,25 @@ object LocalModelStore {
 
     /**
      * 下载（阻塞调用线程，支持断点续传）。progress 回调 (已下载字节, 总字节)。
-     * 返回 null=成功；非 null=错误信息。
+     * 返回 null=成功；非 null=错误信息。逐源尝试（hf-mirror → ModelScope）。
      */
     fun download(
         c: Context, m: ModelMeta,
+        onProgress: (Long, Long) -> Unit,
+        cancelled: () -> Boolean,
+    ): String? {
+        var lastErr = "下载失败"
+        for (url in m.urls) {
+            val err = downloadFrom(c, m, url, onProgress, cancelled)
+            if (err == null || err == "cancelled") return err
+            lastErr = err
+            if (cancelled()) return "cancelled"
+        }
+        return lastErr
+    }
+
+    private fun downloadFrom(
+        c: Context, m: ModelMeta, url: String,
         onProgress: (Long, Long) -> Unit,
         cancelled: () -> Boolean,
     ): String? {
@@ -158,7 +188,7 @@ object LocalModelStore {
         dst.parentFile?.mkdirs()
         var downloaded = if (dst.isFile) dst.length() else 0L
         return runCatching {
-            val conn = (URL(m.url).openConnection() as HttpURLConnection).apply {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = true
                 connectTimeout = 30000
                 readTimeout = 60000
@@ -194,7 +224,7 @@ object LocalModelStore {
             onProgress(downloaded, downloaded)
             null
         }.getOrElse {
-            Log.w("LocalModel", "download failed", it)
+            Log.w("LocalModel", "download failed: $url", it)
             setProgress(c, m.key, -1L)
             it.message ?: "下载失败"
         }
