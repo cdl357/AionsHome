@@ -93,6 +93,8 @@ object LocalLlamaEngine {
 object LocalModelStore {
     private const val PREFS = "local_model"
     private const val KEY_PROGRESS = "dl_"
+    private const val KEY_CHAT_MODEL = "chat_model"
+    private const val KEY_USE_IN_CHAT = "use_in_chat"
 
     data class ModelMeta(
         val key: String,
@@ -140,6 +142,23 @@ object LocalModelStore {
     )
 
     fun byKey(key: String): ModelMeta? = CATALOG.firstOrNull { it.key == key }
+
+    private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** 聊天页用哪个本地模型：优先取显式选择，否则用第一个已下载的 */
+    fun chatModel(c: Context): ModelMeta? {
+        val key = prefs(c).getString(KEY_CHAT_MODEL, null)
+        key?.let { byKey(it)?.let { m -> return m } }
+        return CATALOG.firstOrNull { isDownloaded(c, it) }
+    }
+
+    /** 聊天里用本地模型（替代在线模型发 Sean） */
+    fun useInChat(c: Context): Boolean = prefs(c).getBoolean(KEY_USE_IN_CHAT, false)
+
+    fun setUseInChat(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean(KEY_USE_IN_CHAT, on).apply()
+        if (!on) LocalLlamaEngine.release()
+    }
 
     fun progress(c: Context, key: String): Long =
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_PROGRESS + key, -1L)  // -1=没在下

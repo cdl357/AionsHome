@@ -63,7 +63,17 @@ class HomecomingChatWiring(context: Context) {
             vault, HomecomingModelGateway.OkHttpSseTransport(),
             customReq?.first, customReq?.second, caching, ttl
         )
-        engine = HomecomingChatEngine(chats, contextBuilder, gateway)
+        // 本地模型开关：开且有已下载的模型 → 引擎换 LocalModelGateway（持久化/控制解析/UI 全复用）
+        val useLocal = runCatching {
+            val meta = com.aion.chat.compose.data.LocalModelStore.chatModel(appContext)
+            com.aion.chat.compose.data.LocalModelStore.useInChat(appContext) &&
+                    meta != null && com.aion.chat.compose.data.LocalModelStore.isDownloaded(appContext, meta)
+        }.getOrDefault(false)
+        engine = if (useLocal) {
+            HomecomingChatEngine(chats, contextBuilder, com.aion.chat.compose.data.LocalModelGateway(appContext))
+        } else {
+            HomecomingChatEngine(chats, contextBuilder, gateway)
+        }
         com.aion.chat.compose.data.MemoryTools.initContext(appContext)
         // 工作流：工具面初始化 + 触发器按需注册（有启用中的工作流才挂接收器/扫描器）
         com.aion.chat.compose.data.WorkflowTools.initContext(appContext)

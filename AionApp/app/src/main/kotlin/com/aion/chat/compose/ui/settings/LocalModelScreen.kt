@@ -235,6 +235,41 @@ fun LocalModelScreen(onBack: () -> Unit = {}) {
                 }
             }
 
+            // ── 聊天页开关 ──
+            val anyDownloaded = LocalModelStore.CATALOG.any { LocalModelStore.isDownloaded(context, it) }
+            if (anyDownloaded) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White)
+                        .padding(12.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("聊天里用本地模型", fontSize = 14.sp, color = Color(0xFF26211C))
+                        Text(
+                            "开=发消息走本地（断网也能聊，回得慢些、看不见图片）；关=恢复在线模型。发下一条消息时生效",
+                            fontSize = 11.sp, color = Color(0xFF8A8279), lineHeight = 15.sp
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = LocalModelStore.useInChat(context),
+                        onCheckedChange = { on ->
+                            LocalModelStore.setUseInChat(context, on)
+                            Toast.makeText(
+                                context,
+                                if (on) "已切换到本地模型" else "已恢复在线模型",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            rev++
+                        }
+                    )
+                }
+            }
+
             // ── 试聊台 ──
             val anyLoaded = LocalLlamaEngine.loadedFile() != null
             if (anyLoaded) {

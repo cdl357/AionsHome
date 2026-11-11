@@ -22,7 +22,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-public final class HomecomingModelGateway {
+public final class HomecomingModelGateway implements HomecomingChatEngine.GatewayPort {
     private final HomecomingRouteVault vault;
     private final Transport transport;
     // 取消表 static：发送路径每次 safeCreate 新实例，停止键可能拿的是旧实例引用——

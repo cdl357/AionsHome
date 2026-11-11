@@ -40,6 +40,15 @@ public final class HomecomingChatEngine {
                 (HomecomingScheduleCommandHandler) null);
     }
 
+    /** 本地模型等非 HTTP 网关走这里：持久化/控制解析/UI 观察者全复用（v10 队列·本地模型接入） */
+    public HomecomingChatEngine(
+            HomecomingChatRepository repository,
+            HomecomingContextBuilder context,
+            GatewayPort gateway) {
+        this(repository, context, gateway,
+                (HomecomingScheduleCommandHandler) null, null);
+    }
+
     public HomecomingChatEngine(
             HomecomingChatRepository repository,
             HomecomingContextBuilder context,
@@ -59,7 +68,7 @@ public final class HomecomingChatEngine {
     private HomecomingChatEngine(
             HomecomingChatRepository repository,
             HomecomingContextBuilder context,
-            HomecomingModelGateway gateway,
+            GatewayPort gateway,
             HomecomingScheduleCommandHandler scheduleCommands,
             HomecomingControlDispatcher dispatcher) {
         this(
@@ -93,16 +102,7 @@ public final class HomecomingChatEngine {
                     }
                 },
                 context::build,
-                new GatewayPort() {
-                    @Override public void stream(
-                            HomecomingModelGateway.ChatRequest request,
-                            HomecomingModelGateway.StreamObserver observer) throws Exception {
-                        gateway.stream(request, observer);
-                    }
-                    @Override public void cancel(String requestId) {
-                        gateway.cancel(requestId);
-                    }
-                },
+                gateway,
                 System::currentTimeMillis,
                 dispatcher != null
                         ? dispatcher
