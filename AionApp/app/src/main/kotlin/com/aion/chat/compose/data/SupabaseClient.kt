@@ -280,9 +280,6 @@ object SupabaseMomentsStore {
         "sean" -> "Sean"; "yuri" -> "Yuri"; else -> author
     }
 
-    // ── 橘瓣兼容模式：与她手机上一直正常的橘瓣朋友圈请求完全同参数 ──
-    private const val ORANGE_URL = "https://byqqwypdfiwvalozihgs.supabase.co/rest/v1"
-    private const val ORANGE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXF3eXBkZml3dmFsb3ppaGdzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzY1NDA4MCwiZXhwIjoyMDk5MjMwMDgwfQ.LIbE9DFsLSRhOig5bUUfUP4r7t1ykdNy8L0gZM_xtGw"
 
     private val IMG_REGEX = Regex("<!--imgs:(.*?)-->", RegexOption.DOT_MATCHES_ALL)
 
@@ -292,16 +289,6 @@ object SupabaseMomentsStore {
         IMG_REGEX.find(raw)?.groupValues?.get(1)
             ?.split("|")?.map { it.trim() }?.filter { it.isNotBlank() }
             ?: emptyList()
-
-    private fun orangeConn(url: String): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("apikey", ORANGE_KEY)
-            setRequestProperty("Authorization", "Bearer $ORANGE_KEY")
-            setRequestProperty("Accept", "application/json")
-            connectTimeout = 20000
-            readTimeout = 20000
-        }
 
     /** 服务器只读代理（v10 P0 改线第一顺位）：App 侧零 key，nginx 注入 service key。轮换后无需改 App */
     private fun fetchMomentsViaProxy(): List<RemoteMoment>? = runCatching {
@@ -313,13 +300,6 @@ object SupabaseMomentsStore {
             readTimeout = 20000
         }
         val body = conn.inputStream.bufferedReader().use { it.readText() }
-        parseMomentsArray(body)
-    }.getOrNull()
-
-    /** 橘瓣同款直连（v10 后降为兜底：key 轮换后此路失效，代理接管）：失败返回 null 交回线路链 */
-    private fun fetchMomentsOrange(): List<RemoteMoment>? = runCatching {
-        val body = orangeConn("$ORANGE_URL/moments?order=created_at.desc&limit=50")
-            .inputStream.bufferedReader().use { it.readText() }
         parseMomentsArray(body)
     }.getOrNull()
 
@@ -347,19 +327,13 @@ object SupabaseMomentsStore {
 
     /** 读朋友圈动态。查询列按真实表结构写死，不 select *。 */
     suspend fun fetchMoments(): CloudResult<List<RemoteMoment>> {
-        // ① 服务器只读代理（App 零 key；v10 P0 改线第一顺位）
+        // ① 服务器只读代理（App 零 key）
         fetchMomentsViaProxy()?.let { list ->
             RequestLog.add(null, "GET", "supa-svc://moments", 200, 0, "", 0, 0)
             return CloudResult(list, null)
         }
-        RequestLog.add(null, "GET", "supa-svc://moments", 0, 0, "代理失败，降橘瓣直连")
-        // ② 橘瓣兼容直连（key 轮换后此路自动失效，代理接管）
-        fetchMomentsOrange()?.let { orangeList ->
-            RequestLog.add(null, "GET", "orange-direct://moments", 200, 0, "", 0, 0)
-            return CloudResult(orangeList, null)
-        }
-        RequestLog.add(null, "GET", "orange-direct://moments", 0, 0, "橘瓣直连失败，走原线路")
-        // ② 原有线路链（中转 → 直连 anon）
+        RequestLog.add(null, "GET", "supa-svc://moments", 0, 0, "代理失败，走原线路")
+        // ② 原有线路链（中转 → 直连 anon → xinchao）
         val reply = supabaseRequest(
             "rest/v1/moments",
             "GET",
