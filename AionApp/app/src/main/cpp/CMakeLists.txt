@@ -1,6 +1,6 @@
 # 本地模型 JNI 层：只编译薄包装，llama/ggml 用预编译 .so（jniLibs）
 cmake_minimum_required(VERSION 3.22)
-project(local-llama C)
+project(local-llama C CXX)
 
 set(LLAMA_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llama-include")
 
@@ -16,3 +16,7 @@ target_include_directories(local-llama PRIVATE ${LLAMA_INCLUDE_DIR})
 
 find_library(log-lib log)
 target_link_libraries(local-llama ${log-lib} llama ggml)
+
+# ── 沙盒 pty（照橘瓣 workspace 模块：交互终端的 termux-pty 原生层） ──
+add_library(termux_pty SHARED termux_pty.cpp)
+target_link_libraries(termux_pty ${log-lib})

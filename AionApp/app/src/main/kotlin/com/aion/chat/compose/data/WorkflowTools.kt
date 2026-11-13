@@ -29,6 +29,10 @@ object WorkflowTools {
         val out = mutableSetOf<String>()
         runCatching { McpClient.cachedDefs().forEach { out.add(it.safeName) } }
         runCatching { out.addAll(MemoryTools.names()) }
+        if (runCatching { WorkspaceTools.available() }.getOrDefault(false)) {
+            out.addAll(listOf("workspace_shell", "workspace_read_file", "workspace_write_file",
+                "workspace_list_directory", "workspace_delete_file"))
+        }
         return out
     }
 

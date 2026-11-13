@@ -218,7 +218,11 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                         for (com.aion.chat.compose.data.McpClient.ToolDef d0 : com.aion.chat.compose.data.McpClient.cachedDefs()) {
                             if (d0.safeName.equals(safeName)) { mcpHasTool = true; break; }
                         }
-                        if (com.aion.chat.compose.data.WorkflowTools.handles(safeName)) {
+                        if (com.aion.chat.compose.data.WorkspaceTools.handles(safeName)) {
+                            resultText = com.aion.chat.compose.data.WorkspaceTools.dispatch(safeName,
+                                    v[2].isEmpty() ? "{}" : v[2]);
+                            RequestLog.add(null, "WS", safeName, 200, 0, "", 0, 0);
+                        } else if (com.aion.chat.compose.data.WorkflowTools.handles(safeName)) {
                             // 工作流工具：引擎完整门控在 WorkflowEngine.fire 里（条件/冷却/每日上限照常）
                             resultText = com.aion.chat.compose.data.WorkflowTools.dispatch(safeName,
                                     v[2].isEmpty() ? "{}" : v[2]);
@@ -443,6 +447,18 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                 body.put("tools", toolsArr3);
             }
             for (int i = 0; i < wdefs.length(); i++) toolsArr3.put(wdefs.get(i));
+        } catch (Throwable ignored) { }
+        // 沙盒工具（workspace_*：装好 rootfs 才注入）
+        try {
+            if (com.aion.chat.compose.data.WorkspaceTools.available()) {
+                org.json.JSONArray sdefs = com.aion.chat.compose.data.WorkspaceTools.defs();
+                org.json.JSONArray toolsArr4 = body.optJSONArray("tools");
+                if (toolsArr4 == null) {
+                    toolsArr4 = new org.json.JSONArray();
+                    body.put("tools", toolsArr4);
+                }
+                for (int i = 0; i < sdefs.length(); i++) toolsArr4.put(sdefs.get(i));
+            }
         } catch (Throwable ignored) { }
         if (promptCaching) {
             // 让 usage（含缓存命中数）在流末尾回来

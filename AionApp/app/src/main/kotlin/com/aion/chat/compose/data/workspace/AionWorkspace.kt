@@ -1,0 +1,111 @@
+package com.aion.chat.compose.data.workspace
+
+import android.content.Context
+import android.os.Build
+import java.io.File
+
+/**
+ * AionsHome 的 proot 沙盒封装（引擎层照搬橘瓣 workspace 模块，v1 单沙盒）：
+ * - root 固定 filesDir/workspace/default；安装状态存 prefs
+ * - Shell = ProotShellRunner（引擎自带 rootfs 就绪检查 + DNS 补丁）
+ * - AI 工具（WorkspaceTools）与试命令都走 runShell
+ */
+object AionWorkspace {
+    private const val PREFS = "workspace_state"
+    private const val KEY_STAGE = "install_stage"      // none/installing/ready/broken
+    private const val KEY_URL = "installed_url"
+    const val DEFAULT_ROOT = "default"
+
+    // 预填源（清华实测可达；阿里备用）
+    val ROOTFS_SOURCES = listOf(
+        "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz",
+        "https://mirrors.aliyun.com/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz",
+        "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
+    )
+
+    private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun baseDir(c: Context): File = File(c.filesDir, "workspace")
+
+    fun manager(c: Context): WorkspaceManager =
+        WorkspaceManager(baseDir(c))
+
+    fun rootfsDir(c: Context): File = manager(c).linuxDir(DEFAULT_ROOT)
+
+    fun hasRootfs(c: Context): Boolean = manager(c).hasRootfs(DEFAULT_ROOT)
+
+    fun stage(c: Context): String = prefs(c).getString(KEY_STAGE, "none") ?: "none"
+
+    fun installedUrl(c: Context): String? = prefs(c).getString(KEY_URL, null)
+
+    private fun setStage(c: Context, s: String, url: String? = null) {
+        prefs(c).edit().putString(KEY_STAGE, s).apply()
+        if (url != null) prefs(c).edit().putString(KEY_URL, url).apply()
+    }
+
+    /**
+     * 安装 rootfs（阻塞调用线程；支持逐源回退）。
+     * 返回 null=成功；非 null=错误。
+     */
+    fun installRootfs(
+        c: Context, urls: List<String>,
+        onProgress: (RootfsInstallProgress) -> Unit,
+        cancelled: () -> Boolean,
+    ): String? {
+        val installer = RootfsInstaller(manager(c))
+        var lastErr = "安装失败"
+        for (url in urls) {
+            setStage(c, "installing", url)
+            val err = runCatching {
+                installer.install(DEFAULT_ROOT, url) { p ->
+                    onProgress(p)
+                    if (cancelled()) throw InterruptedException("cancelled")
+                }
+                null
+            }.getOrElse {
+                if (it is InterruptedException && cancelled()) "cancelled"
+                else it.message?.take(200) ?: "安装异常"
+            }
+            if (err == null && manager(c).hasRootfs(DEFAULT_ROOT)) {
+                runCatching { RootfsPatcher().patch(rootfsDir(c)) }
+                setStage(c, "ready", url)
+                return null
+            }
+            if (err == "cancelled") { setStage(c, if (hasRootfs(c)) "ready" else "none", url); return "cancelled" }
+            lastErr = err ?: "安装失败"
+        }
+        setStage(c, if (hasRootfs(c)) "ready" else "broken", null)
+        return lastErr
+    }
+
+    /** 在沙盒里跑一条命令（阻塞 IO 线程调用） */
+    fun runShell(c: Context, command: String, timeoutSeconds: Int = 60): WorkspaceCommandResult {
+        val mgr = manager(c)
+        val runner = ProotShellRunner(nativeLibraryDir(c))
+        return runner.execute(
+            WorkspaceShellContext(
+                root = DEFAULT_ROOT,
+                command = command,
+                cwd = "/",
+                filesDir = mgr.filesDir(DEFAULT_ROOT),
+                linuxDir = mgr.linuxDir(DEFAULT_ROOT),
+                tempDir = mgr.tempDir(DEFAULT_ROOT),
+                workingDir = mgr.workspaceDir(DEFAULT_ROOT),
+                timeoutMillis = timeoutSeconds.coerceIn(1, 600) * 1000L,
+            )
+        )
+    }
+
+    fun reset(c: Context) {
+        manager(c).deleteWorkspace(DEFAULT_ROOT)
+        setStage(c, "none", null)
+    }
+
+    private fun nativeLibraryDir(c: Context): File {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.GINGERBREAD) {
+            File(c.applicationInfo.nativeLibraryDir)
+        } else {
+            File("/data/data/" + c.packageName + "/lib")
+        }
+    }
+}

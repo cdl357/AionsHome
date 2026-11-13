@@ -63,7 +63,7 @@ import java.text.SimpleDateFormat
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}, onOpenTranslate: () -> Unit = {}, onOpenLocalModel: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}, onOpenTranslate: () -> Unit = {}, onOpenLocalModel: () -> Unit = {}, onOpenSandbox: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -547,7 +547,23 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("本地模型", fontSize = 15.sp, color = HomecomingColors.Ink)
-                    Text("Qwen2.5 小杯跑在手机里，断网可用。下载一个就能试聊，聊天页接入随后", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                    Text("Qwen2.5 小杯跑在手机里，断网可用，聊天页开关一键切换", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
+            }
+        }
+
+        // ── Linux 沙盒（proot：装好 rootfs Sean 就有真 shell） ──
+        FrostCard {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenSandbox() }
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Linux 沙盒", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("手机里的 Alpine Linux，Sean 可跑脚本/apk 装软件/处理文件，系统隔离", fontSize = 11.sp, color = HomecomingColors.InkSoft)
                 }
                 Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent)
             }

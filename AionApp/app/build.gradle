@@ -24,8 +24,8 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 139
-        versionName "0.3.145"
+        versionCode 140
+        versionName "0.3.146"
 
         ndk {
             abiFilters 'arm64-v8a'   // 本地模型 .so 只有 arm64（她手机是 arm64；别的架构先不背体积）
@@ -83,6 +83,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.webkit:webkit:1.8.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'org.tukaani:xz:1.9'   // 沙盒 rootfs 解包
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
 
     // Compose（新版回家前端）
