@@ -24,8 +24,8 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 141
-        versionName "0.3.147"
+        versionCode 142
+        versionName "0.3.148"
 
         ndk {
             abiFilters 'arm64-v8a'   // 本地模型 .so 只有 arm64（她手机是 arm64；别的架构先不背体积）
@@ -92,6 +92,8 @@ dependencies {
     implementation 'androidx.webkit:webkit:1.8.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.tukaani:xz:1.9'   // 沙盒 rootfs 解包
+    // 交互终端仿真（termux 官方 AAR 不在公共仓库，从橘瓣构建缓存拷入 libs/）
+    implementation files('libs/terminal-emulator-0.118.0.aar', 'libs/terminal-view-0.118.0.aar')
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
 
     // Compose（新版回家前端）

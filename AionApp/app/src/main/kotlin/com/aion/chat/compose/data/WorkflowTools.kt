@@ -31,7 +31,7 @@ object WorkflowTools {
         runCatching { out.addAll(MemoryTools.names()) }
         if (runCatching { WorkspaceTools.available() }.getOrDefault(false)) {
             out.addAll(listOf("workspace_shell", "workspace_read_file", "workspace_write_file",
-                "workspace_list_directory", "workspace_delete_file"))
+                "workspace_list_directory", "workspace_delete_file", "workspace_move", "workspace_search"))
         }
         return out
     }

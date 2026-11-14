@@ -244,7 +244,13 @@ fun HomecomingApp() {
                     com.aion.chat.compose.ui.settings.LocalModelScreen(onBack = { navController.popBackStack() })
                 }
                 composable("sandbox") {
-                    com.aion.chat.compose.ui.settings.SandboxScreen(onBack = { navController.popBackStack() })
+                    com.aion.chat.compose.ui.settings.SandboxScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenTerminal = { navController.navigate("sandboxterm") }
+                    )
+                }
+                composable("sandboxterm") {
+                    com.aion.chat.compose.ui.settings.SandboxTerminalScreen(onBack = { navController.popBackStack() })
                 }
                 composable("stats") {
                     com.aion.chat.compose.ui.settings.StatsScreen(onBack = { navController.popBackStack() })

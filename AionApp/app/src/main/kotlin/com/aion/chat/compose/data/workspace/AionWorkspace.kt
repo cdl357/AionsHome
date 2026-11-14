@@ -23,6 +23,14 @@ object AionWorkspace {
         "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
     )
 
+    /** 每个源的官方 sha256（alpine 官方发布校验文件；3.22 的暂未收录=跳过校验） */
+    val ROOTFS_SHA256 = mapOf(
+        "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz"
+                to "1281d44664bf636e0dbdd7641cce4b2fea92b97acce3d42a246257f056478f5c",
+        "https://mirrors.aliyun.com/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz"
+                to "1281d44664bf636e0dbdd7641cce4b2fea92b97acce3d42a246257f056478f5c",
+    )
+
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun baseDir(c: Context): File = File(c.filesDir, "workspace")
@@ -57,10 +65,10 @@ object AionWorkspace {
         for (url in urls) {
             setStage(c, "installing", url)
             val err = runCatching {
-                installer.install(DEFAULT_ROOT, url) { p ->
+                installer.install(DEFAULT_ROOT, url, { p ->
                     onProgress(p)
                     if (cancelled()) throw InterruptedException("cancelled")
-                }
+                }, ROOTFS_SHA256[url])
                 null
             }.getOrElse {
                 if (it is InterruptedException && cancelled()) "cancelled"
@@ -82,6 +90,11 @@ object AionWorkspace {
 
     /** 在沙盒里跑一条命令（阻塞 IO 线程调用） */
     fun runShell(c: Context, command: String, timeoutSeconds: Int = 60): WorkspaceCommandResult {
+        // v11 P2：磁盘保护——剩余不足 500MB 拒绝执行（沙盒里 dd 一条就能撑爆存储）
+        if (baseDir(c).usableSpace < 500L * 1024 * 1024) {
+            return WorkspaceCommandResult(127, "",
+                "磁盘剩余不足 500MB，拒绝执行——清一下空间或清空沙盒再试")
+        }
         val mgr = manager(c)
         val runner = ProotShellRunner(nativeLibraryDir(c))
         return runner.execute(

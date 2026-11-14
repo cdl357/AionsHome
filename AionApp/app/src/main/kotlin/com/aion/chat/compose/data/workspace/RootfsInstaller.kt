@@ -26,6 +26,7 @@ class RootfsInstaller(
         root: String,
         url: String,
         onProgress: (RootfsInstallProgress) -> Unit = {},
+        expectedSha256: String? = null,
     ) {
         require(url.isNotBlank()) { "Rootfs download url is required" }
         manager.ensureWorkspace(root)
@@ -39,6 +40,14 @@ class RootfsInstaller(
             stagingDir.deleteRecursively()
             stagingDir.mkdirs()
             download(url, archive, onProgress)
+            // v11 P2：官方 sha256 强校验（不匹配即抛，staging/解包不会发生）
+            expectedSha256?.let { expected ->
+                val actual = sha256Hex(archive)
+                if (!actual.equals(expected, ignoreCase = true)) {
+                    throw IllegalArgumentException(
+                        "rootfs sha256 mismatch: got $actual want $expected — 下载源不可信")
+                }
+            }
             extractTar(archive, stagingDir, format, onProgress)
             linuxDir.deleteRecursively()
             require(stagingDir.renameTo(linuxDir)) {
@@ -389,6 +398,20 @@ class RootfsInstaller(
         LONG_LINK,
         PAX,
         OTHER,
+    }
+
+    /** 流式 sha256（v11 P2 供应链校验用） */
+    fun sha256Hex(f: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { ins ->
+            val buf = ByteArray(1024 * 1024)
+            while (true) {
+                val n = ins.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     enum class ArchiveFormat(val extension: String) {

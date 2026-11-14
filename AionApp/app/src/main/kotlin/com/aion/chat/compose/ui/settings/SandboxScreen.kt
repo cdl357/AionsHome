@@ -55,7 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 交互终端页（termux-pty 全键盘仿真）下一轮，先把引擎跑通。
  */
 @Composable
-fun SandboxScreen(onBack: () -> Unit = {}) {
+fun SandboxScreen(onBack: () -> Unit = {}, onOpenTerminal: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var rev by remember { mutableIntStateOf(0) }
@@ -137,6 +137,15 @@ fun SandboxScreen(onBack: () -> Unit = {}) {
                                 ?: "装好约 300MB 磁盘空间",
                             fontSize = 11.sp, color = Color(0xFF8A8279)
                         )
+                    }
+                    if (hasRootfs) {
+                        Button(
+                            onClick = { onOpenTerminal() },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF4C5B68), contentColor = Color.White
+                            )
+                        ) { Text("打开终端", fontSize = 11.sp) }
                     }
                     when {
                         installing -> {

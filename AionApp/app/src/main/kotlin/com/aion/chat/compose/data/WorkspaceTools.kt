@@ -90,6 +90,19 @@ object WorkspaceTools {
                 .put("path", JSONObject().put("type", "string"))
                 .put("recursive", JSONObject().put("type", "boolean")),
             JSONArray().put("path"))
+        def("workspace_move",
+            "移动/重命名沙盒 files 区的文件或目录。",
+            JSONObject()
+                .put("source", JSONObject().put("type", "string"))
+                .put("target", JSONObject().put("type", "string"))
+                .put("overwrite", JSONObject().put("type", "boolean")),
+            JSONArray().put("source").put("target"))
+        def("workspace_search",
+            "在沙盒 files 区按关键词搜文件内容（纯文本，最多 100 条结果，跳过大于 2MB 的文件）。",
+            JSONObject()
+                .put("query", JSONObject().put("type", "string"))
+                .put("path", JSONObject().put("type", "string").put("description", "起始目录，默认根")),
+            JSONArray().put("query"))
         return arr
     }
 
@@ -150,6 +163,45 @@ object WorkspaceTools {
                     val ok = mgr.deleteFile(AionWorkspace.DEFAULT_ROOT, path, args.optBoolean("recursive", false))
                     if (ok) JSONObject().put("ok", true).toString() else err("delete_failed", "删除失败")
                 } catch (e: Exception) { err("delete_failed", e.message?.take(200) ?: "删除失败") }
+            }
+            "workspace_move" -> {
+                val src = args.optString("source"); val dst = args.optString("target")
+                if (src.isBlank() || dst.isBlank()) return err("missing_path", "source/target 必填")
+                try {
+                    val e = mgr.moveFile(AionWorkspace.DEFAULT_ROOT, src, dst, args.optBoolean("overwrite", false))
+                    JSONObject().put("ok", true).put("path", e.path).toString()
+                } catch (e: Exception) { err("move_failed", e.message?.take(200) ?: "移动失败") }
+            }
+            "workspace_search" -> {
+                val query = args.optString("query")
+                if (query.isBlank()) return err("missing_query", "query 必填")
+                val start = args.optString("path")
+                try {
+                    val matches = mutableListOf<JSONObject>()
+                    val maxResults = 100
+                    val maxFile = 2L * 1024 * 1024
+                    fun walk(dir: java.io.File) {
+                        if (matches.size >= maxResults) return
+                        val fs = dir.listFiles() ?: return
+                        for (f in fs) {
+                            if (matches.size >= maxResults) return
+                            if (f.isDirectory) { walk(f); continue }
+                            if (f.length() == 0L || f.length() > maxFile) continue
+                            val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull() ?: continue
+                            text.lines().forEachIndexed { idx, line ->
+                                if (matches.size < maxResults && line.contains(query, ignoreCase = true)) {
+                                    matches.add(JSONObject()
+                                        .put("path", f.relativeTo(root).invariantSeparatorsPath)
+                                        .put("line", idx + 1)
+                                        .put("text", line.take(200)))
+                                }
+                            }
+                        }
+                    }
+                    val startDir = if (start.isBlank()) root else java.io.File(root, start)
+                    if (startDir.isDirectory) walk(startDir)
+                    JSONObject().put("count", matches.size).put("items", JSONArray(matches)).toString()
+                } catch (e: Exception) { err("search_failed", e.message?.take(200) ?: "搜索失败") }
             }
             else -> err("unknown_tool", name)
         }

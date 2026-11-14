@@ -93,6 +93,19 @@ object LocalLlamaEngine {
  */
 object LocalModelStore {
     private const val PREFS = "local_model"
+
+    fun sha256(f: File): String? = runCatching {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { ins ->
+            val buf = ByteArray(1024 * 1024)
+            while (true) {
+                val n = ins.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        md.digest().joinToString("") { "%02x".format(it) }
+    }.getOrNull()
     private const val KEY_PROGRESS = "dl_"
     private const val KEY_CHAT_MODEL = "chat_model"
     private const val KEY_USE_IN_CHAT = "use_in_chat"
@@ -104,6 +117,8 @@ object LocalModelStore {
         val urls: List<String>,      // 源链：hf-mirror 在前，ModelScope 兜底（hf 的大文件会 302 到海外 CDN，国内可能不通）
         val sizeBytes: Long,
         val note: String,
+        /** 官方 sha256（HF LFS oid）——下载完强校验，供应链防线（v11 P2） */
+        val expectedSha256: String? = null,
     )
 
     private fun hf(repo: String, file: String) =
@@ -240,6 +255,15 @@ object LocalModelStore {
                 }
             }
             if (total > 0 && downloaded < total * 95 / 100) return "下载不完整"
+            // v11 P2：官方 sha256 强校验——不匹配即删（供应链防线）
+            m.expectedSha256?.let { expected ->
+                val actual = sha256(dst)
+                if (actual != null && !actual.equals(expected, ignoreCase = true)) {
+                    runCatching { dst.delete() }
+                    setProgress(c, m.key, -1L)
+                    return "sha256 不匹配（已删除重下）——下载源被篡改或文件不完整"
+                }
+            }
             setProgress(c, m.key, -1L)
             onProgress(downloaded, downloaded)
             null
