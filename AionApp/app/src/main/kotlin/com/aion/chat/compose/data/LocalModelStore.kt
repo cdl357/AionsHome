@@ -55,17 +55,26 @@ object LocalLlamaEngine {
         return handle != 0L
     }
 
+    /** 最近一次生成的 (promptTokens, genTokens)——usage 统计用 */
+    @Volatile var lastStats: Pair<Int, Int> = 0 to 0
+        private set
+
     /** 阻塞生成：在 IO 线程调用；返回生成 token 数（-1 失败） */
     fun generate(prompt: String, maxTokens: Int, temp: Float, sink: TokenSink): Int = synchronized(lock) {
         if (handle == 0L) { lastError = "模型未加载"; return -1 }
         lastError = ""
-        return runCatching {
+        val n = runCatching {
             nativeGenerate(handle, prompt.toByteArray(Charsets.UTF_8), maxTokens, temp, sink)
         }.getOrElse {
             Log.w(TAG, "generate crashed", it)
             lastError = it.message ?: "生成异常"
             -1
         }
+        if (n >= 0) {
+            val st = runCatching { nativeLastStats(handle) }.getOrNull()
+            if (st != null && st.size >= 2) lastStats = st[0] to st[1]
+        }
+        return n
     }
 
     fun release() = synchronized(lock) {
@@ -78,6 +87,7 @@ object LocalLlamaEngine {
     @JvmStatic private external fun nativeBackendInit()
     @JvmStatic private external fun nativeLoadModel(pathBytes: ByteArray, nCtx: Int, nThreads: Int): Long
     @JvmStatic private external fun nativeFree(handle: Long)
+    @JvmStatic private external fun nativeLastStats(handle: Long): IntArray
     @JvmStatic private external fun nativeGenerate(
         handle: Long, promptBytes: ByteArray, maxTokens: Int, temp: Float, sink: Any): Int
 

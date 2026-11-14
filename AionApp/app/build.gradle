@@ -24,8 +24,8 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 142
-        versionName "0.3.148"
+        versionCode 143
+        versionName "0.3.149"
 
         ndk {
             abiFilters 'arm64-v8a'   // 本地模型 .so 只有 arm64（她手机是 arm64；别的架构先不背体积）

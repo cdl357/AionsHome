@@ -60,6 +60,10 @@ object AionWorkspace {
         onProgress: (RootfsInstallProgress) -> Unit,
         cancelled: () -> Boolean,
     ): String? {
+        // v11 P2：安装前磁盘检查——rootfs 解包后 ~700MB，留足余量
+        if (baseDir(c).usableSpace < 1024L * 1024 * 1024) {
+            return "磁盘剩余不足 1GB，先清理空间再安装"
+        }
         val installer = RootfsInstaller(manager(c))
         var lastErr = "安装失败"
         for (url in urls) {
@@ -95,7 +99,9 @@ object AionWorkspace {
             return WorkspaceCommandResult(127, "",
                 "磁盘剩余不足 500MB，拒绝执行——清一下空间或清空沙盒再试")
         }
-        val mgr = manager(c)
+        // 与工具层同一把锁：试命令/工作流/聊天工具并发不再互相踩
+        return synchronized(this@AionWorkspace) {
+            val mgr = manager(c)
         val runner = ProotShellRunner(nativeLibraryDir(c))
         return runner.execute(
             WorkspaceShellContext(
@@ -109,6 +115,7 @@ object AionWorkspace {
                 timeoutMillis = timeoutSeconds.coerceIn(1, 600) * 1000L,
             )
         )
+        }
     }
 
     fun reset(c: Context) {

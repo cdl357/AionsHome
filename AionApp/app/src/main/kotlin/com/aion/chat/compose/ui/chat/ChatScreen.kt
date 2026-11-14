@@ -551,6 +551,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                 sendError.value = SendError(
                                     title = "回复失败（$code）",
                                     reason = when {
+                                        code.startsWith("local_no_model") ->
+                                            "本地模型没下载——去 设置 → 本地模型 下载一个，或关掉「聊天里用本地模型」开关走在线"
+                                        code.startsWith("local_load_failed") ->
+                                            "模型加载失败：内存吃紧或文件损坏——删掉重下，或换 0.5B 小杯"
+                                        code.startsWith("local_generate_failed") ->
+                                            "本地生成失败：内存吃紧或上下文超长——清一下会话再试，或换 0.5B 小杯"
+                                        code.startsWith("local_") ->
+                                            "本地推理异常——重试一次；反复出现把崩溃日志发我"
                                         code == "empty_model_reply:reasoning_only" ->
                                             "这个模型只输出了思考没有正文——换一个非 thinking 模型（如 claude-opus-4-6）再试"
                                         code == "empty_model_reply" ->

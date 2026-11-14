@@ -14,6 +14,8 @@ typedef struct {
     struct llama_model * model;
     struct llama_context * ctx;
     const struct llama_vocab * vocab;
+    int32_t lastPromptTokens;
+    int32_t lastGenTokens;
 } llama_slot;
 
 static void throwIse(JNIEnv * env, const char * msg) {
@@ -63,6 +65,8 @@ Java_com_aion_chat_compose_data_LocalLlamaEngine_nativeLoadModel(
     slot->model = model;
     slot->ctx = ctx;
     slot->vocab = llama_model_get_vocab(model);
+    slot->lastPromptTokens = 0;
+    slot->lastGenTokens = 0;
     return (jlong) (intptr_t) slot;
 }
 
@@ -101,6 +105,7 @@ Java_com_aion_chat_compose_data_LocalLlamaEngine_nativeGenerate(
     n_prompt = llama_tokenize(slot->vocab, prompt, plen, toks, n_prompt, false, true);
     free(prompt);
     if (n_prompt <= 0) { free(toks); return -1; }
+    slot->lastPromptTokens = n_prompt;
 
     llama_memory_clear(llama_get_memory(slot->ctx), true);
 
@@ -147,8 +152,19 @@ Java_com_aion_chat_compose_data_LocalLlamaEngine_nativeGenerate(
         if (llama_decode(slot->ctx, llama_batch_get_one(&next, 1))) break;
         produced++;
     }
+    slot->lastGenTokens = produced;
     llama_sampler_free(smpl);
     return produced;
+}
+
+JNIEXPORT jintArray JNICALL
+Java_com_aion_chat_compose_data_LocalLlamaEngine_nativeLastStats(JNIEnv * env, jclass cls, jlong handle) {
+    llama_slot * slot = (llama_slot *) (intptr_t) handle;
+    jintArray out = (*env)->NewIntArray(env, 2);
+    if (out == NULL) return NULL;
+    jint stats[2] = { slot ? slot->lastPromptTokens : 0, slot ? slot->lastGenTokens : 0 };
+    (*env)->SetIntArrayRegion(env, out, 0, 2, stats);
+    return out;
 }
 
 JNIEXPORT void JNICALL

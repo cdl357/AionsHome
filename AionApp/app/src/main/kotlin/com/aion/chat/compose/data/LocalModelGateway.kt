@@ -41,13 +41,17 @@ class LocalModelGateway(private val appContext: Context) : com.aion.chat.homecom
                 }
             }
             val prompt = buildQwenPrompt(request.messages)
-            RequestLog.add(null, "LOCAL", request.modelKey.ifBlank { "local" }, 200, 0,
-                    "prompt=${prompt.length}ch", 0, 0)
+            val t0 = System.currentTimeMillis()
             val sb = StringBuilder()
             val n = LocalLlamaEngine.generate(prompt, maxTokens = 1024, temp = 0.7f) { piece ->
                 sb.append(String(piece, Charsets.UTF_8))
                 !cancel.get()
             }
+            val (pt, ct) = LocalLlamaEngine.lastStats
+            RequestLog.add(null, "LOCAL", request.modelKey.ifBlank { "local" },
+                if (n >= 0) 200 else 500, System.currentTimeMillis() - t0,
+                if (n < 0) LocalLlamaEngine.lastError.take(150) else "",
+                0, pt.toLong(), ct.toLong())
             val text = sb.toString()
             if ((n < 0 || text.isBlank()) && LocalLlamaEngine.lastError.isNotBlank()) {
                 observer.onFailure("local_generate_failed: ${LocalLlamaEngine.lastError.take(160)}")
