@@ -406,10 +406,13 @@ private fun DiscPickerSheet(
 ) {
     val context = LocalContext.current
     val current = StyleSettings.loveDisc(context)
-    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFFFBF9F4)) {
+    val GlassBorder = Color.White.copy(alpha = 0.85f)
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFFFBFDFD)) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
-            Text("桌上的唱片", fontSize = 16.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
-            Text("点一张换上，播放的时候它会转", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("桌上的唱片", fontSize = 16.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
+                Text("点一张换上，播放的时候它会转", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+            }
             Spacer(Modifier.height(10.dp))
             androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
                 columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
@@ -476,15 +479,26 @@ private fun DiscPickerSheet(
                                 modifier = Modifier.size(84.dp)
                             )
                         }
+                        Text("第 ${i + 1} 张", fontSize = 10.sp, color = HomecomingColors.InkSoft, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White)
+                    .border(0.8.dp, GlassBorder, RoundedCornerShape(16.dp))
+                    .clickable { onPickWallpaper() }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Text("这页的背景也随你换", fontSize = 12.sp, color = HomecomingColors.InkSoft, modifier = Modifier.weight(1f))
-                TextButton(onClick = onPickWallpaper) { Text("换本页壁纸 ›", color = HomecomingColors.Accent) }
+                Column(Modifier.weight(1f)) {
+                    Text("换本页背景图", fontSize = 13.sp, color = HomecomingColors.Ink, fontWeight = FontWeight.Medium)
+                    Text("从相册挑一张，只换这一页", fontSize = 10.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("›", fontSize = 18.sp, color = HomecomingColors.Accent)
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -570,13 +584,24 @@ private fun LoveNowPage(
             } else null
         }
         Box(contentAlignment = Alignment.Center) {
+            // 唱片底下的柔光
+            Box(
+                modifier = Modifier
+                    .size(268.dp)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(HomecomingColors.Accent.copy(alpha = 0.14f), Color.Transparent)
+                        ),
+                        CircleShape
+                    )
+            )
             if (discBmp != null) {
                 Image(
                     bitmap = discBmp.asImageBitmap(),
                     contentDescription = "唱片（点一下换样式）",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(206.dp)
+                        .size(240.dp)
                         .graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }
                         .clickable(
                             indication = null,
@@ -584,7 +609,7 @@ private fun LoveNowPage(
                         ) { onPickDisc() }
                 )
             } else
-            Canvas(modifier = Modifier.size(196.dp).graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }) {
+            Canvas(modifier = Modifier.size(228.dp).graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }) {
                 val r = size.minDimension / 2f
                 val c = Offset(size.width / 2f, size.height / 2f)
                 drawCircle(Brush.radialGradient(listOf(Color(0xFF48444C), Color(0xFF1B191E))), radius = r, center = c)
@@ -596,14 +621,33 @@ private fun LoveNowPage(
                 drawCircle(Color.White, radius = r * 0.045f, center = c)
             }
         }
-        Text(
-            "点唱片换样式 · 点这里换本页背景",
-            fontSize = 9.sp, color = HomecomingColors.InkSoft.copy(alpha = 0.8f),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { onOpenWallpaper() }
-                .padding(horizontal = 8.dp, vertical = 2.dp)
-        )
+                .padding(top = 8.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White.copy(alpha = 0.75f))
+                .border(0.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+        ) {
+            Text(
+                "点唱片换样式", fontSize = 10.sp,
+                color = HomecomingColors.Accent, fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onPickDisc() }
+                    .padding(2.dp)
+            )
+            Text("  ·  ", fontSize = 10.sp, color = HomecomingColors.InkSoft)
+            Text(
+                "点这里换背景图", fontSize = 10.sp,
+                color = HomecomingColors.Accent, fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onOpenWallpaper() }
+                    .padding(2.dp)
+            )
+        }
         Spacer(Modifier.height(14.dp))
 
         Text(
