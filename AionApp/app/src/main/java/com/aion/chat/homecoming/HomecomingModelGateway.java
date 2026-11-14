@@ -107,6 +107,18 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
         try {
             NetworkRequest network = build(request, route, model, toolHistory);
             reqUrl = network.url;
+            // v0.3.152 CTX 诊断：模型实际收到的完整上下文摘要（答非所问时看这条就知道喂了什么）
+            try {
+                StringBuilder ctxDump = new StringBuilder();
+                for (HomecomingModelGateway.ChatMessage m : request.messages) {
+                    ctxDump.append(m.role).append("≤")
+                           .append(m.text.length() > 60 ? m.text.substring(0, 60) : m.text)
+                           .append(m.text.length() > 60 ? "…" : "")
+                           .append(" | ");
+                }
+                com.aion.chat.compose.data.RequestLog.add(null, "CTX", request.requestId, 200,
+                        request.messages.size(), ctxDump.toString(), 0, 0);
+            } catch (Throwable ignored) { }
             // 自定义请求（他的配置页）：额外请求头 + 正文参数最后合并，可覆盖默认值
             if (!extraHeaders.isEmpty() || extraBody.length() > 0) {
                 network = mergeCustom(network);
