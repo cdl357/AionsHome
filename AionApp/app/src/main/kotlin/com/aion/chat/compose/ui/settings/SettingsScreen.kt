@@ -553,45 +553,30 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             }
         }
 
-        // ── 语音（v0.3.152：SiliconFlow CosyVoice 克隆——用自己捏的声音朗读） ──
+        // ── 语音（v0.3.153：ElevenLabs——她账号里已有的克隆音色） ──
         FrostCard {
-            var sfKey by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.key(context)) }
-            var voiceUri by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.voice(context)) }
-            var cloning by remember { mutableStateOf(false) }
+            var elKey by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.key(context)) }
+            var voiceName by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.voiceName(context)) }
+            var fetching by remember { mutableStateOf(false) }
+            var voices by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+            var showPick by remember { mutableStateOf(false) }
+            var fetchErr by remember { mutableStateOf<String?>(null) }
             val voiceScope = rememberCoroutineScope()
-            val pickAudio = rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-            ) { uri ->
-                if (uri == null) return@rememberLauncherForActivityResult
-                cloning = true
-                voiceScope.launch {
-                    val (uri2, err) = withContext(Dispatchers.IO) {
-                        com.aion.chat.compose.data.VoiceStore.clone(context, uri, "yuri")
-                    }
-                    cloning = false
-                    if (uri2 != null) {
-                        com.aion.chat.compose.data.VoiceStore.setVoice(context, uri2)
-                        voiceUri = uri2
-                        Toast.makeText(context, "克隆成功——聊天朗读就是你的声音了", Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(context, "克隆失败：${err ?: "未知"}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
+
             Column {
-                Text("语音 · 声音克隆", fontSize = 15.sp, color = HomecomingColors.Ink)
+                Text("语音 · 我的声音", fontSize = 15.sp, color = HomecomingColors.Ink)
                 Text(
-                    "用自己捏的声音朗读：填 SiliconFlow Key → 选一段 ≥10 秒的干净人声（录音 App 录）→ 克隆。聊天朗读就会用你的声音",
+                    "填 ElevenLabs API Key → 拉取音色 → 选你克隆好的那个。聊天朗读就是你的声音（通话声音在 kimi-room 的 ELEVENLABS_VOICE_ID，两边都改才统一）",
                     fontSize = 11.sp, color = HomecomingColors.InkSoft, lineHeight = 15.sp
                 )
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
-                    value = sfKey,
+                    value = elKey,
                     onValueChange = {
-                        sfKey = it
+                        elKey = it
                         com.aion.chat.compose.data.VoiceStore.setKey(context, it)
                     },
-                    placeholder = { Text("SiliconFlow API Key（sk-…）", fontSize = 11.sp) },
+                    placeholder = { Text("ElevenLabs API Key", fontSize = 11.sp) },
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
@@ -600,19 +585,60 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
-                        enabled = sfKey.isNotBlank() && !cloning,
+                        enabled = elKey.isNotBlank() && !fetching,
                         onClick = {
-                            pickAudio.launch(arrayOf("audio/*"))
+                            fetching = true; fetchErr = null
+                            voiceScope.launch {
+                                val (list, err) = withContext(Dispatchers.IO) {
+                                    com.aion.chat.compose.data.VoiceStore.listVoices(context)
+                                }
+                                fetching = false
+                                if (list != null) {
+                                    voices = list
+                                    showPick = true
+                                } else fetchErr = err ?: "拉取失败"
+                            }
                         },
                         shape = RoundedCornerShape(10.dp),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                             containerColor = HomecomingColors.Accent, contentColor = Color.White
                         )
-                    ) { Text(if (cloning) "克隆中…" else "选音频克隆", fontSize = 12.sp) }
+                    ) { Text(if (fetching) "拉取中…" else "拉取音色列表", fontSize = 12.sp) }
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        if (voiceUri.isBlank()) "还没克隆" else "已克隆 ✓ " + voiceUri.take(24) + "…",
+                        if (voiceName.isBlank()) "还没选音色"
+                        else "当前 ✓ " + voiceName,
                         fontSize = 11.sp, color = HomecomingColors.InkSoft
+                    )
+                }
+                fetchErr?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(it, fontSize = 11.sp, color = Color(0xFFB3564D))
+                }
+                if (showPick && voices.isNotEmpty()) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showPick = false },
+                        title = { Text("选一个音色", fontSize = 16.sp) },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState())) {
+                                voices.forEach { (name, id) ->
+                                    Text(
+                                        name, fontSize = 14.sp, color = HomecomingColors.Ink,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                com.aion.chat.compose.data.VoiceStore.setVoice(context, id, name)
+                                                voiceName = name
+                                                showPick = false
+                                            }
+                                            .padding(vertical = 10.dp)
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showPick = false }) { Text("取消") }
+                        }
                     )
                 }
             }
