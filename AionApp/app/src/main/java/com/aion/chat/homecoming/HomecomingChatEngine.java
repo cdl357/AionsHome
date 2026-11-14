@@ -155,8 +155,15 @@ public final class HomecomingChatEngine {
                     command.imageDataUrl,
                     command.extraImageDataUrls),
                     new HomecomingModelGateway.StreamObserver() {
+                        private boolean deltasForwarded = false;
+
                         @Override public void onChunk(String text) {
-                            // Control tags may span chunks; publish only after final parsing.
+                            // v0.3.151 流式：网关的逐 delta 转发给 UI（UI 每次渲染都剥控制标签，
+                            // 标签跨 chunk 的瞬时残影由最终提交修正）。空段不转。
+                            if (text != null && !text.isEmpty()) {
+                                deltasForwarded = true;
+                                observer.onChunk(text);
+                            }
                         }
 
                         @Override public void onComplete(String text) {
@@ -166,7 +173,8 @@ public final class HomecomingChatEngine {
                                 String messageId = repository.commitAssistant(
                                         command, parsed.visibleText, clock.now());
                                 controls.apply(command, parsed.events, clock.now());
-                                if (!parsed.visibleText.isEmpty()) {
+                                // 已经流式转发过 delta 的不再追加全文（否则 UI 会重复拼接）
+                                if (!deltasForwarded && !parsed.visibleText.isEmpty()) {
                                     observer.onChunk(parsed.visibleText);
                                 }
                                 observer.onComplete(

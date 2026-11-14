@@ -67,6 +67,9 @@ class RootfsInstaller(
         onProgress: (RootfsInstallProgress) -> Unit,
     ) {
         val connection = URL(url).openConnection() as HttpURLConnection
+        // v0.3.151：部分镜像（tuna/aliyun）对 Dalvik/默认 UA 直接 403，伪装常规浏览器 UA
+        connection.setRequestProperty("User-Agent",
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
         connection.instanceFollowRedirects = true

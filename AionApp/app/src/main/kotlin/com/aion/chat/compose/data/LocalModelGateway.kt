@@ -44,7 +44,10 @@ class LocalModelGateway(private val appContext: Context) : com.aion.chat.homecom
             val t0 = System.currentTimeMillis()
             val sb = StringBuilder()
             val n = LocalLlamaEngine.generate(prompt, maxTokens = 1024, temp = 0.7f) { piece ->
-                sb.append(String(piece, Charsets.UTF_8))
+                val text = String(piece, Charsets.UTF_8)
+                sb.append(text)
+                // v0.3.151 流式：本地 token 逐个进 UI 气泡
+                observer.onChunk(text)
                 !cancel.get()
             }
             val (pt, ct) = LocalLlamaEngine.lastStats

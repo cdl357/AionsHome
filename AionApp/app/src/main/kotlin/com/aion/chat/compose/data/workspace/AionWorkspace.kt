@@ -17,14 +17,20 @@ object AionWorkspace {
     const val DEFAULT_ROOT = "default"
 
     // 预填源（清华实测可达；阿里备用）
+    // v0.3.151：USTC 主源（实测对手机 UA 友好）→ 官方 dl-cdn → tuna 兜底；tuna/aliyun 对 Dalvik UA 会 403
     val ROOTFS_SOURCES = listOf(
+        "https://mirrors.ustc.edu.cn/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz",
+        "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz",
         "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz",
         "https://mirrors.aliyun.com/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz",
-        "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
     )
 
-    /** 每个源的官方 sha256（alpine 官方发布校验文件；3.22 的暂未收录=跳过校验） */
+    /** 每个源的官方 sha256（同一发布文件各镜像同哈希） */
     val ROOTFS_SHA256 = mapOf(
+        "https://mirrors.ustc.edu.cn/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz"
+                to "1281d44664bf636e0dbdd7641cce4b2fea92b97acce3d42a246257f056478f5c",
+        "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz"
+                to "1281d44664bf636e0dbdd7641cce4b2fea92b97acce3d42a246257f056478f5c",
         "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz"
                 to "1281d44664bf636e0dbdd7641cce4b2fea92b97acce3d42a246257f056478f5c",
         "https://mirrors.aliyun.com/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.2-aarch64.tar.gz"
