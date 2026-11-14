@@ -584,6 +584,20 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                 )
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sean 回复自动带语音条", fontSize = 13.sp, color = HomecomingColors.Ink, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Switch(
+                        checked = com.aion.chat.compose.data.VoiceMsgStore.autoEnabled(context),
+                        onCheckedChange = { on ->
+                            com.aion.chat.compose.data.VoiceMsgStore.setAutoEnabled(context, on)
+                        }
+                    )
+                }
+                Text(
+                    "开=每条回复自动用你选的音色合成语音条（挂气泡下，点播）。要先选好音色；还没克隆的话开关不会出声",
+                    fontSize = 10.sp, color = HomecomingColors.InkSoft, lineHeight = 14.sp
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         enabled = elKey.isNotBlank() && !fetching,
                         onClick = {
