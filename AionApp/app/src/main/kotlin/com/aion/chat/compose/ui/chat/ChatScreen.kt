@@ -241,6 +241,31 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     }
     fun speakReply(text: String) {
         if (!voiceOn.value || text.isBlank()) return
+        // v0.3.152：配置了克隆声音（设置 → 语音）走硅基流动合成，否则回退系统 TTS
+        if (com.aion.chat.compose.data.VoiceStore.configured(context)) {
+            scope.launch {
+                val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { com.aion.chat.compose.data.VoiceStore.synth(context, text) }.getOrNull()
+                }
+                if (f == null) {
+                    runCatching {
+                        tts.value?.speak(text, android.speech.tts.TextToSpeech.QUEUE_ADD, null,
+                            "sean_" + System.currentTimeMillis())
+                    }
+                    return@launch
+                }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    runCatching {
+                        val mp = android.media.MediaPlayer()
+                        mp.setDataSource(f.absolutePath)
+                        mp.setOnCompletionListener { it.release() }
+                        mp.prepare()
+                        mp.start()
+                    }
+                }
+            }
+            return
+        }
         runCatching {
             tts.value?.speak(
                 text,

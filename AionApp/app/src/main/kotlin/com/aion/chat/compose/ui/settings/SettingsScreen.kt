@@ -553,6 +553,71 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             }
         }
 
+        // ── 语音（v0.3.152：SiliconFlow CosyVoice 克隆——用自己捏的声音朗读） ──
+        FrostCard {
+            var sfKey by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.key(context)) }
+            var voiceUri by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.voice(context)) }
+            var cloning by remember { mutableStateOf(false) }
+            val voiceScope = rememberCoroutineScope()
+            val pickAudio = rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                cloning = true
+                voiceScope.launch {
+                    val (uri2, err) = withContext(Dispatchers.IO) {
+                        com.aion.chat.compose.data.VoiceStore.clone(context, uri, "yuri")
+                    }
+                    cloning = false
+                    if (uri2 != null) {
+                        com.aion.chat.compose.data.VoiceStore.setVoice(context, uri2)
+                        voiceUri = uri2
+                        Toast.makeText(context, "克隆成功——聊天朗读就是你的声音了", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "克隆失败：${err ?: "未知"}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            Column {
+                Text("语音 · 声音克隆", fontSize = 15.sp, color = HomecomingColors.Ink)
+                Text(
+                    "用自己捏的声音朗读：填 SiliconFlow Key → 选一段 ≥10 秒的干净人声（录音 App 录）→ 克隆。聊天朗读就会用你的声音",
+                    fontSize = 11.sp, color = HomecomingColors.InkSoft, lineHeight = 15.sp
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = sfKey,
+                    onValueChange = {
+                        sfKey = it
+                        com.aion.chat.compose.data.VoiceStore.setKey(context, it)
+                    },
+                    placeholder = { Text("SiliconFlow API Key（sk-…）", fontSize = 11.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        enabled = sfKey.isNotBlank() && !cloning,
+                        onClick = {
+                            pickAudio.launch(arrayOf("audio/*"))
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = HomecomingColors.Accent, contentColor = Color.White
+                        )
+                    ) { Text(if (cloning) "克隆中…" else "选音频克隆", fontSize = 12.sp) }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (voiceUri.isBlank()) "还没克隆" else "已克隆 ✓ " + voiceUri.take(24) + "…",
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft
+                    )
+                }
+            }
+        }
+
         // ── Linux 沙盒（proot：装好 rootfs Sean 就有真 shell） ──
         FrostCard {
             Row(

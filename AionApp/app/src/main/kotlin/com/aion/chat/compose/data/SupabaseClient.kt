@@ -291,17 +291,39 @@ object SupabaseMomentsStore {
             ?: emptyList()
 
     /** 服务器只读代理（v10 P0 改线第一顺位）：App 侧零 key，nginx 注入 service key。轮换后无需改 App */
-    private fun fetchMomentsViaProxy(): List<RemoteMoment>? = runCatching {
-        val conn = (URL("http://134.175.7.196:8783/supa-svc/moments?order=created_at.desc&limit=50")
-            .openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Accept", "application/json")
-            connectTimeout = 20000
-            readTimeout = 20000
+    /** 代理失败的具体原因（v0.3.152：写进最后 CloudResult 的 detail，banner 直接亮出来） */
+    @Volatile var lastProxyError: String = ""
+
+    private fun fetchMomentsViaProxy(): List<RemoteMoment>? {
+        // 双端口兜底：8783（常规）→ 80（运营商可能挡非常规端口）
+        val urls = listOf(
+            "http://134.175.7.196:8783/supa-svc/moments?order=created_at.desc&limit=50",
+            "http://134.175.7.196/supa-svc/moments?order=created_at.desc&limit=50",
+        )
+        for (u in urls) {
+            val err = runCatching {
+                val conn = (URL(u).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/json")
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    lastProxyError = "$u → HTTP $code"
+                    null
+                } else {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    parseMomentsArray(body)
+                }
+            }.getOrElse {
+                lastProxyError = "$u → ${it.javaClass.simpleName}: ${it.message?.take(120)}"
+                null
+            }
+            if (err != null) return err
         }
-        val body = conn.inputStream.bufferedReader().use { it.readText() }
-        parseMomentsArray(body)
-    }.getOrNull()
+        return null
+    }
 
     private fun parseMomentsArray(body: String): List<RemoteMoment> {
         val arr = JSONArray(body)
@@ -332,7 +354,7 @@ object SupabaseMomentsStore {
             RequestLog.add(null, "GET", "supa-svc://moments", 200, 0, "", 0, 0)
             return CloudResult(list, null)
         }
-        RequestLog.add(null, "GET", "supa-svc://moments", 0, 0, "代理失败，走原线路")
+        RequestLog.add(null, "GET", "supa-svc://moments", 0, 0, lastProxyError.ifBlank { "代理失败，走原线路" })
         // ② 原有线路链（中转 → 直连 anon → xinchao）
         val reply = supabaseRequest(
             "rest/v1/moments",
@@ -341,7 +363,13 @@ object SupabaseMomentsStore {
                 JSONArray(conn.inputStream.bufferedReader().readText())
             }
         )
-        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
+        if (reply.error != null) {
+            val detail = buildString {
+                if (lastProxyError.isNotBlank()) append("代理线路：").append(lastProxyError).append("；")
+                append(reply.detail ?: "")
+            }
+            return CloudResult(null, reply.error, detail)
+        }
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)
         if (arr.length() == 0) {
