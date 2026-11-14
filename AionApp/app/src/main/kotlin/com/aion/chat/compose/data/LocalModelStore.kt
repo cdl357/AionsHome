@@ -135,7 +135,8 @@ object LocalModelStore {
                 hf("Qwen2.5-0.5B-Instruct-GGUF", "qwen2.5-0.5b-instruct-q4_k_m.gguf"),
                 ms("Qwen2.5-0.5B-Instruct-GGUF", "qwen2.5-0.5b-instruct-q4_k_m.gguf"),
             ),
-            411_000_000L, "约 400MB，聊天秒回，适合当随身应答机"
+            411_000_000L, "约 400MB，聊天秒回，适合当随身应答机",
+            expectedSha256 = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
         ),
         ModelMeta(
             "qwen25-15b", "Qwen2.5 1.5B（均衡·推荐）",
@@ -144,7 +145,8 @@ object LocalModelStore {
                 hf("Qwen2.5-1.5B-Instruct-GGUF", "qwen2.5-1.5b-instruct-q4_k_m.gguf"),
                 ms("Qwen2.5-1.5B-Instruct-GGUF", "qwen2.5-1.5b-instruct-q4_k_m.gguf"),
             ),
-            1_100_000_000L, "约 1.1GB，质量明显上一个档"
+            1_100_000_000L, "约 1.1GB，质量明显上一个档",
+            expectedSha256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
         ),
         ModelMeta(
             "qwen25-3b", "Qwen2.5 3B（上限）",
@@ -153,7 +155,8 @@ object LocalModelStore {
                 hf("Qwen2.5-3B-Instruct-GGUF", "qwen2.5-3b-instruct-q4_k_m.gguf"),
                 ms("Qwen2.5-3B-Instruct-GGUF", "qwen2.5-3b-instruct-q4_k_m.gguf"),
             ),
-            2_000_000_000L, "约 2GB，回答最像样，但慢、吃内存"
+            2_000_000_000L, "约 2GB，回答最像样，但慢、吃内存",
+            expectedSha256 = "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
         ),
     )
 
