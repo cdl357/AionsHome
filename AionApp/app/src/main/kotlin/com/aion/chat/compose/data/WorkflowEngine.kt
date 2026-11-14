@@ -169,6 +169,15 @@ object WorkflowEngine {
      * 返回结果文本（失败时抛异常，由调用方记为 FAILED）。
      */
     fun dispatchTool(app: Context, tool: String, argsJson: String): String {
+        // v11 P2：工作流动作白名单里有 workspace_*，分发也得认——否则创建成功、运行必 FAILED
+        if (WorkspaceTools.handles(tool)) {
+            if (!WorkspaceTools.available()) {
+                throw IllegalStateException("tool_failed: 沙盒未就绪（设置→Linux 沙盒 先装 rootfs）")
+            }
+            val r = WorkspaceTools.dispatch(tool, argsJson)
+            RequestLog.add(null, "WF", tool, 200, 0, "", 0, 0)
+            return r
+        }
         if (MemoryTools.handles(tool) && MemoryTools.enabled()) {
             val r = MemoryTools.dispatch(tool, argsJson)
             RequestLog.add(null, "WF", tool, 200, 0, "", 0, 0)

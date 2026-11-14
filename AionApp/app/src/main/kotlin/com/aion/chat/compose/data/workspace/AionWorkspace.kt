@@ -72,6 +72,8 @@ object AionWorkspace {
                 return null
             }
             if (err == "cancelled") { setStage(c, if (hasRootfs(c)) "ready" else "none", url); return "cancelled" }
+            // v11 P2：换源重试前清临时目录——不同源的字节流不能续传拼接（防投毒拼包）
+            runCatching { manager(c).tempDir(DEFAULT_ROOT).deleteRecursively() }
             lastErr = err ?: "安装失败"
         }
         setStage(c, if (hasRootfs(c)) "ready" else "broken", null)

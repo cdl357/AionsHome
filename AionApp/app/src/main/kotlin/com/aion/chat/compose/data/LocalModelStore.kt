@@ -18,7 +18,8 @@ object LocalLlamaEngine {
 
     /** 每条生成 token 的回调：返回 false 提前停止 */
     fun interface TokenSink {
-        fun onToken(piece: String): Boolean
+        /** piece 为 UTF-8 字节（与 JNI ([B)Z 对齐；emoji 等增补平面字符不受 Modified-UTF8 影响） */
+        fun onToken(piece: ByteArray): Boolean
     }
 
     private val lock = Any()

@@ -24,8 +24,8 @@ android {
         applicationId "com.aion.chat"
         minSdk 24
         targetSdk 34
-        versionCode 140
-        versionName "0.3.146"
+        versionCode 141
+        versionName "0.3.147"
 
         ndk {
             abiFilters 'arm64-v8a'   // 本地模型 .so 只有 arm64（她手机是 arm64；别的架构先不背体积）
@@ -36,6 +36,14 @@ android {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
             version '3.22.1'
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // v11 P1-2：proot 是"伪装成 .so 的可执行文件"，必须真实落盘到 nativeLibraryDir
+            // （extractNativeLibs=false 时只在 APK 内 mmap，isFile 永远 false → 沙盒 127）
+            useLegacyPackaging = true
         }
     }
 

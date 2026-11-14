@@ -19,6 +19,17 @@ object WorkspaceTools {
 
     private val lock = Any()
 
+    private fun prefs(c: Context) = c.getSharedPreferences("workspace_state", Context.MODE_PRIVATE)
+
+    /** 沙盒 shell 开关（用户可关；关了 workspace_shell 不进工具面，读写文件仍可用） */
+    @JvmStatic
+    fun shellEnabled(c: Context): Boolean = prefs(c).getBoolean("shell_enabled", true)
+
+    @JvmStatic
+    fun setShellEnabled(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean("shell_enabled", on).apply()
+    }
+
     @Volatile private var ctxRef: Context? = null
 
     /** Wiring 启动时注入（与 WorkflowTools.initContext 同款） */
@@ -49,15 +60,19 @@ object WorkspaceTools {
             arr.put(JSONObject().put("type", "function").put("function", JSONObject()
                 .put("name", name).put("description", desc).put("parameters", p)))
         }
-        def("workspace_shell",
+        val ctx0 = ctxRef
+        if (ctx0 != null && shellEnabled(ctx0)) def("workspace_shell",
             "在 App 内置的 Alpine Linux 沙盒（proot）里执行 shell 命令，返回 stdout/stderr/exit_code。" +
-                    "沙盒有 busybox sh、apk 包管理（可 apk add），文件系统隔离在沙盒目录内。适合跑脚本、文本处理、计算。命令超时 1..600 秒（默认 60）。",
+                    "沙盒有 busybox sh、apk 包管理（可 apk add）。边界如实说明：proot 是路径翻译不是安全容器，" +
+                    "进程/网络与宿主 App 同权限，沙盒目录内的文件改动互不影响，但不要在里面处理不可信来源的内容。" +
+                    "命令超时 1..600 秒（默认 60）。",
             JSONObject()
                 .put("command", JSONObject().put("type", "string").put("description", "要执行的 shell 命令"))
                 .put("timeout_seconds", JSONObject().put("type", "integer").put("description", "超时秒数，默认 60，上限 600")),
             JSONArray().put("command"))
         def("workspace_read_file",
-            "读沙盒内文件（UTF-8 文本，单次上限 512KB）。path 相对沙盒 files 根目录（如 notes/todo.txt），空串=读 linux/ 下的路径以 / 开头。",
+            "读沙盒 files 区的文件（UTF-8 文本，单次上限 512KB）。path 相对 files 根目录（如 notes/todo.txt）；" +
+                    "rootfs（linux 区）文件请用 workspace_shell cat 读。",
             JSONObject().put("path", JSONObject().put("type", "string")),
             JSONArray().put("path"))
         def("workspace_write_file",

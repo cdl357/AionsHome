@@ -49,7 +49,12 @@ class ProotShellRunner(
         }
 
         context.tempDir.mkdirs()
-        patcher.patch(context.linuxDir)
+        // v11 P2：patch 一次性——有标记就不再重复改写 etc
+        val patchMarker = File(context.linuxDir, "etc/.aion-patched")
+        if (!patchMarker.isFile) {
+            patcher.patch(context.linuxDir)
+            runCatching { patchMarker.writeText("ok") }
+        }
         val process = ProcessBuilder(buildCommand(context, proot))
             .directory(context.filesDir)
             .redirectErrorStream(false)
@@ -87,7 +92,9 @@ class ProotShellRunner(
             }
         }
 
-        listOf("/dev", "/proc", "/sys").forEach { path ->
+        // v11 P1-3：只 bind /dev。/proc 整挂会让 cat /proc/self/root/... 读走宿主全部
+        // App 私有文件（含路由 Key）——proot 是路径翻译不是安全边界，能不给的就不给
+        listOf("/dev").forEach { path ->
             if (File(path).exists()) {
                 command += "-b"
                 command += path

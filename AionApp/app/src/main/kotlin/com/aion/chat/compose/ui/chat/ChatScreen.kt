@@ -171,7 +171,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val activeProv = remember(routeStamp, com.aion.chat.compose.data.ProviderStore.rev) {
         com.aion.chat.compose.data.ProviderStore.active(context)
     }
-    val connected = wiring != null && activeProv != null
+    // v11 P2：本地模型开关打开时无需云提供商也能聊（发消息走 LocalModelGateway）
+    val localModeOn = runCatching {
+        com.aion.chat.compose.data.LocalModelStore.useInChat(context) &&
+                com.aion.chat.compose.data.LocalModelStore.chatModel(context)?.let {
+                    com.aion.chat.compose.data.LocalModelStore.isDownloaded(context, it)
+                } == true
+    }.getOrDefault(false)
+    val connected = wiring != null && (activeProv != null || localModeOn)
 
     // ── 气泡皮肤（0 冰蓝 / 1 水晶 / 2 墨蓝 / 3 仿TG） ──
     val prefs = remember {
@@ -419,17 +426,28 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
             activeRequestId = reqId
         }
         // 橘瓣式：路由/模型由提供商体系决定（routes.json 里 active 提供商已镜像为 "main"）
+        // v11 P2：本地模型开关打开时无需云提供商（wiring 按开关装 LocalModelGateway）
+        val localMode = runCatching {
+            com.aion.chat.compose.data.LocalModelStore.useInChat(context) &&
+                    com.aion.chat.compose.data.LocalModelStore.chatModel(context)?.let {
+                        com.aion.chat.compose.data.LocalModelStore.isDownloaded(context, it)
+                    } == true
+        }.getOrDefault(false)
         val act = com.aion.chat.compose.data.ProviderStore.active(context)
         if (act == null) {
-            main.post {
-                sending.value = false
-                sendError.value = SendError(
-                    title = "还没有可用的提供商",
-                    reason = "设置 → 模型提供商 里没有启用中的提供商（或没添加模型）",
-                    solution = "去 设置 → 模型提供商 新增：填名称 / URL / Key，拉模型列表勾选，保存并设为聊天使用"
-                )
+            if (localMode) {
+                // 本地模式：act 可空，走 LocalModelGateway（路由/模型占位，引擎侧不读）
+            } else {
+                main.post {
+                    sending.value = false
+                    sendError.value = SendError(
+                        title = "还没有可用的提供商",
+                        reason = "设置 → 模型提供商 里没有启用中的提供商（或没添加模型）。开着本地模型开关的话，确认 设置 → 本地模型 里已下载并加载过模型",
+                        solution = "云线路：去 设置 → 模型提供商 新增并设为聊天使用；本地：去 设置 → 本地模型 下载模型"
+                    )
+                }
+                return
             }
-            return
         }
         scope.launch(Dispatchers.IO) {
             try {
@@ -461,8 +479,8 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         HomecomingChatWiring.RESPONDER,
                         HomecomingChatWiring.USER,
                         promptText,
-                        act.first.id,          // active 提供商自己的路由（routes.json 已同步）
-                        act.second.key,        // active 模型
+                        act?.first?.id ?: "local",   // 本地模式占位（LocalModelGateway 不读路由）
+                        act?.second?.key ?: "local", // v11 P2：本地模式无云提供商也能发
                         img,
                         "",
                         regenParent == null,   // 重新生成不落新用户消息（复用父消息）
@@ -799,7 +817,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     }
                     return@launch
                 }
-                val act = com.aion.chat.compose.data.ProviderStore.active(context) ?: return@launch
+                val localMode = runCatching {
+                    com.aion.chat.compose.data.LocalModelStore.useInChat(context) &&
+                            com.aion.chat.compose.data.LocalModelStore.chatModel(context)?.let {
+                                com.aion.chat.compose.data.LocalModelStore.isDownloaded(context, it)
+                            } == true
+                }.getOrDefault(false)
+                val act = com.aion.chat.compose.data.ProviderStore.active(context)
+                if (!localMode && act == null) return@launch
                 com.aion.chat.compose.data.ProviderStore.resyncRoutes(context)
                 val reqId = "req_" + System.currentTimeMillis()
                 withContext(Dispatchers.Main) {

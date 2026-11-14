@@ -159,9 +159,11 @@ object BackupStore {
     private val EXPORT_BLOCKLIST = setOf(
         "shared_prefs/chat_providers.xml",   // 提供商 api_key 明文
         "shared_prefs/sean_ext.xml",
+        "shared_prefs/sean_image_gen.xml",   // 画图中转站 apiKey 明文（v11 P1-4）
         "shared_prefs/mcp_store.xml",
         "files/routes.json",                 // 路由 api_key 明文
         "files/routes.enc",
+        "files/homecoming/routes.enc",       // 真实路径带 homecoming/ 子目录（v11 P1-4）
         "files/mcp.json"                     // MCP 服务器配置（可含 header token）
     )
 

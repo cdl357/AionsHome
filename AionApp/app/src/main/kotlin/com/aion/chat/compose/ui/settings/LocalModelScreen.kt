@@ -169,14 +169,12 @@ fun LocalModelScreen(onBack: () -> Unit = {}) {
                                     ) { Text("加载", fontSize = 11.sp) }
                                 }
                                 OutlinedButton(onClick = {
-                                    if (loaded) {
-                                        LocalLlamaEngine.release()
-                                        rev++
-                                    } else {
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) { LocalModelStore.delete(context, m) }
-                                            rev++
+                                    // v11 P2：release/delete 都拿引擎锁，主线程等锁会 ANR——全部下 IO
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            if (loaded) LocalLlamaEngine.release() else LocalModelStore.delete(context, m)
                                         }
+                                        rev++
                                     }
                                 }) {
                                     Text(if (loaded) "卸载" else "删除", fontSize = 11.sp, color = Color(0xFFB3564D))
@@ -258,13 +256,16 @@ fun LocalModelScreen(onBack: () -> Unit = {}) {
                     androidx.compose.material3.Switch(
                         checked = LocalModelStore.useInChat(context),
                         onCheckedChange = { on ->
-                            LocalModelStore.setUseInChat(context, on)
-                            Toast.makeText(
-                                context,
-                                if (on) "已切换到本地模型" else "已恢复在线模型",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            rev++
+                            // v11 P2：setUseInChat 会 release（拿引擎锁），主线程等锁 ANR——下 IO
+                            scope.launch {
+                                withContext(Dispatchers.IO) { LocalModelStore.setUseInChat(context, on) }
+                                Toast.makeText(
+                                    context,
+                                    if (on) "已切换到本地模型" else "已恢复在线模型",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                rev++
+                            }
                         }
                     )
                 }
@@ -333,7 +334,7 @@ fun LocalModelScreen(onBack: () -> Unit = {}) {
                                     val n = LocalLlamaEngine.generate(
                                         prompt.toString(), maxTokens = 512, temp = 0.7f
                                     ) { piece ->
-                                        sb.append(piece)
+                                        sb.append(String(piece, Charsets.UTF_8))
                                         chatOut = sb.toString()   // Compose snapshot 写入任意线程安全
                                         true
                                     }

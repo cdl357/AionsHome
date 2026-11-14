@@ -17,7 +17,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class LocalModelGateway(private val appContext: Context) : com.aion.chat.homecoming.HomecomingChatEngine.GatewayPort {
 
-    private val cancels = ConcurrentHashMap<String, AtomicBoolean>()
+    companion object {
+        // v11 P2：取消表必须 static——网关每次发送都会新建实例，实例级表让停止键空转（v9 同款坑）
+        private val cancels = ConcurrentHashMap<String, AtomicBoolean>()
+    }
 
     override fun stream(
         request: com.aion.chat.homecoming.HomecomingModelGateway.ChatRequest,
@@ -38,9 +41,11 @@ class LocalModelGateway(private val appContext: Context) : com.aion.chat.homecom
                 }
             }
             val prompt = buildQwenPrompt(request.messages)
+            RequestLog.add(null, "LOCAL", request.modelKey.ifBlank { "local" }, 200, 0,
+                    "prompt=${prompt.length}ch", 0, 0)
             val sb = StringBuilder()
             val n = LocalLlamaEngine.generate(prompt, maxTokens = 1024, temp = 0.7f) { piece ->
-                sb.append(piece)
+                sb.append(String(piece, Charsets.UTF_8))
                 !cancel.get()
             }
             val text = sb.toString()
