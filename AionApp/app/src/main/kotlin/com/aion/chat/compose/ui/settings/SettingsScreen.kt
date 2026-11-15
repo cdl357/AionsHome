@@ -700,6 +700,69 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             }
         }
 
+        // ── 通话声音（v0.3.163：routes.json 的 tts 服务音色——App 内直连 ElevenLabs/兼容 TTS） ──
+        FrostCard {
+            val tts = remember {
+                com.aion.chat.compose.data.HomecomingRouteConfig.ttsService(context)
+            }
+            var voiceDraft by remember {
+                mutableStateOf(tts?.optString("main_voice") ?: "")
+            }
+            var savedTick by remember { mutableStateOf(false) }
+            Column {
+                Text("通话声音", fontSize = 15.sp, color = HomecomingColors.Ink)
+                if (tts == null) {
+                    Text(
+                        "routes.json 里还没有 tts 服务条目——通话朗读走的是另一套引擎。把你 TTS 服务的 base_url / api_key / model 告诉我，我帮你配",
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft, lineHeight = 15.sp
+                    )
+                } else {
+                    Text(
+                        "当前服务：" + (tts.optString("base_url").take(46)) +
+                                " · 模型 " + tts.optString("model"),
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Text(
+                        "当前音色：" + (tts.optString("main_voice").ifBlank { "未设置" }),
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = voiceDraft,
+                        onValueChange = { voiceDraft = it },
+                        placeholder = { Text("粘贴新音色 ID（如 ElevenLabs 克隆音色的 voice_id）", fontSize = 11.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            enabled = voiceDraft.isNotBlank() && voiceDraft != tts.optString("main_voice"),
+                            onClick = {
+                                val ok = com.aion.chat.compose.data.HomecomingRouteConfig.setTtsVoice(context, voiceDraft.trim())
+                                if (ok) {
+                                    savedTick = true
+                                    Toast.makeText(context, "通话音色已更新——下一次通话生效", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "写入失败", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = HomecomingColors.Accent, contentColor = Color.White
+                            )
+                        ) { Text("保存音色", fontSize = 12.sp) }
+                        Spacer(Modifier.width(10.dp))
+                        if (savedTick) Text("已保存 ✓", fontSize = 11.sp, color = Color(0xFF6FBF8F))
+                    }
+                }
+            }
+        }
+
         // ── Linux 沙盒（proot：装好 rootfs Sean 就有真 shell） ──
         FrostCard {
             Row(

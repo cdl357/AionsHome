@@ -76,6 +76,29 @@ object HomecomingRouteConfig {
         if (chat.length() == 0) null else chat.getJSONObject(0)
     } catch (e: Exception) { null }
 
+    /** 通话 TTS 服务当前配置（v0.3.163：设置页「通话声音」卡读写） */
+    fun ttsService(context: Context): JSONObject? = runCatching {
+        val root = JSONObject(file(context).takeIf { it.isFile }?.readText() ?: "{}")
+        root.optJSONObject("services")?.optJSONObject("tts")
+    }.getOrNull()
+
+    /** 改通话 TTS 音色：main/second 都换成同一个 voice_id（她只有一个声音） */
+    fun setTtsVoice(context: Context, voiceId: String): Boolean = runCatching {
+        val f = file(context)
+        val root = JSONObject(f.takeIf { it.isFile }?.readText() ?: "{}")
+        val tts = root.optJSONObject("services")?.optJSONObject("tts")
+            ?: return false
+        tts.put("main_voice", voiceId)
+        tts.put("second_voice", voiceId)
+        val tmp = File(context.filesDir, "routes.json.tmp")
+        tmp.writeText(root.toString(2))
+        if (!tmp.renameTo(f)) {
+            f.writeText(root.toString(2))
+            tmp.delete()
+        }
+        true
+    }.getOrDefault(false)
+
     fun buildRoot(label: String, baseUrl: String, apiKey: String, modelKey: String): JSONObject {
         val model = JSONObject()
             .put("key", modelKey)
