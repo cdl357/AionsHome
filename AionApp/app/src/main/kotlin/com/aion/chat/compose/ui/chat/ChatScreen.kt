@@ -201,6 +201,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val showTodos = remember { mutableStateOf(false) }
     val showBulletin = remember { mutableStateOf(false) }
     val showQna = remember { mutableStateOf(false) }
+    val showCameraStream = remember { mutableStateOf(false) }
     val showStats = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
@@ -2168,6 +2169,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // ── 摄像头推流（抽屉 → 看看我） ──
+    if (showCameraStream.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF111111))) {
+            com.aion.chat.compose.ui.call.CameraStreamScreen(onBack = { showCameraStream.value = false })
+        }
+    }
+
     // ── 统计页（抽屉 → 统计） ──
     if (showStats.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFFCFAF6))) {
@@ -2371,6 +2379,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("默契问答") }
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showCameraStream.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("看看我") }
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),

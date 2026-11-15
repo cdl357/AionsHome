@@ -45,14 +45,15 @@ object AionTools {
         "todo_list", "todo_add", "todo_toggle", "todo_delete",
         "board_note_list", "board_note_add",
         "wish_list", "wish_add", "wish_done", "mood_history",
-        "qna_pending", "qna_answer", "qna_list", "checkin_stats"
+        "qna_pending", "qna_answer", "qna_list", "checkin_stats",
+        "peek_camera", "stream_status"
     )
 
     @JvmStatic
     fun handles(name: String): Boolean = name.startsWith("web_") ||
         name.startsWith("todo_") || name.startsWith("board_note_") ||
         name.startsWith("wish_") || name.startsWith("mood_") || name.startsWith("qna_") ||
-        name.startsWith("checkin_") ||
+        name.startsWith("checkin_") || name.startsWith("camera_") ||
         name in setOf("toast", "device_info", "usage_stats", "calendar_events",
             "calendar_add", "anniversary_list", "anniversary_add", "sticky_note_list",
             "sticky_note_add", "sticky_note_delete")
@@ -144,6 +145,10 @@ object AionTools {
                 .put("answer", JSONObject().put("type", "string")),
             JSONArray().put("id").put("answer"))
         def("checkin_stats", "读咱俩的连续打卡天数：她连续找你几天、你连续在几天、咱俩连续不断档几天。",
+            JSONObject())
+        def("peek_camera", "看一眼她现在的画面（她开了摄像头才能看）。返回图片数据给多模态模型处理。",
+            JSONObject())
+        def("stream_status", "查她摄像头推流状态：是否在线、已推多少帧、持续多久。",
             JSONObject())
         return arr
     }
@@ -380,6 +385,27 @@ object AionTools {
                     .put("yuri_streak_days", st.yuriDays)
                     .put("sean_streak_days", st.seanDays)
                     .put("together_streak_days", st.togetherDays).toString()
+            }
+            "peek_camera" -> {
+                val bmp = CameraStreamStore.peekLatest()
+                if (bmp == null) {
+                    err("no_frame", "没有画面——她可能没开摄像头，或者网络断了")
+                } else {
+                    // 多模态模型能处理 base64 图；纯文本模型至少知道画面存在
+                    val baos = java.io.ByteArrayOutputStream()
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, baos)
+                    val b64 = android.util.Base64.encodeToString(baos.toByteArray(), android.util.Base64.NO_WRAP)
+                    JSONObject()
+                        .put("ok", true)
+                        .put("has_frame", true)
+                        .put("image_base64", "data:image/jpeg;base64," + b64)
+                        .put("hint", "如果模型支持视觉，请描述这张图片；如果不支持，告诉小鑫你看到了她的画面")
+                        .toString()
+                }
+            }
+            "stream_status" -> {
+                val st = CameraStreamStore.status()
+                st.toString()
             }
             else -> err("unknown_tool", name)
         }
