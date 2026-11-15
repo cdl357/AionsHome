@@ -44,13 +44,15 @@ object AionTools {
         "sticky_note_list", "sticky_note_add", "sticky_note_delete",
         "todo_list", "todo_add", "todo_toggle", "todo_delete",
         "board_note_list", "board_note_add",
-        "wish_list", "wish_add", "wish_done", "mood_history"
+        "wish_list", "wish_add", "wish_done", "mood_history",
+        "qna_pending", "qna_answer", "qna_list", "checkin_stats"
     )
 
     @JvmStatic
     fun handles(name: String): Boolean = name.startsWith("web_") ||
         name.startsWith("todo_") || name.startsWith("board_note_") ||
-        name.startsWith("wish_") || name.startsWith("mood_") ||
+        name.startsWith("wish_") || name.startsWith("mood_") || name.startsWith("qna_") ||
+        name.startsWith("checkin_") ||
         name in setOf("toast", "device_info", "usage_stats", "calendar_events",
             "calendar_add", "anniversary_list", "anniversary_add", "sticky_note_list",
             "sticky_note_add", "sticky_note_delete")
@@ -134,6 +136,15 @@ object AionTools {
         def("mood_history", "读她最近 N 天每天点的心情（0=开心 1=一般 2=难过 3=累；没点的=null）。" +
                 "连着几天难过/累就多关心她。",
             JSONObject().put("days", JSONObject().put("type", "integer").put("description", "默认 14")))
+        def("qna_pending", "查默契问答里等你回答的题。question + 她的答案都在，用 qna_answer 补你的答案。",
+            JSONObject())
+        def("qna_answer", "回答默契问答（id 来自 qna_pending）。双方都答完自动揭晓对比。",
+            JSONObject()
+                .put("id", JSONObject().put("type", "integer"))
+                .put("answer", JSONObject().put("type", "string")),
+            JSONArray().put("id").put("answer"))
+        def("checkin_stats", "读咱俩的连续打卡天数：她连续找你几天、你连续在几天、咱俩连续不断档几天。",
+            JSONObject())
         return arr
     }
 
@@ -329,6 +340,46 @@ object AionTools {
                 JSONObject().put("days", recent.size)
                     .put("sad_streak", sadStreak)
                     .put("items", arr).toString()
+            }
+            "qna_pending" -> {
+                val p = QnaStore.pending(app)
+                if (p == null) {
+                    JSONObject().put("pending", false).toString()
+                } else {
+                    JSONObject().put("pending", true)
+                        .put("id", p.id)
+                        .put("question", p.question)
+                        .put("yuri_answer", p.yuriAnswer).toString()
+                }
+            }
+            "qna_answer" -> {
+                val id = args.optLong("id", -1)
+                val answer = args.optString("answer")
+                if (id < 0 || answer.isBlank()) return err("missing_args", "id/answer 必填")
+                QnaStore.answerSean(app, id, answer)
+                val e = QnaStore.list(app).firstOrNull { it.id == id }
+                JSONObject()
+                    .put("ok", true)
+                    .put("revealed", e?.revealedAt ?: 0 > 0)
+                    .put("yuri_answer", e?.yuriAnswer ?: "")
+                    .put("sean_answer", e?.seanAnswer ?: "").toString()
+            }
+            "qna_list" -> {
+                val list = QnaStore.list(app)
+                val arr = JSONArray()
+                for (e in list) arr.put(JSONObject()
+                    .put("question", e.question)
+                    .put("yuri_answer", e.yuriAnswer)
+                    .put("sean_answer", e.seanAnswer)
+                    .put("revealed", e.revealedAt != 0L))
+                JSONObject().put("count", arr.length()).put("items", arr).toString()
+            }
+            "checkin_stats" -> {
+                val st = CheckinStore.streaks(app)
+                JSONObject()
+                    .put("yuri_streak_days", st.yuriDays)
+                    .put("sean_streak_days", st.seanDays)
+                    .put("together_streak_days", st.togetherDays).toString()
             }
             else -> err("unknown_tool", name)
         }

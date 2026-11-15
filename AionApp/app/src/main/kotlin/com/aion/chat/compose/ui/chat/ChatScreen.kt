@@ -200,6 +200,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     // v0.3.158：待办 / 留言板（抽屉入口）
     val showTodos = remember { mutableStateOf(false) }
     val showBulletin = remember { mutableStateOf(false) }
+    val showQna = remember { mutableStateOf(false) }
     val showStats = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
@@ -2160,6 +2161,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // ── 默契问答（抽屉 → 默契问答） ──
+    if (showQna.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
+            QnaScreen(onBack = { showQna.value = false })
+        }
+    }
+
     // ── 统计页（抽屉 → 统计） ──
     if (showStats.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFFCFAF6))) {
@@ -2356,6 +2364,13 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("留言板") }
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showQna.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("默契问答") }
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),

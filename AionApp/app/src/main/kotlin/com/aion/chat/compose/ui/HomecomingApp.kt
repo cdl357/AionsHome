@@ -191,7 +191,8 @@ fun HomecomingApp() {
                         UsScreen(
                             onOpenWall = { navController.navigate("handwritingwall") },
                             onOpenWish = { navController.navigate("wishbottle") },
-                            onOpenMood = { navController.navigate("moodcalendar") }
+                            onOpenMood = { navController.navigate("moodcalendar") },
+                            onOpenCheckin = { navController.navigate("checkinwall") }
                         )
                     }
                 }
@@ -266,6 +267,9 @@ fun HomecomingApp() {
                 }
                 composable("moodcalendar") {
                     com.aion.chat.compose.ui.us.MoodCalendarScreen(onBack = { navController.popBackStack() })
+                }
+                composable("checkinwall") {
+                    com.aion.chat.compose.ui.us.CheckinScreen(onBack = { navController.popBackStack() })
                 }
                 composable("stats") {
                     com.aion.chat.compose.ui.settings.StatsScreen(onBack = { navController.popBackStack() })

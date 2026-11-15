@@ -55,7 +55,7 @@ import java.time.ZoneId
 /** 页面②：我们（日历时光机）——整月格子 + 左右滑切月 + 点天抽屉三卡（摘要可展开）+ 纪念日专属图标。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}, onOpenWish: () -> Unit = {}, onOpenMood: () -> Unit = {}) {
+fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}, onOpenWish: () -> Unit = {}, onOpenMood: () -> Unit = {}, onOpenCheckin: () -> Unit = {}) {
     val context = LocalContext.current
     var viewDate by remember { mutableStateOf(LocalDate.now().withDayOfMonth(1)) }
     var selected by remember { mutableStateOf<LocalDate?>(null) }
@@ -199,6 +199,11 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}, onOpenWi
                 "情绪日历 ›", fontSize = 13.sp,
                 color = androidx.compose.ui.graphics.Color(0xFF576B95),
                 modifier = Modifier.clickable { onOpenMood() }.padding(vertical = 2.dp)
+            )
+            Text(
+                "打卡墙 ›", fontSize = 13.sp,
+                color = androidx.compose.ui.graphics.Color(0xFF576B95),
+                modifier = Modifier.clickable { onOpenCheckin() }.padding(vertical = 2.dp)
             )
         }
 
