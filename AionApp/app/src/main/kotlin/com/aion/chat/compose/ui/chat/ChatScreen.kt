@@ -142,6 +142,8 @@ import kotlinx.coroutines.withContext
 fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 悬浮球：回到聊天页 → 未读清零（球不再炸毛）
+    LaunchedEffect(Unit) { com.aion.chat.FloatingBallState.unread = false }
     val main = remember { Handler(Looper.getMainLooper()) }
 
     // ── 线路配置戳：设置里改线路后回到聊天页即重建运行时 ──

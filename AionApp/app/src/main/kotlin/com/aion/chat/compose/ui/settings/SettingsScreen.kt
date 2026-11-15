@@ -553,6 +553,48 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
             }
         }
 
+        // ── 悬浮球（系统级陪伴球：戳一下冒爱心/双击回 App/三击戳一戳/长按工具栏） ──
+        FrostCard {
+            var ballOn by remember { mutableStateOf(com.aion.chat.FloatingBallService.running) }
+            val canOverlay = android.provider.Settings.canDrawOverlays(context)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("悬浮球", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text(
+                        if (canOverlay) "所有应用上方的小绒球：戳一下冒爱心，双击回 App，三击戳一戳，长按工具栏；未读会炸毛"
+                        else "需要「在其他应用上层显示」权限——点开关去授权",
+                        fontSize = 11.sp, color = HomecomingColors.InkSoft, lineHeight = 15.sp
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = ballOn && canOverlay,
+                    onCheckedChange = { on ->
+                        if (on && !canOverlay) {
+                            Toast.makeText(
+                                context,
+                                "先在系统设置里允许「在其他应用上层显示」",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        android.net.Uri.parse("package:" + context.packageName)
+                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        } else if (on) {
+                            com.aion.chat.FloatingBallService.start(context)
+                            ballOn = true
+                        } else {
+                            com.aion.chat.FloatingBallService.stop(context)
+                            ballOn = false
+                        }
+                    }
+                )
+            }
+        }
+
         // ── 语音（v0.3.153：ElevenLabs——她账号里已有的克隆音色） ──
         FrostCard {
             var elKey by remember { mutableStateOf(com.aion.chat.compose.data.VoiceStore.key(context)) }

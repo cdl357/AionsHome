@@ -1,6 +1,7 @@
 package com.aion.chat.compose.data
 
 import android.app.NotificationChannel
+import com.aion.chat.FloatingBallState
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -46,6 +47,8 @@ object SeanNotifier {
 
     /** 他回话完成时调用：app 在后台才弹。 */
     fun maybeNotifyReply(context: Context, title: String, text: String) {
+        // 悬浮球：有未读回复 → 炸毛（看一眼聊天气泡就消）
+        runCatching { FloatingBallState.unread = true }
         if (!enabled(context)) return
         if (appInForeground) return
         if (text.isBlank()) return

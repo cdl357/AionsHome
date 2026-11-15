@@ -230,5 +230,15 @@
                 android:resource="@xml/aion_accessibility_service" />
         </service>
 
+    <!-- 悬浮球（系统级 overlay 陪伴球：戳一下冒爱心/双击回 App/三击戳一戳/长按工具栏） -->
+    <service
+        android:name=".FloatingBallService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="floating_ball_companion" />
+    </service>
+
     </application>
 </manifest>
