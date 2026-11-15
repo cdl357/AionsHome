@@ -233,7 +233,12 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                         for (com.aion.chat.compose.data.McpClient.ToolDef d0 : com.aion.chat.compose.data.McpClient.cachedDefs()) {
                             if (d0.safeName.equals(safeName)) { mcpHasTool = true; break; }
                         }
-                        if (com.aion.chat.compose.data.AionTools.handles(safeName)) {
+                        if (com.aion.chat.compose.data.RadioStoryTools.handles(safeName)) {
+                            resultText = com.aion.chat.compose.data.RadioStoryTools.dispatch(
+                                    com.aion.chat.compose.data.AionTools.getAppContext(), safeName,
+                                    v[2].isEmpty() ? "{}" : v[2]);
+                            RequestLog.add(null, "RST", safeName, 200, 0, "", 0, 0);
+                        } else if (com.aion.chat.compose.data.AionTools.handles(safeName)) {
                             resultText = com.aion.chat.compose.data.AionTools.dispatch(safeName,
                                     v[2].isEmpty() ? "{}" : v[2]);
                             RequestLog.add(null, "TOOL", safeName, 200, 0, "", 0, 0);
@@ -479,6 +484,16 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                 body.put("tools", toolsArr3);
             }
             for (int i = 0; i < wdefs.length(); i++) toolsArr3.put(wdefs.get(i));
+        } catch (Throwable ignored) { }
+        // 电台/故事/倒数工具
+        try {
+            org.json.JSONArray rdefs = com.aion.chat.compose.data.RadioStoryTools.defs();
+            org.json.JSONArray toolsArr6 = body.optJSONArray("tools");
+            if (toolsArr6 == null) {
+                toolsArr6 = new org.json.JSONArray();
+                body.put("tools", toolsArr6);
+            }
+            for (int i = 0; i < rdefs.length(); i++) toolsArr6.put(rdefs.get(i));
         } catch (Throwable ignored) { }
         // 生活工具包（web_search/calendar/anniversary/todo/board_note/sticky/toast/device/usage——常驻）
         try {

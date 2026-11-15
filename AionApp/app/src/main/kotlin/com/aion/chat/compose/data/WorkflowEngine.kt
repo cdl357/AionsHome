@@ -171,6 +171,11 @@ object WorkflowEngine {
     fun dispatchTool(app: Context, tool: String, argsJson: String): String {
         // v11 P2：工作流动作白名单里有 workspace_*，分发也得认——否则创建成功、运行必 FAILED
         // v0.3.162 P1-1：工具包分支（校验面放行了 22 件，分发不接 = 创建成功运行必 FAILED）
+        if (com.aion.chat.compose.data.RadioStoryTools.handles(tool)) {
+            val r = com.aion.chat.compose.data.RadioStoryTools.dispatch(app, tool, argsJson)
+            RequestLog.add(null, "WF", tool, 200, 0, "", 0, 0)
+            return r
+        }
         if (AionTools.handles(tool)) {
             val r = AionTools.dispatch(tool, argsJson)
             RequestLog.add(null, "WF", tool, 200, 0, "", 0, 0)
