@@ -155,6 +155,7 @@ class FloatingBallService : Service() {
     private fun addBall() {
         val d = resources.displayMetrics.density
         ballView = BallView(this, this)
+        FloatingBallState.load(this)
         ballParams = WindowManager.LayoutParams(
             (64 * d).toInt(), (64 * d).toInt(),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -167,7 +168,14 @@ class FloatingBallService : Service() {
             y = FloatingBallState.posY
         }
         ballView.touchListener = BallTouch()
-        wm.addView(ballView, ballParams)
+        // v0.3.162 P2：权限被事后撤销时 addView 会抛——优雅停服，不进崩溃循环
+        try {
+            wm.addView(ballView, ballParams)
+        } catch (e: Exception) {
+            Log.w("FloatingBall", "addView failed (overlay permission revoked?)", e)
+            stopSelf()
+            return
+        }
     }
 
     // ── 手势：拖动 / 单击 / 双击 / 三击 / 长按 ──
@@ -198,8 +206,12 @@ class FloatingBallService : Service() {
                         handler.removeCallbacks(longRunner)
                     }
                     if (dragged) {
-                        ballParams.x = FloatingBallState.posX + dx.toInt()
-                        ballParams.y = FloatingBallState.posY + dy.toInt()
+                        // v0.3.162 P2：屏幕内钳位——别让她把球拖出屏幕找不回来
+                        val dm = resources.displayMetrics
+                        ballParams.x = (FloatingBallState.posX + dx.toInt())
+                            .coerceIn(0, maxOf(0, dm.widthPixels - ballView.width))
+                        ballParams.y = (FloatingBallState.posY + dy.toInt())
+                            .coerceIn(0, maxOf(0, dm.heightPixels - ballView.height))
                         runCatching { wm.updateViewLayout(ballView, ballParams) }
                     }
                 }
@@ -340,6 +352,8 @@ class FloatingBallService : Service() {
         sensors?.registerListener(sensorListener, acc, SensorManager.SENSOR_DELAY_GAME)
     }
 
+    @Volatile private var wakeCooldownUntil = 0L
+
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
             if (e.sensor.type == Sensor.TYPE_ACCELEROMETER) {
@@ -351,7 +365,10 @@ class FloatingBallService : Service() {
                 } else 0f
                 // 摇晃：合加速度远超 1g → 吵醒
                 val mag = sqrt(gx * gx + gy * gy + gz * gz)
-                if (mag > 18f) ballView.wakeUp()
+                if (mag > 18f && System.currentTimeMillis() > wakeCooldownUntil) {
+                    wakeCooldownUntil = System.currentTimeMillis() + 1500
+                    ballView.wakeUp()
+                }
                 ballView.postInvalidate()
             }
         }

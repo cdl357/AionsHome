@@ -223,9 +223,12 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                         .put("tool_calls", tcs));
                 StringBuilder summary = new StringBuilder();
                 toolAcc.forEach((k, v) -> {
+                    String safeName = v[1];
+                    String resultText;
+                    int logCode = 200;
+                    String logErr = "";
+                    String logTag = "MCP";
                     try {
-                        String safeName = v[1];
-                        String resultText;
                         boolean mcpHasTool = false;
                         for (com.aion.chat.compose.data.McpClient.ToolDef d0 : com.aion.chat.compose.data.McpClient.cachedDefs()) {
                             if (d0.safeName.equals(safeName)) { mcpHasTool = true; break; }
@@ -254,19 +257,32 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                                     com.aion.chat.compose.data.McpClient.callBySafeName(
                                             safeName, v[2].isEmpty() ? "{}" : v[2]);
                             resultText = cr.ok ? cr.text : "工具执行失败: " + cr.err;
-                            RequestLog.add(null, "MCP", safeName, cr.ok ? 200 : 500,
-                                    0, cr.ok ? "" : cr.err, 0, 0);
+                            logCode = cr.ok ? 200 : 500;
+                            logErr = cr.ok ? "" : cr.err;
+                            RequestLog.add(null, logTag, safeName, logCode, 0, logErr, 0, 0);
                         }
-                        if (summary.length() < 300) {
-                            summary.append(safeName).append(" → ")
-                                    .append(resultText, 0, Math.min(80, resultText.length()))
-                                    .append('\n');
-                        }
+                    } catch (Exception te) {
+                        // v0.3.162 P2：工具异常必须回 tool 消息——缺 tool 消息会让下一轮 400 整轮失败
+                        String msg = String.valueOf(te.getMessage());
+                        resultText = "工具执行失败: " + te.getClass().getSimpleName() + ": "
+                                + msg.substring(0, Math.min(120, msg.length()));
+                        logCode = 500;
+                        logErr = resultText;
+                    }
+                    if (summary.length() < 300) {
+                        summary.append(safeName).append(" → ")
+                                .append(resultText, 0, Math.min(80, resultText.length()))
+                                .append('\n');
+                    }
+                    try {
                         hist.put(new JSONObject()
                                 .put("role", "tool")
                                 .put("tool_call_id", v[0].isEmpty() ? ("call_" + k) : v[0])
                                 .put("content", resultText));
-                    } catch (Exception ignored) { }
+                    } catch (Exception je) { }
+                    if (logCode != 200) {
+                        RequestLog.add(null, logTag, safeName, logCode, 0, logErr, 0, 0);
+                    }
                 });
                 RequestLog.add(null, "MCP", "tool_round_" + (round + 1), 200, 0,
                         summary.toString(), 0, 0);

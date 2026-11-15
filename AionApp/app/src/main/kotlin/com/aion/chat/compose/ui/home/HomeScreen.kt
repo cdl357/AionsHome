@@ -387,7 +387,7 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                         Text(
                             "拉取时间：" + java.text.SimpleDateFormat(
                                 "MM-dd HH:mm", java.util.Locale.US
-                            ).format(java.util.Date(snap.fetchedAt)) + " · 点顶部可刷新",
+                            ).format(java.util.Date(snap.fetchedAt)) + " · 每 10 分钟自动刷新",
                             fontSize = 10.sp, color = Color(0xFF8A8279),
                             modifier = Modifier.padding(top = 4.dp)
                         )

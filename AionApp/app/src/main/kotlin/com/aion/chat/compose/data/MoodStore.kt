@@ -12,6 +12,16 @@ import java.io.File
  * - 月视图看整月分布；Sean 通过 mood_history 看最近的心情（连着几天不开心他要知道）
  */
 object MoodStore {
+
+        /** v0.3.162：原子写——tmp+rename，半截 JSON 不再清空数据 */
+        private fun atomicWrite(f: File, text: String) {
+            val tmp = File(f.parentFile, f.name + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(f)) {
+                f.writeText(text)
+                tmp.delete()
+            }
+        }
     private const val FILE = "mood_calendar.json"
 
     val rev = mutableIntStateOf(0)
@@ -37,7 +47,7 @@ object MoodStore {
         runCatching {
             val o = JSONObject()
             m.forEach { (k, v) -> o.put(k, JSONObject().put("mood", v.mood).put("ts", v.ts)) }
-            file(c).writeText(o.toString())
+            atomicWrite(file(c), o.toString())
         }
         rev.intValue++
     }

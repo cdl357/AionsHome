@@ -67,7 +67,11 @@ object MemoryHealthStore {
         val snap = if (body != null) {
             runCatching {
                 val arr = org.json.JSONArray(body)
+                // v0.3.162：Supabase 时间戳是 UTC——按本地时区解析会把 24h 阈值差 ±8 小时
+                // v0.3.162：Supabase 时间戳是 UTC——按本地时区解析会把 24h 阈值差 ±8 小时
                 val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
                 val times = (0 until arr.length()).mapNotNull { i ->
                     val iso = arr.optJSONObject(i)?.optString("created_at", "") ?: ""
                     if (iso.length < 19) null else runCatching {

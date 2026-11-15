@@ -12,6 +12,16 @@ import java.io.File
  * - rev 供页面观察重组
  */
 object TodoStore {
+
+        /** v0.3.162：原子写——tmp+rename，半截 JSON 不再清空数据 */
+        private fun atomicWrite(f: File, text: String) {
+            val tmp = File(f.parentFile, f.name + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(f)) {
+                f.writeText(text)
+                tmp.delete()
+            }
+        }
     private const val FILE = "todos.json"
 
     val rev = mutableIntStateOf(0)
@@ -42,7 +52,7 @@ object TodoStore {
             for (t in list) arr.put(JSONObject()
                 .put("id", t.id).put("text", t.text).put("done", t.done)
                 .put("createdAt", t.createdAt).put("doneAt", t.doneAt))
-            file(c).writeText(arr.toString())
+            atomicWrite(file(c), arr.toString())
         }
         rev.intValue++
     }
@@ -52,7 +62,7 @@ object TodoStore {
     fun add(c: Context, text: String): Todo {
         val list = parse(c)
         val t = Todo(
-            id = System.currentTimeMillis(),
+            id = System.currentTimeMillis() * 10 + (0..9).random(),
             text = text.trim(),
             done = false,
             createdAt = System.currentTimeMillis(),

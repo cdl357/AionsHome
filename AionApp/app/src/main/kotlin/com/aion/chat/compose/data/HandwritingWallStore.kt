@@ -16,6 +16,16 @@ import java.io.File
  * - 上传：手写墙页选图（相册）；聊天里长按图片「存入手写墙」v1.1 再接
  */
 object HandwritingWallStore {
+
+        /** v0.3.162：原子写——tmp+rename，半截 JSON 不再清空数据 */
+        private fun atomicWrite(f: File, text: String) {
+            val tmp = File(f.parentFile, f.name + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(f)) {
+                f.writeText(text)
+                tmp.delete()
+            }
+        }
     private const val FILE = "handwriting_index.json"
     private const val KEEP = 200
 
@@ -63,7 +73,7 @@ object HandwritingWallStore {
                     .put("id", e.id).put("file", e.file).put("caption", e.caption)
                     .put("tags", ta).put("author", e.author).put("createdAt", e.createdAt))
             }
-            file(c).writeText(arr.toString())
+            atomicWrite(file(c), arr.toString())
         }
         rev.intValue++
     }
@@ -77,10 +87,43 @@ object HandwritingWallStore {
         runCatching {
             val id = "hw_" + System.currentTimeMillis()
             val dst = File(dir(c), "$id.jpg")
-            val bytes = c.contentResolver.openInputStream(uri)?.use { ins ->
+            // v0.3.162 P1-3：原图解码 → EXIF 转正 → 长边压到 2048 → JPEG 85 重存
+            val raw = c.contentResolver.openInputStream(uri)?.use { ins ->
                 java.io.ByteArrayOutputStream().use { baos -> ins.copyTo(baos); baos.toByteArray() }
             } ?: throw IllegalStateException("图片读不出来")
-            if (bytes.size < 64) throw IllegalStateException("图片太短")
+            if (raw.size < 64) throw IllegalStateException("图片太短")
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 2048) sample *= 2
+            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp0 = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
+                ?: throw IllegalStateException("图片解码失败")
+            val exif = runCatching {
+                val is0 = c.contentResolver.openInputStream(uri)
+                if (is0 != null) android.media.ExifInterface(is0) else null
+            }.getOrNull()
+            val rotation = when (
+                exif?.getAttributeInt(
+                    android.media.ExifInterface.TAG_ORIENTATION,
+                    android.media.ExifInterface.ORIENTATION_NORMAL
+                ) ?: android.media.ExifInterface.ORIENTATION_NORMAL
+            ) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+            val bmp = if (rotation != 0f) {
+                val m = android.graphics.Matrix().apply { postRotate(rotation) }
+                android.graphics.Bitmap.createBitmap(
+                    bmp0, 0, 0, bmp0.width, bmp0.height, m, true
+                )
+            } else bmp0
+            java.io.FileOutputStream(dst).use { fos ->
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, fos)
+            }
+            if (bmp != bmp0) bmp0.recycle()
             val list = parse(c)
             val e = Entry(id, dst.absolutePath, caption, emptyList(), author,
                 System.currentTimeMillis())

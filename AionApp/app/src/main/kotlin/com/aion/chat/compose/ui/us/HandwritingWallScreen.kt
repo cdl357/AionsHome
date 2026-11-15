@@ -4,7 +4,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +64,7 @@ import androidx.compose.ui.text.style.TextDecoration
  * 两列卡片墙：图 + 备注 + 日期 + 作者徽章 + 印象/心情标签；长按改备注/加标签/删除。
  * 顶部 + 选图（相册）。最新在最前。
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun HandwritingWallScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
@@ -176,11 +180,14 @@ fun HandwritingWallScreen(onBack: () -> Unit = {}) {
             },
             dismissButton = {
                 Row {
+                    var confirmDel by remember(e.id) { mutableStateOf(false) }
                     TextButton(onClick = {
-                        HandwritingWallStore.delete(context, e.id)
-                        editing = null
-                        rev++
-                    }) { Text("删除", color = Color(0xFFB3564D)) }
+                        if (!confirmDel) { confirmDel = true } else {
+                            HandwritingWallStore.delete(context, e.id)
+                            editing = null
+                            rev++
+                        }
+                    }) { Text(if (confirmDel) "确认删除" else "删除", color = Color(0xFFB3564D)) }
                     TextButton(onClick = { editing = null }) { Text("取消") }
                 }
             }
@@ -258,17 +265,33 @@ fun HandwritingWallScreen(onBack: () -> Unit = {}) {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
             ) {
                 items(entries, key = { it.id }) { e ->
-                    val bmp = remember(e.id, e.file) {
-                        runCatching {
-                            android.graphics.BitmapFactory.decodeFile(e.file)
-                        }.getOrNull()
+                    val bmpState = androidx.compose.runtime.produceState<android.graphics.Bitmap?>(
+                        null, e.id
+                    ) {
+                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            // v0.3.162 P1-3：降采样解码（长边 512 内），不再主线程全尺寸解原图
+                            value = runCatching {
+                                if (!java.io.File(e.file).exists()) return@runCatching null
+                                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                android.graphics.BitmapFactory.decodeFile(e.file, bounds)
+                                var sample = 1
+                                while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 512) sample *= 2
+                                android.graphics.BitmapFactory.decodeFile(
+                                    e.file, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                                )
+                            }.getOrNull()
+                        }
                     }
+                    val bmp = bmpState.value
                     Column(
                         Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .background(Color.White)
                             .border(0.8.dp, Color(0x22405A66), RoundedCornerShape(14.dp))
-                            .clickable { editing = e }
+                            .combinedClickable(
+                                onClick = {},
+                                onLongClick = { editing = e }
+                            )
                             .padding(8.dp)
                     ) {
                         bmp?.let {

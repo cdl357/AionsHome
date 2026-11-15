@@ -153,14 +153,35 @@ object AionTools {
             "web_fetch" -> {
                 val url = args.optString("url")
                 if (url.isBlank() || !url.startsWith("http")) return err("bad_url", "url 必填且 http(s) 开头")
+                val host = runCatching { URL(url).host.lowercase() }.getOrDefault("")
+                // v0.3.162 P2：SSRF 防护——私网/本机/元数据端点拒绝
+                val privateHost = host == "localhost" || host == "0.0.0.0" || host.endsWith(".localhost") ||
+                    host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.") ||
+                    host.startsWith("169.254.") || host.endsWith(".internal") ||
+                    Regex("^172[.](1[6-9]|2[0-9]|3[01])[.]").containsMatchIn(host)
+                if (privateHost) return err("private_host", "内网/本机地址不允许抓取")
                 val text = runCatching {
                     val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                         setRequestProperty("User-Agent", BROWSER_UA)
                         connectTimeout = 15000; readTimeout = 20000
                         instanceFollowRedirects = true
                     }
-                    val html = conn.inputStream.bufferedReader().use { it.readText() }
-                    stripHtml(html)
+                    val code = conn.responseCode
+                    if (code !in 200..299) return err("http_" + code, "HTTP " + code)
+                    // 字节上限 2MB：慢滴流/大文件不再拖死工具轮
+                    val buf = java.io.ByteArrayOutputStream()
+                    conn.inputStream.use { ins ->
+                        val b = ByteArray(64 * 1024)
+                        var total = 0
+                        while (true) {
+                            val r = ins.read(b)
+                            if (r < 0) break
+                            total += r
+                            if (total > 2L * 1024 * 1024) throw IllegalStateException("页面超过 2MB 上限")
+                            buf.write(b, 0, r)
+                        }
+                    }
+                    stripHtml(buf.toString("UTF-8"))
                 }.getOrElse { return err("fetch_failed", it.message?.take(150) ?: "抓取失败") }
                 if (text.isBlank()) err("empty_page", "页面没有可读文本")
                 else JSONObject().put("url", url).put("text", text.take(4000)).toString()
@@ -258,10 +279,10 @@ object AionTools {
             }
             "board_note_add" -> {
                 val content = args.optString("content")
-                val author = args.optString("author").takeIf { it == "sean" || it == "yuri" } ?: "sean"
+                // v0.3.162 P2：AI 只能以 sean 署名——防伪造她的留言
                 if (content.isBlank()) return err("missing_content", "content 必填")
-                if (HomecomingDayStore.addBoardNote(app, author, content))
-                    JSONObject().put("ok", true).toString()
+                if (HomecomingDayStore.addBoardNote(app, "sean", content))
+                    JSONObject().put("ok", true).put("author", "sean").toString()
                 else err("failed", "写入失败")
             }
             "wish_list" -> {
@@ -280,7 +301,11 @@ object AionTools {
                 JSONObject().put("ok", true).put("id", w.id).put("text", w.text).toString()
             }
             "wish_done" -> {
+                val before = WishBottleStore.list(app).count { it.doneAt != 0L }
                 WishBottleStore.markDone(app, args.optLong("id", -1))
+                val after = WishBottleStore.list(app).count { it.doneAt != 0L }
+                if (after == before && before > 0 && WishBottleStore.pending(app).any { it.id == args.optLong("id", -1) })
+                    return err("not_found", "没有这个心愿 id")
                 JSONObject().put("ok", true).toString()
             }
             "mood_history" -> {
@@ -289,9 +314,9 @@ object AionTools {
                 val arr = JSONArray()
                 val fmt = java.text.SimpleDateFormat("MM-dd", java.util.Locale.US)
                 var sadStreak = 0
-                for ((i, m) in recent.withIndex().reversed()) {}
-                // 连续低落检测：从今天往前数
-                for (m in recent.reversed()) {
+                // v0.3.162 P2：今天还没点心情就跳过今天——连着几天的低落不该被清零
+                val effective = recent.reversed().dropWhile { it == null }
+                for (m in effective) {
                     if (m != null && (m.mood == 2 || m.mood == 3)) sadStreak++ else break
                 }
                 val labels = MoodStore.LABELS
@@ -448,7 +473,7 @@ object AionTools {
 
     private fun calendarEvents(app: Context): String {
         if (!hasCalendar(app, false)) {
-            return err("permission_needed", "需要日历读取权限——首次使用系统会弹授权，允许即可")
+            return err("permission_needed", "需要日历读取权限——App 启动时会弹一次授权；错过就去 系统设置 → 应用 → 权限 里打开日历")
         }
         return runCatching {
             val now = System.currentTimeMillis()
@@ -483,12 +508,13 @@ object AionTools {
 
     private fun calendarAdd(app: Context, args: JSONObject): String {
         if (!hasCalendar(app, true)) {
-            return err("permission_needed", "需要日历写入权限——系统会弹授权，允许即可")
+            return err("permission_needed", "需要日历写入权限——App 启动时会弹一次授权；错过就去 系统设置 → 应用 → 权限 里打开日历")
         }
         val title = args.optString("title")
         val startStr = args.optString("start")
         if (title.isBlank() || startStr.isBlank()) return err("missing_args", "title/start 必填")
         val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+        fmt.isLenient = false
         val begin = runCatching { fmt.parse(startStr)?.time }.getOrNull()
             ?: return err("bad_start", "start 应为 yyyy-MM-dd HH:mm")
         val minutes = args.optInt("minutes", 60).coerceIn(1, 24 * 60)
