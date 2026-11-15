@@ -187,7 +187,9 @@ fun HomecomingApp() {
                     Box(Modifier.fillMaxSize()) { MomentsScreen() }
                 }
                 composable(HomeTab.Us.route) {
-                    Box(Modifier.fillMaxSize()) { UsScreen() }
+                    Box(Modifier.fillMaxSize()) {
+                        UsScreen(onOpenWall = { navController.navigate("handwritingwall") })
+                    }
                 }
                 composable("settings") {
                     SettingsScreen(
@@ -251,6 +253,9 @@ fun HomecomingApp() {
                 }
                 composable("sandboxterm") {
                     com.aion.chat.compose.ui.settings.SandboxTerminalScreen(onBack = { navController.popBackStack() })
+                }
+                composable("handwritingwall") {
+                    com.aion.chat.compose.ui.us.HandwritingWallScreen(onBack = { navController.popBackStack() })
                 }
                 composable("stats") {
                     com.aion.chat.compose.ui.settings.StatsScreen(onBack = { navController.popBackStack() })

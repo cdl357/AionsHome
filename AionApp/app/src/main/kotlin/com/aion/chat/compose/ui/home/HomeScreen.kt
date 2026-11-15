@@ -307,6 +307,94 @@ fun HomeScreen(onOpenAlbum: () -> Unit = {}, onOpenMusic: () -> Unit = {}) {
                 )
             }
 
+            // ── 记忆健康面板（v0.3.159）：temporal_state 自检状态一目了然 ──
+            val mhCtx = LocalContext.current
+            var mhSnap by remember {
+                mutableStateOf(com.aion.chat.compose.data.MemoryHealthStore.cached(mhCtx))
+            }
+            var mhExpanded by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                val s = com.aion.chat.compose.data.MemoryHealthStore.refresh(mhCtx)
+                if (s != null) mhSnap = s
+            }
+            mhSnap?.let { snap ->
+                val dotColor = when (snap.level) {
+                    com.aion.chat.compose.data.MemoryHealthStore.Level.GREEN -> Color(0xFF6FBF8F)
+                    com.aion.chat.compose.data.MemoryHealthStore.Level.YELLOW -> Color(0xFFE0B35C)
+                    else -> Color(0xFFD96B6B)
+                }
+                val statusText = when (snap.level) {
+                    com.aion.chat.compose.data.MemoryHealthStore.Level.GREEN -> "记忆正常"
+                    com.aion.chat.compose.data.MemoryHealthStore.Level.YELLOW -> "自检超时"
+                    else -> "记忆异常"
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.55f))
+                        .border(0.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                        .clickable { mhExpanded = !mhExpanded }
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(dotColor)
+                    )
+                    Text(
+                        "  " + statusText + "（连续 " + snap.streakDays + " 天）",
+                        fontSize = 12.sp, color = Color(0xFF1A3244),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (mhExpanded) "收起" else "详情",
+                        fontSize = 11.sp, color = Color(0xFF576B95)
+                    )
+                }
+                if (mhExpanded) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.75f))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            "上次自检：" + (snap.lastAtMs?.let {
+                                java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US)
+                                    .format(java.util.Date(it))
+                            } ?: "没有记录"),
+                            fontSize = 11.sp, color = Color(0xFF1A3244)
+                        )
+                        Text(
+                            "连续正常天数：" + snap.streakDays + " 天",
+                            fontSize = 11.sp, color = Color(0xFF1A3244),
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                        if (snap.level == com.aion.chat.compose.data.MemoryHealthStore.Level.RED) {
+                            Text(
+                                "记忆系统可能中断，请告诉哥哥检查" +
+                                        (if (snap.detail.isNotBlank()) "（" + snap.detail + "）" else ""),
+                                fontSize = 11.sp, color = Color(0xFFD96B6B),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        Text(
+                            "拉取时间：" + java.text.SimpleDateFormat(
+                                "MM-dd HH:mm", java.util.Locale.US
+                            ).format(java.util.Date(snap.fetchedAt)) + " · 点顶部可刷新",
+                            fontSize = 10.sp, color = Color(0xFF8A8279),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+
             // 桌宠（Q版沈聿淮）：动作由心潮驱力决定（PetMind，60s 轮询）；点他 = 戳一戳
             val mind by com.aion.chat.compose.ui.pet.PetMind.state.collectAsState()
             LaunchedEffect(Unit) {

@@ -55,7 +55,7 @@ import java.time.ZoneId
 /** 页面②：我们（日历时光机）——整月格子 + 左右滑切月 + 点天抽屉三卡（摘要可展开）+ 纪念日专属图标。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsScreen(onOpenAlbum: () -> Unit = {}) {
+fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}) {
     val context = LocalContext.current
     var viewDate by remember { mutableStateOf(LocalDate.now().withDayOfMonth(1)) }
     var selected by remember { mutableStateOf<LocalDate?>(null) }
@@ -181,6 +181,17 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}) {
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
+        }
+
+        // ── 手写墙 / 纸条箱入口（v0.3.159） ──
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Text(
+                "手写墙 · 纸条箱 ›", fontSize = 13.sp,
+                color = androidx.compose.ui.graphics.Color(0xFF576B95),
+                modifier = Modifier
+                    .clickable { onOpenWall() }
+                    .padding(vertical = 2.dp)
+            )
         }
 
         // ── 视觉皮：日历下面挂照片墙（方案 §4）──
