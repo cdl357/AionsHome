@@ -198,7 +198,15 @@ object WorkspaceTools {
                             }
                         }
                     }
-                    val startDir = if (start.isBlank()) root else java.io.File(root, start)
+                    val startDir = if (start.isBlank()) root else run {
+                        // v0.3.157 P1-4：canonical + 前缀断言——防 ../ 与符号链接读走宿主文件
+                        val f = java.io.File(root, start)
+                        val canon = f.canonicalFile
+                        if (!canon.path.startsWith(root.canonicalFile.path)) {
+                            throw IllegalArgumentException("路径越界: $start")
+                        }
+                        canon
+                    }
                     if (startDir.isDirectory) walk(startDir)
                     JSONObject().put("count", matches.size).put("items", JSONArray(matches)).toString()
                 } catch (e: Exception) { err("search_failed", e.message?.take(200) ?: "搜索失败") }

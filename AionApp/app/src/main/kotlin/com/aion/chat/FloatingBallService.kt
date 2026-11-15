@@ -316,7 +316,7 @@ class FloatingBallService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = ballParams.x
-            y = maxOf(0, ballParams.y + 70 * d.toInt())
+            y = maxOf(0, ballParams.y + (70 * d).toInt())
         }
         bar.setOnTouchListener { v, e ->
             if (e.actionMasked == MotionEvent.ACTION_OUTSIDE) { hideToolbar(); v.performClick(); true } else false

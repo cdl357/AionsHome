@@ -256,13 +256,27 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     }
                     return@launch
                 }
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                // v0.3.157 P2：prepare 下 IO（主线程 prepare 会 ANR）+ 播完删临时文件
+                val player = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     runCatching {
                         val mp = android.media.MediaPlayer()
                         mp.setDataSource(f.absolutePath)
-                        mp.setOnCompletionListener { it.release() }
+                        mp.setOnCompletionListener {
+                            it.release()
+                            runCatching { f.delete() }
+                        }
                         mp.prepare()
-                        mp.start()
+                        mp
+                    }.getOrNull()
+                }
+                if (player == null) {
+                    runCatching {
+                        tts.value?.speak(text, android.speech.tts.TextToSpeech.QUEUE_ADD, null,
+                            "sean_" + System.currentTimeMillis())
+                    }
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        runCatching { player.start() }
                     }
                 }
             }
@@ -514,11 +528,14 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                         extras.filter { it.isNotBlank() }   // v7：中转站路径也带多图/视频帧
                     ),
                     object : HomecomingChatEngine.Observer {
+                        // v0.3.157：delta 累加再分条（直接用 chunk 会导致气泡只剩最新碎片闪烁）
+                        private val streamAcc = StringBuilder()
                         override fun onChunk(chunk: String) {
-                            // 引擎在完成时一次性给出可见文本（控制标签已在引擎内剥离）
                             main.post {
+                                streamAcc.append(chunk)
+                                val accText = streamAcc.toString()
                                 pendingSegments.clear()
-                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(chunk))))
+                                pendingSegments.addAll(splitBubbles(com.aion.chat.compose.data.SeanImageGenStore.strip(com.aion.chat.compose.data.SeanAssetStore.strip(com.aion.chat.compose.data.StudyRoomStore.strip(com.aion.chat.compose.data.CommandStore.strip(accText))))))
                             }
                         }
 
@@ -539,13 +556,23 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                         title = "他没说话（回复为空）",
                                         reason = "线路通了、模型也回了，但正文是空的——多半是思维（thinking）模型只输出了思考",
                                         solution = "在提供商的模型列表里换一个非 thinking 模型再试",
-                                        retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
+                                        retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths, regenParent) }
                                     )
                                     return@post
                                 }
                             }
                             if (stopping) return
                             speakReply(completeText)
+                            // v0.3.157 P1-1：语音条自动合成（上一轮接线静默丢失，这次写入后已验证）
+                            if (com.aion.chat.compose.data.VoiceMsgStore.autoEnabled(context) &&
+                                com.aion.chat.compose.data.VoiceStore.configured(context)
+                            ) {
+                                scope.launch(Dispatchers.IO) {
+                                    runCatching {
+                                        com.aion.chat.compose.data.VoiceMsgStore.attach(context, messageId, completeText)
+                                    }
+                                }
+                            }
                             scope.launch(Dispatchers.IO) {
                                 reloadNow()
                                 // 图片消息挂上本地文件路径，气泡渲染真图（表情包/照片/视频通用）
@@ -609,7 +636,7 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                                     },
                                     solution = "去 设置 → 云线路 检查 Base URL / API Key / 模型，保存后立即生效，不用重启",
                                     failedText = txt,
-                                    retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths) }
+                                    retry = { sendViaRoute(w, reqId, txt, promptText, img, imgPath, extras, bubblePaths, regenParent) }
                                 )
                                 Toast.makeText(context, "Sean 没回上来（$code）", Toast.LENGTH_SHORT).show()
                             }
@@ -1126,8 +1153,10 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     }
 
     // ── 分条冒泡动画：全量段落陆续上屏，冒完读库对齐 ──
+    // v0.3.157：发送中（流式）跳过分条动画——动画清空重播和 delta 流打架
     LaunchedEffect(pendingSegments.toList()) {
         if (pendingSegments.isEmpty()) return@LaunchedEffect
+        if (sending.value) return@LaunchedEffect
         val all = pendingSegments.toList()
         pendingSegments.clear()
         pendingSegments.add(all.first())
@@ -2900,6 +2929,34 @@ private fun AssistantBubbleSingle(
             }
         }
     }  // Box 结束
+
+    // ── 语音条：自动合成的可播放音频（v0.3.157 P1-1 重新接线） ──
+    val voiceCtx = LocalContext.current
+    val voiceEntry = remember(messageId, com.aion.chat.compose.data.VoiceMsgStore.rev.intValue) {
+        messageId?.let { com.aion.chat.compose.data.VoiceMsgStore.get(voiceCtx, it) }
+    }
+    if (voiceEntry != null && messageId != null) {
+        val playing = com.aion.chat.compose.data.VoiceMsgPlayer.playingId.value == messageId
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(start = 4.dp, top = 2.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.55f))
+                .border(0.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                .clickable { com.aion.chat.compose.data.VoiceMsgPlayer.toggle(voiceCtx, messageId) }
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        ) {
+            Text(
+                if (playing) "■" else "▶",
+                fontSize = 12.sp, color = HomecomingColors.Accent
+            )
+            Text(
+                "  语音 " + (voiceEntry.durationMs / 1000).toString() + "″",
+                fontSize = 11.sp, color = HomecomingColors.InkSoft
+            )
+        }
+    }
 
     // 版本指示器：‹ 2/3 ›（多版本时显示，点箭头切换）
     if (versionInfo != null && versionInfo.second > 1 && onSwitchVersion != null) {

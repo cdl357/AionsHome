@@ -156,6 +156,9 @@ internal suspend fun supabaseRequest(
 }
 
     /** 服务器只读代理通用 GET（v0.3.155：双端口 8783→80；返回 (body, null) 或 (null, 错误)） */
+    /** App↔nginx 共享密钥（/supa-svc/ 匿名可访问的 IP 端口，靠它挡外人；v0.3.157 P1-5） */
+    const val SUPA_SVC_KEY = "aion_f3wcga9kja7fqm0bhlyl39nx83jfkp4i"
+
     fun supaSvcGet(relQuery: String): Pair<String?, String> {
         val urls = listOf(
             "http://134.175.7.196:8783/supa-svc/" + relQuery,
@@ -167,6 +170,7 @@ internal suspend fun supabaseRequest(
                 val conn = (URL(u).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     setRequestProperty("Accept", "application/json")
+                    setRequestProperty("X-Aion-Key", SUPA_SVC_KEY)
                     connectTimeout = 15000
                     readTimeout = 20000
                 }
@@ -289,14 +293,22 @@ object SupabaseMomentsStore {
 
     /** 她的云端记忆库（memories 表，service_role 全线路读取） */
     suspend fun fetchCloudMemories(): CloudResult<List<CloudMemory>> {
-        // 走服务器只读代理（nginx 注入 service key，GET-only）——App 侧零特权密钥
-        val reply = supabaseRequest(
-            "supa-svc/memories?order=created_at.desc&limit=300",
-            "GET",
-            parse = { conn ->
-                JSONArray(conn.inputStream.bufferedReader().readText())
+        // 走服务器只读代理——v0.3.157 双端口（8783→80）+ 代理失败原因透出
+        val (pbody, perr) = supaSvcGet("memories?order=created_at.desc&limit=300")
+        val reply = if (pbody != null) {
+            runCatching { CloudReply(payload = JSONArray(pbody)) }.getOrElse {
+                CloudReply(error = CloudErrorKind.PARSE, detail = "代理数据解析失败")
             }
-        )
+        } else {
+            val r = supabaseRequest(
+                "supa-svc/memories?order=created_at.desc&limit=300",
+                "GET",
+                parse = { conn ->
+                    JSONArray(conn.inputStream.bufferedReader().readText())
+                }
+            )
+            CloudReply(error = r.error, detail = (if (perr.isNotEmpty()) "代理：$perr；" else "") + (r.detail ?: ""), payload = r.payload)
+        }
         if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)

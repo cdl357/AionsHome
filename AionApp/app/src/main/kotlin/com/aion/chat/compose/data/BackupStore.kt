@@ -160,6 +160,8 @@ object BackupStore {
         "shared_prefs/chat_providers.xml",   // 提供商 api_key 明文
         "shared_prefs/sean_ext.xml",
         "shared_prefs/sean_image_gen.xml",   // 画图中转站 apiKey 明文（v11 P1-4）
+        "shared_prefs/voice_clone.xml",      // ElevenLabs 付费 Key（v12 P2）
+        "files/request_log.json",            // CTX 摘要+全部 URL（v12 P2）
         "shared_prefs/mcp_store.xml",
         "files/routes.json",                 // 路由 api_key 明文
         "files/routes.enc",
