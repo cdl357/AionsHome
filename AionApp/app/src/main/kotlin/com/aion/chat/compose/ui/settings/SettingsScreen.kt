@@ -63,7 +63,7 @@ import java.text.SimpleDateFormat
 
 /** 设置：背景 / 主题 / 云线路 / MCP / 备份 / 网易云登录。 */
 @Composable
-fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}, onOpenTranslate: () -> Unit = {}, onOpenLocalModel: () -> Unit = {}, onOpenSandbox: () -> Unit = {}) {
+fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit = {}, onOpenRequestLog: () -> Unit = {}, onOpenMcp: () -> Unit = {}, onOpenWorkflow: () -> Unit = {}, onOpenTranslate: () -> Unit = {}, onOpenLocalModel: () -> Unit = {}, onOpenSandbox: () -> Unit = {}, onOpenMumbleCapsule: () -> Unit = {}, onOpenCalmDown: () -> Unit = {}) {
     val context = LocalContext.current
 
     val routeLabel = remember { mutableStateOf("") }
@@ -760,6 +760,27 @@ fun SettingsScreen(onOpenHerState: () -> Unit = {}, onOpenStyleHub: () -> Unit =
                         if (savedTick) Text("已保存 ✓", fontSize = 11.sp, color = Color(0xFF6FBF8F))
                     }
                 }
+            }
+        }
+
+        // ── 碎碎念 & 时间胶囊 & 冷静角（她框架九十/十） ──
+        FrostCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("碎碎念 & 时间胶囊", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("随手丢一句话不回复不互动 · 写信设未来日期到期才能开", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent,
+                    modifier = Modifier.clickable { onOpenMumbleCapsule() }.padding(start = 4.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("冷静角", fontSize = 15.sp, color = HomecomingColors.Ink)
+                    Text("吵架的时候点一下——只看他对你说过的好话，看完气消一半", fontSize = 11.sp, color = HomecomingColors.InkSoft)
+                }
+                Text("打开 ›", fontSize = 12.sp, color = HomecomingColors.Accent,
+                    modifier = Modifier.clickable { onOpenCalmDown() }.padding(start = 4.dp))
             }
         }
 
