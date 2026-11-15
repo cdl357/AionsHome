@@ -587,7 +587,7 @@ private fun LoveNowPage(
             // 唱片底下的柔光
             Box(
                 modifier = Modifier
-                    .size(268.dp)
+                    .size(236.dp)
                     .background(
                         Brush.radialGradient(
                             listOf(HomecomingColors.Accent.copy(alpha = 0.14f), Color.Transparent)
@@ -601,7 +601,7 @@ private fun LoveNowPage(
                     contentDescription = "唱片（点一下换样式）",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(240.dp)
+                        .size(208.dp)
                         .graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }
                         .clickable(
                             indication = null,
@@ -609,7 +609,7 @@ private fun LoveNowPage(
                         ) { onPickDisc() }
                 )
             } else
-            Canvas(modifier = Modifier.size(228.dp).graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }) {
+            Canvas(modifier = Modifier.size(200.dp).graphicsLayer { rotationZ = if (player.playing) discAngle else 0f }) {
                 val r = size.minDimension / 2f
                 val c = Offset(size.width / 2f, size.height / 2f)
                 drawCircle(Brush.radialGradient(listOf(Color(0xFF48444C), Color(0xFF1B191E))), radius = r, center = c)
@@ -621,33 +621,7 @@ private fun LoveNowPage(
                 drawCircle(Color.White, radius = r * 0.045f, center = c)
             }
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.75f))
-                .border(0.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
-                .padding(horizontal = 14.dp, vertical = 6.dp)
-        ) {
-            Text(
-                "点唱片换样式", fontSize = 10.sp,
-                color = HomecomingColors.Accent, fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onPickDisc() }
-                    .padding(2.dp)
-            )
-            Text("  ·  ", fontSize = 10.sp, color = HomecomingColors.InkSoft)
-            Text(
-                "点这里换背景图", fontSize = 10.sp,
-                color = HomecomingColors.Accent, fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onOpenWallpaper() }
-                    .padding(2.dp)
-            )
-        }
+
         Spacer(Modifier.height(14.dp))
 
         Text(

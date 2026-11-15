@@ -155,6 +155,57 @@ internal suspend fun supabaseRequest(
     CloudReply(error = lastError ?: CloudErrorKind.NETWORK, detail = lastDetail)
 }
 
+    /** 服务器只读代理通用 GET（v0.3.155：双端口 8783→80；返回 (body, null) 或 (null, 错误)） */
+    fun supaSvcGet(relQuery: String): Pair<String?, String> {
+        val urls = listOf(
+            "http://134.175.7.196:8783/supa-svc/" + relQuery,
+            "http://134.175.7.196/supa-svc/" + relQuery,
+        )
+        var lastErr = "代理失败"
+        for (u in urls) {
+            val r = runCatching {
+                val conn = (URL(u).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/json")
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    lastErr = "$u → HTTP $code"
+                    null
+                } else {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                }
+            }.getOrElse {
+                lastErr = "$u → ${it.javaClass.simpleName}: ${it.message?.take(120)}"
+                null
+            }
+            if (r != null) return r to ""
+        }
+        return null to lastErr
+    }
+
+    /** 代理优先的 GET 数组请求：服务器零 key；代理失败自动落原线路链（anon/中转） */
+    internal suspend fun supabaseGetArray(path: String): CloudReply {
+        val (body, perr) = supaSvcGet(path)
+        if (body != null) {
+            return runCatching {
+                CloudReply(payload = JSONArray(body))
+            }.getOrElse {
+                CloudReply(error = CloudErrorKind.PARSE, detail = "代理数据解析失败:${it.message?.take(80)}")
+            }
+        }
+        val reply = supabaseRequest(path, "GET", parse = { conn ->
+            JSONArray(conn.inputStream.bufferedReader().readText())
+        })
+        val d = buildString {
+            if (perr.isNotEmpty()) append("代理：").append(perr).append("；")
+            append(reply.detail ?: "")
+        }
+        return CloudReply(error = reply.error, detail = d.ifBlank { null }, payload = reply.payload)
+    }
+
 /** 把 PostgREST 返回的 text[]（JSON 数组）安全转 List<String>；兼容 "{a,b}" 字符串形态。 */
 internal fun jsonStringArray(raw: Any?): List<String> = when (raw) {
     is JSONArray -> (0 until raw.length()).map { raw.optString(it) }.filter { it.isNotBlank() }
@@ -295,34 +346,9 @@ object SupabaseMomentsStore {
     @Volatile var lastProxyError: String = ""
 
     private fun fetchMomentsViaProxy(): List<RemoteMoment>? {
-        // 双端口兜底：8783（常规）→ 80（运营商可能挡非常规端口）
-        val urls = listOf(
-            "http://134.175.7.196:8783/supa-svc/moments?order=created_at.desc&limit=50",
-            "http://134.175.7.196/supa-svc/moments?order=created_at.desc&limit=50",
-        )
-        for (u in urls) {
-            val err = runCatching {
-                val conn = (URL(u).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    setRequestProperty("Accept", "application/json")
-                    connectTimeout = 15000
-                    readTimeout = 20000
-                }
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    lastProxyError = "$u → HTTP $code"
-                    null
-                } else {
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    parseMomentsArray(body)
-                }
-            }.getOrElse {
-                lastProxyError = "$u → ${it.javaClass.simpleName}: ${it.message?.take(120)}"
-                null
-            }
-            if (err != null) return err
-        }
-        return null
+        val (body, err) = supaSvcGet("moments?order=created_at.desc&limit=50")
+        lastProxyError = err ?: ""
+        return body?.let { parseMomentsArray(it) }
     }
 
     private fun parseMomentsArray(body: String): List<RemoteMoment> {
@@ -355,21 +381,9 @@ object SupabaseMomentsStore {
             return CloudResult(list, null)
         }
         RequestLog.add(null, "GET", "supa-svc://moments", 0, 0, lastProxyError.ifBlank { "代理失败，走原线路" })
-        // ② 原有线路链（中转 → 直连 anon → xinchao）
-        val reply = supabaseRequest(
-            "rest/v1/moments",
-            "GET",
-            parse = { conn ->
-                JSONArray(conn.inputStream.bufferedReader().readText())
-            }
-        )
-        if (reply.error != null) {
-            val detail = buildString {
-                if (lastProxyError.isNotBlank()) append("代理线路：").append(lastProxyError).append("；")
-                append(reply.detail ?: "")
-            }
-            return CloudResult(null, reply.error, detail)
-        }
+        // ② 原有线路链（中转 → 直连 anon → xinchao）——v0.3.155 走统一代理优先入口
+        val reply = supabaseGetArray("moments?order=created_at.desc&limit=50")
+        if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
             ?: return CloudResult(null, CloudErrorKind.PARSE)
         if (arr.length() == 0) {
@@ -404,12 +418,11 @@ object SupabaseMomentsStore {
 
     /** 读哥哥的日记（user_id=eq.ai_哥哥），查询列按真实表结构写死。 */
     suspend fun fetchSeanDiaries(): CloudResult<List<RemoteDiary>> {
-        val reply = supabaseRequest(
-            "rest/v1/diary_entries?user_id=" + java.net.URLEncoder.encode("eq.ai_哥哥", "UTF-8") +
+        // v0.3.155：代理优先（收权后 anon 直读必 401；服务器侧 key 不受影响）
+        val reply = supabaseGetArray(
+            "diary_entries?user_id=" + java.net.URLEncoder.encode("eq.ai_哥哥", "UTF-8") +
                 "&select=id,user_id,title,content,weather,mood,tags,private,created_at" +
-                "&order=created_at.desc&limit=50",
-            "GET",
-            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
+                "&order=created_at.desc&limit=50"
         )
         if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray
@@ -600,11 +613,10 @@ object SeanDiaryStore {
 
     /** 读他的信（含回应字段），新→旧。表空不算错误（Sean 还没写）。 */
     suspend fun fetchAll(): CloudResult<List<SeanDiaryRow>> {
-        val reply = supabaseRequest(
-            "rest/v1/sean_diary?select=id,thoughts,content,created_at,reply_content,replied_at" +
-                "&order=created_at.desc&limit=100",
-            "GET",
-            parse = { conn -> JSONArray(conn.inputStream.bufferedReader().readText()) }
+        // v0.3.155：代理优先（同上）
+        val reply = supabaseGetArray(
+            "sean_diary?select=id,thoughts,content,created_at,reply_content,replied_at" +
+                "&order=created_at.desc&limit=100"
         )
         if (reply.error != null) return CloudResult(null, reply.error, reply.detail)
         val arr = reply.payload as? JSONArray ?: return CloudResult(null, CloudErrorKind.PARSE)
