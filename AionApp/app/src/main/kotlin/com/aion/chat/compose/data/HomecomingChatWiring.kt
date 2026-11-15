@@ -78,6 +78,7 @@ class HomecomingChatWiring(context: Context) {
         // 工作流：工具面初始化 + 触发器按需注册（有启用中的工作流才挂接收器/扫描器）
         com.aion.chat.compose.data.WorkflowTools.initContext(appContext)
         com.aion.chat.compose.data.WorkspaceTools.initContext(appContext)
+        com.aion.chat.compose.data.AionTools.initContext(appContext)
         Thread {
             runCatching { com.aion.chat.compose.data.WorkflowTriggers.sync(appContext) }
             runCatching { com.aion.chat.compose.data.WorkflowTriggers.sweep(appContext) }

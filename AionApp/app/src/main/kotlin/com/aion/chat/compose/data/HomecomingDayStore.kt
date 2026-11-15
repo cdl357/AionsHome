@@ -127,6 +127,18 @@ object HomecomingDayStore {
 
     data class BoardNote(val id: Long, val author: String, val content: String, val createdAt: Long)
 
+    /** 留言板工具写入（author=sean/yuri） */
+    fun addBoardNote(context: Context, author: String, content: String): Boolean = try {
+        val db = db(context)
+        db.execSQL(
+            "INSERT INTO board_note_local(author, content, created_at) VALUES(?,?,?)",
+            arrayOf(author, content, System.currentTimeMillis())
+        )
+        true
+    } catch (e: Exception) {
+        false
+    }
+
     fun boardNotes(context: Context): List<BoardNote> = try {
         val db = db(context); ensure(db)
         val cur = db.rawQuery(

@@ -33,6 +33,7 @@ object WorkflowTools {
             out.addAll(listOf("workspace_shell", "workspace_read_file", "workspace_write_file",
                 "workspace_list_directory", "workspace_delete_file", "workspace_move", "workspace_search"))
         }
+        out.addAll(AionTools.toolNames())
         return out
     }
 

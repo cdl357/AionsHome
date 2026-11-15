@@ -230,7 +230,11 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                         for (com.aion.chat.compose.data.McpClient.ToolDef d0 : com.aion.chat.compose.data.McpClient.cachedDefs()) {
                             if (d0.safeName.equals(safeName)) { mcpHasTool = true; break; }
                         }
-                        if (com.aion.chat.compose.data.WorkspaceTools.handles(safeName)) {
+                        if (com.aion.chat.compose.data.AionTools.handles(safeName)) {
+                            resultText = com.aion.chat.compose.data.AionTools.dispatch(safeName,
+                                    v[2].isEmpty() ? "{}" : v[2]);
+                            RequestLog.add(null, "TOOL", safeName, 200, 0, "", 0, 0);
+                        } else if (com.aion.chat.compose.data.WorkspaceTools.handles(safeName)) {
                             resultText = com.aion.chat.compose.data.WorkspaceTools.dispatch(safeName,
                                     v[2].isEmpty() ? "{}" : v[2]);
                             RequestLog.add(null, "WS", safeName, 200, 0, "", 0, 0);
@@ -459,6 +463,16 @@ public final class HomecomingModelGateway implements HomecomingChatEngine.Gatewa
                 body.put("tools", toolsArr3);
             }
             for (int i = 0; i < wdefs.length(); i++) toolsArr3.put(wdefs.get(i));
+        } catch (Throwable ignored) { }
+        // 生活工具包（web_search/calendar/anniversary/todo/board_note/sticky/toast/device/usage——常驻）
+        try {
+            org.json.JSONArray adefs = com.aion.chat.compose.data.AionTools.defs();
+            org.json.JSONArray toolsArr5 = body.optJSONArray("tools");
+            if (toolsArr5 == null) {
+                toolsArr5 = new org.json.JSONArray();
+                body.put("tools", toolsArr5);
+            }
+            for (int i = 0; i < adefs.length(); i++) toolsArr5.put(adefs.get(i));
         } catch (Throwable ignored) { }
         // 沙盒工具（workspace_*：装好 rootfs 才注入）
         try {

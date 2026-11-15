@@ -197,6 +197,9 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val showMcp = remember { mutableStateOf(false) }
     val showMemoryBank = remember { mutableStateOf(false) }
     val showFavorites = remember { mutableStateOf(false) }
+    // v0.3.158：待办 / 留言板（抽屉入口）
+    val showTodos = remember { mutableStateOf(false) }
+    val showBulletin = remember { mutableStateOf(false) }
     val showStats = remember { mutableStateOf(false) }
     // 聊天背景重载戳（抽屉里换图后立即刷新，不必切页）
     val chatBgVersion = remember { mutableStateOf(0L) }
@@ -2143,6 +2146,20 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // ── 待办页（抽屉 → 待办） ──
+    if (showTodos.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFFCFAF6))) {
+            TodoScreen(onBack = { showTodos.value = false })
+        }
+    }
+
+    // ── 留言板（抽屉 → 留言板） ──
+    if (showBulletin.value) {
+        Box(Modifier.fillMaxSize().background(Color(0xFFF2F0EB))) {
+            BulletinScreen(onBack = { showBulletin.value = false })
+        }
+    }
+
     // ── 统计页（抽屉 → 统计） ──
     if (showStats.value) {
         Box(Modifier.fillMaxSize().background(Color(0xFFFCFAF6))) {
@@ -2320,6 +2337,25 @@ fun ChatScreen(onOpenCall: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("统计") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showTodos.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("待办") }
+                Button(
+                    onClick = {
+                        showChatDrawer.value = false
+                        showBulletin.value = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("留言板") }
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
