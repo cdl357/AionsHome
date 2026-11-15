@@ -188,7 +188,11 @@ fun HomecomingApp() {
                 }
                 composable(HomeTab.Us.route) {
                     Box(Modifier.fillMaxSize()) {
-                        UsScreen(onOpenWall = { navController.navigate("handwritingwall") })
+                        UsScreen(
+                            onOpenWall = { navController.navigate("handwritingwall") },
+                            onOpenWish = { navController.navigate("wishbottle") },
+                            onOpenMood = { navController.navigate("moodcalendar") }
+                        )
                     }
                 }
                 composable("settings") {
@@ -256,6 +260,12 @@ fun HomecomingApp() {
                 }
                 composable("handwritingwall") {
                     com.aion.chat.compose.ui.us.HandwritingWallScreen(onBack = { navController.popBackStack() })
+                }
+                composable("wishbottle") {
+                    com.aion.chat.compose.ui.us.WishBottleScreen(onBack = { navController.popBackStack() })
+                }
+                composable("moodcalendar") {
+                    com.aion.chat.compose.ui.us.MoodCalendarScreen(onBack = { navController.popBackStack() })
                 }
                 composable("stats") {
                     com.aion.chat.compose.ui.settings.StatsScreen(onBack = { navController.popBackStack() })

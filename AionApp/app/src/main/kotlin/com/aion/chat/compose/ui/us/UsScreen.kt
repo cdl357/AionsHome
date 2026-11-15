@@ -55,7 +55,7 @@ import java.time.ZoneId
 /** 页面②：我们（日历时光机）——整月格子 + 左右滑切月 + 点天抽屉三卡（摘要可展开）+ 纪念日专属图标。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}) {
+fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}, onOpenWish: () -> Unit = {}, onOpenMood: () -> Unit = {}) {
     val context = LocalContext.current
     var viewDate by remember { mutableStateOf(LocalDate.now().withDayOfMonth(1)) }
     var selected by remember { mutableStateOf<LocalDate?>(null) }
@@ -183,14 +183,22 @@ fun UsScreen(onOpenAlbum: () -> Unit = {}, onOpenWall: () -> Unit = {}) {
             }
         }
 
-        // ── 手写墙 / 纸条箱入口（v0.3.159） ──
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        // ── 手写墙 / 心愿瓶 / 情绪日历入口（v0.3.159-160） ──
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
-                "手写墙 · 纸条箱 ›", fontSize = 13.sp,
+                "手写墙 ›", fontSize = 13.sp,
                 color = androidx.compose.ui.graphics.Color(0xFF576B95),
-                modifier = Modifier
-                    .clickable { onOpenWall() }
-                    .padding(vertical = 2.dp)
+                modifier = Modifier.clickable { onOpenWall() }.padding(vertical = 2.dp)
+            )
+            Text(
+                "心愿瓶 ›", fontSize = 13.sp,
+                color = androidx.compose.ui.graphics.Color(0xFF576B95),
+                modifier = Modifier.clickable { onOpenWish() }.padding(vertical = 2.dp)
+            )
+            Text(
+                "情绪日历 ›", fontSize = 13.sp,
+                color = androidx.compose.ui.graphics.Color(0xFF576B95),
+                modifier = Modifier.clickable { onOpenMood() }.padding(vertical = 2.dp)
             )
         }
 

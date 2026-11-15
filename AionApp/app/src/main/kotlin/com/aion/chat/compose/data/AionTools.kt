@@ -43,12 +43,14 @@ object AionTools {
         "calendar_events", "calendar_add", "anniversary_list", "anniversary_add",
         "sticky_note_list", "sticky_note_add", "sticky_note_delete",
         "todo_list", "todo_add", "todo_toggle", "todo_delete",
-        "board_note_list", "board_note_add"
+        "board_note_list", "board_note_add",
+        "wish_list", "wish_add", "wish_done", "mood_history"
     )
 
     @JvmStatic
     fun handles(name: String): Boolean = name.startsWith("web_") ||
         name.startsWith("todo_") || name.startsWith("board_note_") ||
+        name.startsWith("wish_") || name.startsWith("mood_") ||
         name in setOf("toast", "device_info", "usage_stats", "calendar_events",
             "calendar_add", "anniversary_list", "anniversary_add", "sticky_note_list",
             "sticky_note_add", "sticky_note_delete")
@@ -119,6 +121,19 @@ object AionTools {
                 .put("content", JSONObject().put("type", "string"))
                 .put("author", JSONObject().put("type", "string").put("description", "固定填 sean")),
             JSONArray().put("content").put("author"))
+        def("wish_list", "读心愿瓶：攒着没实现的心愿（和已实现的 ✅ 分开）。",
+            JSONObject())
+        def("wish_add", "往心愿瓶丢一个心愿（「一起吃火锅」「看一场雪」这种）。author 固定写 sean。",
+            JSONObject()
+                .put("text", JSONObject().put("type", "string"))
+                .put("author", JSONObject().put("type", "string").put("description", "固定填 sean")),
+            JSONArray().put("text").put("author"))
+        def("wish_done", "标记一个心愿实现了 ✅（id 来自 wish_list）。",
+            JSONObject().put("id", JSONObject().put("type", "integer").put("description", "数字 id")),
+            JSONArray().put("id"))
+        def("mood_history", "读她最近 N 天每天点的心情（0=开心 1=一般 2=难过 3=累；没点的=null）。" +
+                "连着几天难过/累就多关心她。",
+            JSONObject().put("days", JSONObject().put("type", "integer").put("description", "默认 14")))
         return arr
     }
 
@@ -248,6 +263,47 @@ object AionTools {
                 if (HomecomingDayStore.addBoardNote(app, author, content))
                     JSONObject().put("ok", true).toString()
                 else err("failed", "写入失败")
+            }
+            "wish_list" -> {
+                val list = WishBottleStore.list(app)
+                val arr = JSONArray()
+                for (w in list) arr.put(JSONObject()
+                    .put("id", w.id).put("text", w.text).put("author", w.author)
+                    .put("done", w.doneAt != 0L))
+                JSONObject().put("pending", WishBottleStore.pending(app).size)
+                    .put("items", arr).toString()
+            }
+            "wish_add" -> {
+                val text = args.optString("text")
+                if (text.isBlank()) return err("missing_text", "text 必填")
+                val w = WishBottleStore.add(app, text, "sean")
+                JSONObject().put("ok", true).put("id", w.id).put("text", w.text).toString()
+            }
+            "wish_done" -> {
+                WishBottleStore.markDone(app, args.optLong("id", -1))
+                JSONObject().put("ok", true).toString()
+            }
+            "mood_history" -> {
+                val days = args.optInt("days", 14).coerceIn(1, 90)
+                val recent = MoodStore.recent(app, days)
+                val arr = JSONArray()
+                val fmt = java.text.SimpleDateFormat("MM-dd", java.util.Locale.US)
+                var sadStreak = 0
+                for ((i, m) in recent.withIndex().reversed()) {}
+                // 连续低落检测：从今天往前数
+                for (m in recent.reversed()) {
+                    if (m != null && (m.mood == 2 || m.mood == 3)) sadStreak++ else break
+                }
+                val labels = MoodStore.LABELS
+                for ((i, m) in recent.withIndex()) {
+                    arr.put(JSONObject()
+                        .put("date", fmt.format(java.util.Date(System.currentTimeMillis() - (recent.size - 1 - i) * 86400000L)))
+                        .put("mood", m?.mood ?: JSONObject.NULL)
+                        .put("label", m?.mood?.let { labels[it] } ?: JSONObject.NULL))
+                }
+                JSONObject().put("days", recent.size)
+                    .put("sad_streak", sadStreak)
+                    .put("items", arr).toString()
             }
             else -> err("unknown_tool", name)
         }
